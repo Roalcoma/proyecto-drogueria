@@ -157,6 +157,9 @@ export class PromocionesService {
                 IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='APP_PROMOCIONES' AND COLUMN_NAME='IDGRUPOARTICULOS_EXCLUIR')
                 ALTER TABLE APP_PROMOCIONES ADD IDGRUPOARTICULOS_EXCLUIR INT NULL REFERENCES APP_GRUPOS_ARTICULOS(ID);
 
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='APP_PROMOCIONES' AND COLUMN_NAME='IDGRUPOCLIENTES_EXCLUIR')
+                ALTER TABLE APP_PROMOCIONES ADD IDGRUPOCLIENTES_EXCLUIR INT NULL REFERENCES APP_GRUPOS_CLIENTES(ID);
+
                 IF NOT EXISTS (SELECT 1 FROM sysobjects WHERE name='APP_GRUPOS_ARTICULOS_CONDICIONES' AND xtype='U')
                 CREATE TABLE APP_GRUPOS_ARTICULOS_CONDICIONES (
                     ID INT IDENTITY PRIMARY KEY,
@@ -706,13 +709,14 @@ export class PromocionesService {
             .input('LIMIT', mssql.Int, limit)
             .query(`
                 SELECT P.ID, P.NOMBRE, P.BASE, P.ALCANCE_CLIENTE, P.FECHAINICIO, P.FECHAFIN, P.ACTIVO,
-                    P.IDGRUPOARTICULOS, P.IDGRUPOCLIENTES, P.IDGRUPOARTICULOS_EXCLUIR,
+                    P.IDGRUPOARTICULOS, P.IDGRUPOCLIENTES, P.IDGRUPOARTICULOS_EXCLUIR, P.IDGRUPOCLIENTES_EXCLUIR,
                     GA.NOMBRE AS NOMBREGRUPOARTICULOS, GC.NOMBRE AS NOMBREGRUPOCLIENTES,
-                    GAE.NOMBRE AS NOMBREGRUPOARTICULOS_EXCLUIR
+                    GAE.NOMBRE AS NOMBREGRUPOARTICULOS_EXCLUIR, GCE.NOMBRE AS NOMBREGRUPOCLIENTES_EXCLUIR
                 FROM APP_PROMOCIONES P
                     INNER JOIN APP_GRUPOS_ARTICULOS GA ON GA.ID = P.IDGRUPOARTICULOS
                     LEFT JOIN APP_GRUPOS_CLIENTES GC ON GC.ID = P.IDGRUPOCLIENTES
                     LEFT JOIN APP_GRUPOS_ARTICULOS GAE ON GAE.ID = P.IDGRUPOARTICULOS_EXCLUIR
+                    LEFT JOIN APP_GRUPOS_CLIENTES GCE ON GCE.ID = P.IDGRUPOCLIENTES_EXCLUIR
                 WHERE P.NOMBRE LIKE @FILTRO
                 ORDER BY P.FECHACREACION DESC
                 OFFSET @OFFSET ROWS FETCH NEXT @LIMIT ROWS ONLY
@@ -738,7 +742,7 @@ export class PromocionesService {
 
     static async crearPromocion(promo: {
         nombre: string; idGrupoArticulos: number; idGrupoArticulosExcluir: number | null; base: 'UNIDADES' | 'MONTO';
-        alcanceCliente: 'TODOS' | 'INCLUIR_GRUPO' | 'EXCLUIR_GRUPO'; idGrupoClientes: number | null;
+        alcanceCliente: 'TODOS' | 'INCLUIR_GRUPO' | 'EXCLUIR_GRUPO'; idGrupoClientes: number | null; idGrupoClientesExcluir: number | null;
         fechaInicio: string; fechaFin: string; escalas: EscalaInput[];
     }) {
         const pool = await connectDb();
@@ -753,12 +757,13 @@ export class PromocionesService {
                 .input('BASE', mssql.VarChar, promo.base)
                 .input('ALCANCE', mssql.VarChar, promo.alcanceCliente)
                 .input('IDGRUPOCLIENTES', mssql.Int, promo.idGrupoClientes)
+                .input('IDGRUPOCLIENTES_EXCLUIR', mssql.Int, promo.idGrupoClientesExcluir)
                 .input('FECHAINICIO', mssql.Date, promo.fechaInicio)
                 .input('FECHAFIN', mssql.Date, promo.fechaFin)
                 .query(`
-                    INSERT INTO APP_PROMOCIONES (NOMBRE, IDGRUPOARTICULOS, IDGRUPOARTICULOS_EXCLUIR, BASE, ALCANCE_CLIENTE, IDGRUPOCLIENTES, FECHAINICIO, FECHAFIN)
+                    INSERT INTO APP_PROMOCIONES (NOMBRE, IDGRUPOARTICULOS, IDGRUPOARTICULOS_EXCLUIR, BASE, ALCANCE_CLIENTE, IDGRUPOCLIENTES, IDGRUPOCLIENTES_EXCLUIR, FECHAINICIO, FECHAFIN)
                     OUTPUT INSERTED.ID
-                    VALUES (@NOMBRE, @IDGRUPOARTICULOS, @IDGRUPOARTICULOS_EXCLUIR, @BASE, @ALCANCE, @IDGRUPOCLIENTES, @FECHAINICIO, @FECHAFIN)
+                    VALUES (@NOMBRE, @IDGRUPOARTICULOS, @IDGRUPOARTICULOS_EXCLUIR, @BASE, @ALCANCE, @IDGRUPOCLIENTES, @IDGRUPOCLIENTES_EXCLUIR, @FECHAINICIO, @FECHAFIN)
                 `);
             const idPromocion = result.recordset[0].ID;
 
@@ -781,7 +786,7 @@ export class PromocionesService {
 
     static async actualizarPromocion(id: number, promo: {
         nombre: string; idGrupoArticulos: number; idGrupoArticulosExcluir: number | null; base: 'UNIDADES' | 'MONTO';
-        alcanceCliente: 'TODOS' | 'INCLUIR_GRUPO' | 'EXCLUIR_GRUPO'; idGrupoClientes: number | null;
+        alcanceCliente: 'TODOS' | 'INCLUIR_GRUPO' | 'EXCLUIR_GRUPO'; idGrupoClientes: number | null; idGrupoClientesExcluir: number | null;
         fechaInicio: string; fechaFin: string; escalas: EscalaInput[];
     }) {
         const pool = await connectDb();
@@ -797,13 +802,15 @@ export class PromocionesService {
                 .input('BASE', mssql.VarChar, promo.base)
                 .input('ALCANCE', mssql.VarChar, promo.alcanceCliente)
                 .input('IDGRUPOCLIENTES', mssql.Int, promo.idGrupoClientes)
+                .input('IDGRUPOCLIENTES_EXCLUIR', mssql.Int, promo.idGrupoClientesExcluir)
                 .input('FECHAINICIO', mssql.Date, promo.fechaInicio)
                 .input('FECHAFIN', mssql.Date, promo.fechaFin)
                 .query(`
                     UPDATE APP_PROMOCIONES SET
                         NOMBRE = @NOMBRE, IDGRUPOARTICULOS = @IDGRUPOARTICULOS,
                         IDGRUPOARTICULOS_EXCLUIR = @IDGRUPOARTICULOS_EXCLUIR,
-                        BASE = @BASE, ALCANCE_CLIENTE = @ALCANCE, IDGRUPOCLIENTES = @IDGRUPOCLIENTES,
+                        BASE = @BASE, ALCANCE_CLIENTE = @ALCANCE,
+                        IDGRUPOCLIENTES = @IDGRUPOCLIENTES, IDGRUPOCLIENTES_EXCLUIR = @IDGRUPOCLIENTES_EXCLUIR,
                         FECHAINICIO = @FECHAINICIO, FECHAFIN = @FECHAFIN
                     WHERE ID = @ID
                 `);
@@ -838,7 +845,7 @@ export class PromocionesService {
     static async getVigentes() {
         const pool = await connectDb();
         const result = await pool.request().query(`
-            SELECT P.ID, P.NOMBRE, P.BASE, P.ALCANCE_CLIENTE, P.IDGRUPOCLIENTES, P.IDGRUPOARTICULOS_EXCLUIR
+            SELECT P.ID, P.NOMBRE, P.BASE, P.ALCANCE_CLIENTE, P.IDGRUPOCLIENTES, P.IDGRUPOARTICULOS_EXCLUIR, P.IDGRUPOCLIENTES_EXCLUIR
             FROM APP_PROMOCIONES P
             WHERE P.ACTIVO = 1
                 AND CAST(GETDATE() AS DATE) BETWEEN P.FECHAINICIO AND P.FECHAFIN
@@ -887,7 +894,9 @@ export class PromocionesService {
         }
 
         const clientesPorGrupo: Record<number, number[]> = {};
-        const idsGrupoClientes = [...new Set(promos.filter((p: any) => p.IDGRUPOCLIENTES).map((p: any) => p.IDGRUPOCLIENTES))];
+        const idsGrupoClientesIncluir = [...new Set(promos.filter((p: any) => p.IDGRUPOCLIENTES).map((p: any) => p.IDGRUPOCLIENTES))];
+        const idsGrupoClientesExcluir = [...new Set(promos.filter((p: any) => p.IDGRUPOCLIENTES_EXCLUIR).map((p: any) => p.IDGRUPOCLIENTES_EXCLUIR))];
+        const idsGrupoClientes = [...new Set([...idsGrupoClientesIncluir, ...idsGrupoClientesExcluir])];
         if (idsGrupoClientes.length > 0) {
             const tiposResult = await pool.request().query(`SELECT ID, TIPO FROM APP_GRUPOS_CLIENTES WHERE ID IN (${idsGrupoClientes.join(',')})`);
             const tiposGrupoCli: Record<number, string> = {};
@@ -911,20 +920,31 @@ export class PromocionesService {
         escalasResult.recordset.forEach((e: any) => { (escalasPorPromo[e.IDPROMOCION] ??= []).push(e); });
 
         return promos.map((p: any) => {
-            const incluidos = articulosPorGrupo[grupoPorPromo[p.ID]] ?? [];
-            const excluidos = p.IDGRUPOARTICULOS_EXCLUIR
+            // Artículos: incluir grupo - excluir grupo
+            const artIncluidos = articulosPorGrupo[grupoPorPromo[p.ID]] ?? [];
+            const artExcluidos = p.IDGRUPOARTICULOS_EXCLUIR
                 ? new Set(articulosPorGrupo[p.IDGRUPOARTICULOS_EXCLUIR] ?? [])
                 : null;
-            const codigosArticulo = excluidos
-                ? incluidos.filter((cod: number) => !excluidos.has(cod))
-                : incluidos;
+            const codigosArticulo = artExcluidos
+                ? artIncluidos.filter((cod: number) => !artExcluidos.has(cod))
+                : artIncluidos;
+
+            // Clientes: incluir grupo - excluir grupo
+            const cliIncluidos = p.IDGRUPOCLIENTES ? (clientesPorGrupo[p.IDGRUPOCLIENTES] ?? []) : [];
+            const cliExcluidos = p.IDGRUPOCLIENTES_EXCLUIR
+                ? new Set(clientesPorGrupo[p.IDGRUPOCLIENTES_EXCLUIR] ?? [])
+                : null;
+            const codigosCliente = cliExcluidos
+                ? cliIncluidos.filter((cod: number) => !cliExcluidos.has(cod))
+                : cliIncluidos;
+
             return {
                 id: p.ID,
                 nombre: p.NOMBRE,
                 base: p.BASE,
                 alcanceCliente: p.ALCANCE_CLIENTE,
                 codigosArticulo,
-                codigosCliente: p.IDGRUPOCLIENTES ? (clientesPorGrupo[p.IDGRUPOCLIENTES] ?? []) : [],
+                codigosCliente,
                 escalas: (escalasPorPromo[p.ID] ?? []).map((e: any) => ({ minimo: e.MINIMO, maximo: e.MAXIMO, porcentaje: e.PORCENTAJE })),
             };
         });
