@@ -1,5 +1,6 @@
 import { mssql } from "../db/db.conection";
 import { connectDb, closeDb } from "../db/db.conection";
+import { getDbConfig } from './dbconfig.service';
 import 'dotenv/config'; // Asegúrate de que dotenv esté instalado y configurado
 
 const VED: number = Number(process.env.VED) || 1; // Asegúrate de que VED esté definido en tu archivo .env
@@ -65,7 +66,8 @@ export class ProductsService {
                 .input('ARTICULO', mssql.NVarChar, !articulo ? '%' : articulo)
                 .input('OFFSET', mssql.Int, offset)
                 .input('LIMIT', mssql.Int, limit)
-                .input('STOCK_STATUS', mssql.VarChar, stockStatus) // <-- Pasamos el estado al SQL
+                .input('STOCK_STATUS', mssql.VarChar, stockStatus)
+                .input('dptoPsico', mssql.Int, getDbConfig().dptoPsicotropicos)
                 .query(`
                     DECLARE @FILTRO AS NVARCHAR(50)='%'+UPPER(REPLACE(LTRIM(RTRIM(@ARTICULO)),' ','%'))+'%'
 
@@ -78,8 +80,8 @@ export class ProductsService {
 
                     INSERT INTO #PROMO
                     EXEC [rip].[GET_ARTICULOS_EN_PROMOCION_SP]
-                                        
-                    SELECT DISTINCT A.CODARTICULO, A.REFPROVEEDOR, A.NODTOAPLICABLE, ACL.DESCRIPCIONLARGA DESCRIPCION, ACL.PRINCIPIOACTIVO, CASE WHEN A.SECCION = 12 THEN 'T' ELSE 'F' END ES_PSICOTROPICO, ISNULL((SELECT
+
+                    SELECT DISTINCT A.CODARTICULO, A.REFPROVEEDOR, A.NODTOAPLICABLE, ACL.DESCRIPCIONLARGA DESCRIPCION, ACL.PRINCIPIOACTIVO, CASE WHEN A.SECCION = @dptoPsico THEN 'T' ELSE 'F' END ES_PSICOTROPICO, ISNULL((SELECT
                         TOP 1 LEFT(AP.VALOR, CHARINDEX('|', AP.VALOR + '|') - 1) PORCENTAJE_DESCUENTO 
                     FROM 
                         PROMOCIONES P 

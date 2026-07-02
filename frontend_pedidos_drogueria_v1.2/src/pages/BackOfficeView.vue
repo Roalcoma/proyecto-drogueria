@@ -295,6 +295,72 @@
       </v-card-text>
     </v-card>
 
+    <!-- Contador secuencial de pedidos -->
+    <v-card rounded="xl" elevation="2" class="mt-6">
+      <v-card-title class="pa-4 d-flex align-center">
+        <v-icon color="teal-darken-2" class="mr-2">mdi-counter</v-icon>
+        <span class="font-weight-bold">Contador de Pedidos</span>
+      </v-card-title>
+      <v-divider />
+      <v-card-text class="pa-4">
+        <p class="text-caption text-grey mb-3">
+          Número secuencial interno de pedidos. El <strong>último número usado</strong> es
+          <strong>{{ seqActual }}</strong> — el próximo pedido será el <strong>#{{ seqActual + 1 }}</strong>.
+          Cambia el valor solo si necesitas saltar a un número específico.
+        </p>
+        <div class="d-flex align-center gap-3">
+          <v-text-field
+            v-model.number="seqNuevo"
+            label="Último número usado"
+            type="number"
+            min="0"
+            variant="outlined"
+            density="compact"
+            hide-details
+            prepend-inner-icon="mdi-numeric"
+            style="max-width:220px;"
+          />
+          <v-btn color="teal-darken-2" variant="elevated" :loading="guardandoSeq" @click="guardarSeq">
+            Actualizar
+          </v-btn>
+          <v-btn color="secondary" variant="tonal" prepend-icon="mdi-refresh" @click="cargarSeq">
+            Recargar
+          </v-btn>
+        </div>
+      </v-card-text>
+    </v-card>
+
+    <!-- Departamento psicotrópicos -->
+    <v-card rounded="xl" elevation="2" class="mt-6">
+      <v-card-title class="pa-4 d-flex align-center">
+        <v-icon color="deep-purple" class="mr-2">mdi-shield-alert</v-icon>
+        <span class="font-weight-bold">Identificación de Psicotrópicos</span>
+      </v-card-title>
+      <v-divider />
+      <v-card-text class="pa-4">
+        <p class="text-caption text-grey mb-3">
+          Número de departamento (<code>ARTICULOS.DPTO</code>) que identifica artículos psicotrópicos.
+          Los pedidos con artículos de ese departamento nacen en estado "Aprobación Psicotrópicos".
+        </p>
+        <div class="d-flex align-center gap-3">
+          <v-text-field
+            v-model.number="dptoPsicotropicos"
+            label="Departamento psicotrópicos"
+            type="number"
+            min="1"
+            variant="outlined"
+            density="compact"
+            hide-details
+            prepend-inner-icon="mdi-numeric"
+            style="max-width:220px;"
+          />
+          <v-btn color="deep-purple" variant="elevated" :loading="guardandoDpto" @click="guardarDptoPsicotropicos">
+            Guardar
+          </v-btn>
+        </div>
+      </v-card-text>
+    </v-card>
+
     <!-- Configuración integración Ecommerce -->
     <v-card rounded="xl" elevation="2" class="mt-6">
       <v-card-title class="pa-4 d-flex align-center">
@@ -597,6 +663,52 @@ const guardarDbConfigFn = async () => {
   } finally { guardandoDbCfg.value = false; }
 };
 
+// ─── Contador secuencial de pedidos ──────────────────────────
+const seqActual   = ref(0);
+const seqNuevo    = ref(0);
+const guardandoSeq = ref(false);
+
+const cargarSeq = async () => {
+  try {
+    const res = await axios.get(`${API_SIS}/seq-pedidos`);
+    if (res.data.success) { seqActual.value = res.data.ultimoId; seqNuevo.value = res.data.ultimoId; }
+  } catch { /* silencioso */ }
+};
+
+const guardarSeq = async () => {
+  guardandoSeq.value = true;
+  try {
+    const res = await axios.post(`${API_SIS}/seq-pedidos`, { ultimoId: seqNuevo.value });
+    if (res.data.success) {
+      seqActual.value = seqNuevo.value;
+      mostrarSnack(res.data.message, 'success');
+    }
+  } catch (e: any) {
+    mostrarSnack(e.response?.data?.message ?? 'Error al actualizar', 'error');
+  } finally { guardandoSeq.value = false; }
+};
+
+// ─── Departamento psicotrópicos ───────────────────────────────
+const dptoPsicotropicos = ref<number>(9);
+const guardandoDpto = ref(false);
+
+const cargarDptoPsicotropicos = async () => {
+  try {
+    const res = await axios.get(`${API_SIS}/psicotropicos`);
+    if (res.data.success) dptoPsicotropicos.value = res.data.dptoPsicotropicos;
+  } catch { /* silencioso */ }
+};
+
+const guardarDptoPsicotropicos = async () => {
+  guardandoDpto.value = true;
+  try {
+    await axios.post(`${API_SIS}/psicotropicos`, { dptoPsicotropicos: dptoPsicotropicos.value });
+    mostrarSnack(`Departamento de psicotrópicos actualizado a ${dptoPsicotropicos.value}`, 'success');
+  } catch (e: any) {
+    mostrarSnack(e.response?.data?.message ?? 'Error al guardar', 'error');
+  } finally { guardandoDpto.value = false; }
+};
+
 // ─── Auto-actualizador ────────────────────────────────────────
 const actualizando          = ref(false);
 const resultadoActualizacion = ref<any>(null);
@@ -621,5 +733,7 @@ onMounted(async () => {
   await cargarUsuarios();
   await cargarRutaEcommerce();
   await cargarDbConfig();
+  await cargarDptoPsicotropicos();
+  await cargarSeq();
 });
 </script>

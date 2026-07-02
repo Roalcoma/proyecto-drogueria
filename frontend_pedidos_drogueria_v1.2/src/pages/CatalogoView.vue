@@ -138,7 +138,7 @@
                 <div v-if="tieneDescuentos(item)" class="d-flex align-center mb-n1">
                   <span class="text-caption text-grey text-decoration-line-through">$ {{ obtenerPrecioDolar(item).toFixed(2) }}</span>
                 </div>
-                <span class="text-secondary font-weight-black text-subtitle-1">$ {{ calcularPrecioFinalDolar(item).toFixed(2) }}</span>
+                <MontoDisplay :usd="calcularPrecioFinalDolar(item)" :tasa="carritoStore.tasa" main-class="text-secondary font-weight-black text-subtitle-1" align-end />
               </div>
             </template>
 
@@ -257,6 +257,7 @@ import * as XLSX from 'xlsx';
 import * as ExcelJS from 'exceljs';
 import logoEmpresaUrl from '../assets/drogueria_logo.png';
 import { useCarritoStore } from '../stores/useCarritoStore';
+import MontoDisplay from '../components/MontoDisplay.vue';
 
 const carritoStore = useCarritoStore();
 

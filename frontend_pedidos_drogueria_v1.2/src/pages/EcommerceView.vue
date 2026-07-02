@@ -43,23 +43,34 @@
         </template>
 
         <template v-slot:item.TOTAL="{ item }">
-          <span class="font-weight-bold">Bs. {{ Number(item.TOTAL).toLocaleString('es-VE', { minimumFractionDigits: 2 }) }}</span>
+          <MontoDisplay
+            :usd="carritoStore.tasa > 0 ? Number(item.TOTAL) / carritoStore.tasa : 0"
+            :bs="Number(item.TOTAL)"
+            :tasa="carritoStore.tasa"
+            main-class="font-weight-bold"
+            align-end
+          />
         </template>
 
         <template v-slot:item.PROCESADO="{ item }">
-          <v-chip :color="item.PROCESADO ? 'success' : 'warning'" size="small" variant="flat" class="font-weight-bold">
-            {{ item.PROCESADO ? 'Procesado' : 'Pendiente' }}
+          <v-chip v-if="item.PROCESADO" color="success" size="small" variant="flat" class="font-weight-bold">
+            EC-{{ item.NUMERO_PEDIDO }}
+          </v-chip>
+          <v-chip v-else color="warning" size="small" variant="flat" class="font-weight-bold">
+            Pendiente
           </v-chip>
         </template>
 
         <template v-slot:item.acciones="{ item }">
           <v-btn icon="mdi-eye-outline" size="small" variant="text" color="primary" @click="verLineas(item)" />
           <v-btn
-            :icon="item.PROCESADO ? 'mdi-close-circle-outline' : 'mdi-check-circle-outline'"
+            v-if="!item.PROCESADO"
+            icon="mdi-check-circle-outline"
             size="small"
             variant="text"
-            :color="item.PROCESADO ? 'warning' : 'success'"
-            @click="toggleProcesado(item)"
+            color="success"
+            :loading="aprobando === item.ID"
+            @click="aprobar(item)"
           />
         </template>
       </v-data-table-server>
@@ -76,14 +87,31 @@
           <div class="mb-4 d-flex flex-wrap gap-4">
             <div><span class="text-caption text-grey">RIF:</span> <strong>{{ modalLineas.pedido?.RIF }}</strong></div>
             <div><span class="text-caption text-grey">Estatus:</span> <strong>{{ modalLineas.pedido?.ESTATUS }}</strong></div>
-            <div><span class="text-caption text-grey">Total:</span> <strong>Bs. {{ Number(modalLineas.pedido?.TOTAL || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 }) }}</strong></div>
+            <div class="d-flex align-center gap-1"><span class="text-caption text-grey">Total:</span>
+              <MontoDisplay
+                :usd="carritoStore.tasa > 0 ? Number(modalLineas.pedido?.TOTAL || 0) / carritoStore.tasa : 0"
+                :bs="Number(modalLineas.pedido?.TOTAL || 0)"
+                :tasa="carritoStore.tasa"
+                main-class="font-weight-bold text-body-2"
+              />
+            </div>
           </div>
           <v-data-table :headers="headersLineas" :items="modalLineas.lineas" :loading="modalLineas.cargando" density="compact">
             <template v-slot:item.PRECIO_UNITARIO="{ item }">
-              Bs. {{ Number(item.PRECIO_UNITARIO).toLocaleString('es-VE', { minimumFractionDigits: 2 }) }}
+              <MontoDisplay
+                :usd="carritoStore.tasa > 0 ? Number(item.PRECIO_UNITARIO) / carritoStore.tasa : 0"
+                :bs="Number(item.PRECIO_UNITARIO)"
+                :tasa="carritoStore.tasa"
+                align-end
+              />
             </template>
             <template v-slot:item.subtotal="{ item }">
-              Bs. {{ (Number(item.PRECIO_UNITARIO) * Number(item.CANTIDAD)).toLocaleString('es-VE', { minimumFractionDigits: 2 }) }}
+              <MontoDisplay
+                :usd="carritoStore.tasa > 0 ? (Number(item.PRECIO_UNITARIO) * Number(item.CANTIDAD)) / carritoStore.tasa : 0"
+                :bs="Number(item.PRECIO_UNITARIO) * Number(item.CANTIDAD)"
+                :tasa="carritoStore.tasa"
+                align-end
+              />
             </template>
           </v-data-table>
         </v-card-text>
@@ -97,7 +125,10 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import axios from 'axios';
+import { useCarritoStore } from '../stores/useCarritoStore';
+import MontoDisplay from '../components/MontoDisplay.vue';
 
+const carritoStore = useCarritoStore();
 const API = `${import.meta.env.VITE_API_URL}/ecommerce`;
 
 const busqueda = ref('');
@@ -107,6 +138,7 @@ const cargando = ref(false);
 const pagina   = ref(1);
 const porPagina = ref(10);
 const snack    = ref({ show: false, text: '', color: 'success' });
+const aprobando = ref<number | null>(null);
 
 const headers = [
   { title: 'N° Pedido',  key: 'NUMERO_PEDIDO' },
@@ -155,11 +187,21 @@ const verLineas = async (item: any) => {
   finally { modalLineas.value.cargando = false; }
 };
 
-const toggleProcesado = async (item: any) => {
+const aprobar = async (item: any) => {
+  aprobando.value = item.ID;
   try {
-    await axios.patch(`${API}/pedidos/${item.ID}/procesado`, { procesado: !item.PROCESADO });
-    item.PROCESADO = !item.PROCESADO;
-  } catch { mostrarSnack('Error al actualizar', 'error'); }
+    const res = await axios.post(`${API}/pedidos/${item.ID}/aprobar`);
+    if (res.data.success) {
+      item.PROCESADO = true;
+      mostrarSnack(res.data.message, 'success');
+    } else {
+      mostrarSnack(res.data.message, 'error');
+    }
+  } catch (e: any) {
+    mostrarSnack(e.response?.data?.message ?? 'Error al aprobar', 'error');
+  } finally {
+    aprobando.value = null;
+  }
 };
 
 const mostrarSnack = (text: string, color = 'success') => { snack.value = { show: true, text, color }; };

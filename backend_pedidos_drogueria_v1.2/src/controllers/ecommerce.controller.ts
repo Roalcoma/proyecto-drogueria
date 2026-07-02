@@ -40,4 +40,14 @@ export class EcommerceController {
         const result = await EcommerceService.escanearCarpeta();
         res.json({ success: true, ...result });
     }
+
+    static async aprobarPedido(req: Request, res: Response): Promise<void> {
+        const id = parseInt(req.params['id'] as string);
+        try {
+            const result = await EcommerceService.aprobarPedido(id);
+            res.status(result.success ? 200 : 400).json(result);
+        } catch (e: any) {
+            res.status(500).json({ success: false, message: e.message ?? 'Error al aprobar pedido' });
+        }
+    }
 }

@@ -22,7 +22,9 @@
           <span v-if="item.NOMBRECLIENTE" class="text-grey ml-1">— {{ item.NOMBRECLIENTE }}</span>
         </template>
         <template v-slot:item.TOTALPRECIO="{ item }">
-          <v-chip color="green-darken-1" variant="tonal" class="font-weight-black">$ {{ Number(item.TOTALPRECIO || 0).toFixed(2) }}</v-chip>
+          <v-chip color="green-darken-1" variant="tonal" class="font-weight-black" style="height: auto; padding: 6px 12px;">
+            <MontoDisplay :usd="Number(item.TOTALPRECIO || 0)" :tasa="carritoStore.tasa" align-end />
+          </v-chip>
         </template>
         <template v-slot:item.acciones="{ item }">
           <v-btn size="small" color="purple-darken-1" variant="tonal" prepend-icon="mdi-eye" @click="abrirDetalle(item)">
@@ -38,7 +40,11 @@
           Pedido #{{ modalDetalle.pedido.ORDERID }}
         </v-card-title>
         <v-card-text class="pa-4">
-          <div class="text-caption text-grey mb-3">Cliente: {{ modalDetalle.pedido.CLIENTEID }} — Total: $ {{ Number(modalDetalle.pedido.TOTALPRECIO || 0).toFixed(2) }}</div>
+          <div class="text-caption text-grey mb-3 d-flex align-center gap-2">
+            <span>Cliente: {{ modalDetalle.pedido.CLIENTEID }}</span>
+            <span>— Total:</span>
+            <MontoDisplay :usd="Number(modalDetalle.pedido.TOTALPRECIO || 0)" :tasa="carritoStore.tasa" main-class="font-weight-bold" />
+          </div>
           <v-table density="compact" class="mb-4">
             <thead>
               <tr><th>Código</th><th>Descripción</th><th class="text-center">Cant.</th><th class="text-right">Precio</th></tr>
@@ -48,7 +54,7 @@
                 <td>{{ l.CODARTICULO }}</td>
                 <td>{{ l.DESCRIPCION }}</td>
                 <td class="text-center">{{ l.PRODUCTCOUNT }}</td>
-                <td class="text-right">$ {{ Number(l.PRECIOUNITARIO).toFixed(2) }}</td>
+                <td class="text-right"><MontoDisplay :usd="Number(l.PRECIOUNITARIO)" :tasa="carritoStore.tasa" align-end /></td>
               </tr>
             </tbody>
           </v-table>
@@ -74,7 +80,10 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
+import { useCarritoStore } from '../stores/useCarritoStore';
+import MontoDisplay from '../components/MontoDisplay.vue';
 
+const carritoStore = useCarritoStore();
 const API = import.meta.env.VITE_API_URL;
 const ESTATUS = 'APROBACION PSICOTROPICOS';
 

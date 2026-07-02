@@ -3,14 +3,15 @@ import path from 'path';
 import 'dotenv/config';
 
 export interface DbConfig {
-    server:        string;
-    user:          string;
-    password:      string;
-    dbName:        string;
-    dbGeneralName: string;
-    dbPruebas:     string;
-    esquema:       string;
-    port:          number;
+    server:              string;
+    user:                string;
+    password:            string;
+    dbName:              string;
+    dbGeneralName:       string;
+    dbPruebas:           string;
+    esquema:             string;
+    port:                number;
+    dptoPsicotropicos:   number;
 }
 
 const CONFIG_PATH = path.resolve(process.cwd(), 'config', 'connections.json');
@@ -36,7 +37,8 @@ export function getDbConfig(): DbConfig {
         dbGeneralName: file.dbGeneralName ?? process.env.DB_GENERAL_NAME  ?? 'general_drogueria',
         dbPruebas:     file.dbPruebas     ?? process.env.DB_PRUEBAS       ?? '',
         esquema:       file.esquema       ?? process.env.DB_ESQUEMA        ?? 'dbo',
-        port:          Number(file.port   ?? process.env.DB_PORT          ?? 1433),
+        port:                Number(file.port                ?? process.env.DB_PORT          ?? 1433),
+        dptoPsicotropicos:   Number((file as any).dptoPsicotropicos ?? 9),
     };
 }
 
@@ -51,13 +53,14 @@ export function guardarDbConfig(config: Partial<DbConfig>): void {
 export function getDbConfigPublica(): Omit<DbConfig, 'password'> & { passwordMask: string } {
     const cfg = getDbConfig();
     return {
-        server:        cfg.server,
-        user:          cfg.user,
-        passwordMask:  cfg.password ? '••••••••' : '',
-        dbName:        cfg.dbName,
-        dbGeneralName: cfg.dbGeneralName,
-        dbPruebas:     cfg.dbPruebas,
-        esquema:       cfg.esquema,
-        port:          cfg.port,
+        server:              cfg.server,
+        user:                cfg.user,
+        passwordMask:        cfg.password ? '••••••••' : '',
+        dbName:              cfg.dbName,
+        dbGeneralName:       cfg.dbGeneralName,
+        dbPruebas:           cfg.dbPruebas,
+        esquema:             cfg.esquema,
+        port:                cfg.port,
+        dptoPsicotropicos:   cfg.dptoPsicotropicos,
     };
 }

@@ -73,6 +73,36 @@ export class SistemaController {
         }
     }
 
+    static async getSeqPedidos(_req: Request, res: Response): Promise<void> {
+        const ultimoId = await PedidosServices.getSeq();
+        res.json({ success: true, ultimoId, siguiente: ultimoId + 1 });
+    }
+
+    static async setSeqPedidos(req: Request, res: Response): Promise<void> {
+        const { ultimoId } = req.body;
+        if (!Number.isInteger(Number(ultimoId)) || Number(ultimoId) < 0) {
+            res.status(400).json({ success: false, message: 'ultimoId debe ser un entero >= 0' });
+            return;
+        }
+        await PedidosServices.setSeq(Number(ultimoId));
+        res.json({ success: true, message: `Secuencia actualizada. El próximo pedido será #${Number(ultimoId) + 1}` });
+    }
+
+    static async getDptoPsicotropicos(_req: Request, res: Response): Promise<void> {
+        const cfg = getDbConfigPublica() as any;
+        res.json({ success: true, dptoPsicotropicos: cfg.dptoPsicotropicos ?? 9 });
+    }
+
+    static async guardarDptoPsicotropicos(req: Request, res: Response): Promise<void> {
+        const { dptoPsicotropicos } = req.body;
+        if (!Number.isInteger(Number(dptoPsicotropicos)) || Number(dptoPsicotropicos) <= 0) {
+            res.status(400).json({ success: false, message: 'dptoPsicotropicos debe ser un entero positivo' });
+            return;
+        }
+        guardarDbConfig({ dptoPsicotropicos: Number(dptoPsicotropicos) } as any);
+        res.json({ success: true, message: `Departamento de psicotrópicos actualizado a ${dptoPsicotropicos}` });
+    }
+
     static async actualizarApp(_req: Request, res: Response): Promise<void> {
         try {
             const resultado = await ejecutarActualizacion();

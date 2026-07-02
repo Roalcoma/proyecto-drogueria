@@ -70,13 +70,11 @@
                   <div v-if="item.descuentos?.length" class="text-caption text-grey text-decoration-line-through">
                     $ {{ obtenerPrecioBase(item).toFixed(2) }}
                   </div>
-                  <div class="font-weight-bold text-on-surface">
-                    $ {{ calcularPrecioConDescuento(item).toFixed(2) }}
-                  </div>
+                  <MontoDisplay :usd="calcularPrecioConDescuento(item)" :tasa="carritoStore.tasa" main-class="font-weight-bold text-on-surface" align-end />
                 </td>
 
                 <td class="text-right font-weight-bold text-success">
-                  $ {{ (calcularPrecioConDescuento(item) * item.cantidad).toFixed(2) }}
+                  <MontoDisplay :usd="calcularPrecioConDescuento(item) * item.cantidad" :tasa="carritoStore.tasa" main-class="font-weight-bold text-success" align-end />
                 </td>
 
                 <td class="text-center">
@@ -187,6 +185,7 @@
 import { ref, computed } from 'vue';
 import axios from 'axios';
 import { useCarritoStore } from '../stores/useCarritoStore';
+import MontoDisplay from '../components/MontoDisplay.vue';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useRouter } from 'vue-router';
 import { generarPedidoPDF } from '../utils/pedidoPDF';

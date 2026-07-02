@@ -12,5 +12,6 @@ ecommerceRouter.post('/escanear',       adminMiddleware, EcommerceController.esc
 ecommerceRouter.get('/pedidos',         EcommerceController.getPedidos);
 ecommerceRouter.get('/pedidos/:id/lineas', EcommerceController.getLineas);
 ecommerceRouter.patch('/pedidos/:id/procesado', EcommerceController.marcarProcesado);
+ecommerceRouter.post('/pedidos/:id/aprobar',   EcommerceController.aprobarPedido);
 
 export default ecommerceRouter;

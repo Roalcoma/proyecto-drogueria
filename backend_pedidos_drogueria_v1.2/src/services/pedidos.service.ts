@@ -1,6 +1,7 @@
 import mssql from 'mssql'
 import { connectDb } from "../db/db.conection";
 import { PromocionesService } from "./promociones.service";
+import { getDbConfig } from './dbconfig.service';
 import 'dotenv/config'
 
 const esquema = process.env.DB_ESQUEMA || 'dbo';
@@ -61,12 +62,26 @@ export class PedidosServices {
         return res.recordset[0].ULTIMO_ID as number;
     }
 
+    static async getSeq(): Promise<number> {
+        const pool = await connectDb();
+        const res = await pool.request().query(`SELECT ULTIMO_ID FROM ${esquema}.APP_PEDIDO_SEQ`);
+        return res.recordset[0]?.ULTIMO_ID ?? 0;
+    }
+
+    static async setSeq(valor: number): Promise<void> {
+        const pool = await connectDb();
+        await pool.request()
+            .input('V', mssql.Int, valor)
+            .query(`UPDATE ${esquema}.APP_PEDIDO_SEQ SET ULTIMO_ID = @V`);
+    }
+
     private static async tieneArticulosPsicotropicos(codigos: number[]): Promise<boolean> {
         if (codigos.length === 0) return false;
         const pool = await connectDb();
         const request = pool.request();
         const placeholders = codigos.map((id, i) => { request.input(`cod${i}`, id); return `@cod${i}`; }).join(',');
-        const result = await request.query(`SELECT COUNT(*) AS CNT FROM ARTICULOS WHERE CODARTICULO IN (${placeholders}) AND SECCION = 12`);
+        request.input('dptoPsico', mssql.Int, getDbConfig().dptoPsicotropicos);
+        const result = await request.query(`SELECT COUNT(*) AS CNT FROM ARTICULOS WHERE CODARTICULO IN (${placeholders}) AND SECCION = @dptoPsico`);
         return result.recordset[0].CNT > 0;
     }
 

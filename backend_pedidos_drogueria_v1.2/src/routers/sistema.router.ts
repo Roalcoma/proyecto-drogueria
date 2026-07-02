@@ -10,5 +10,9 @@ sistemaRouter.get('/db-config',           authMiddleware, adminMiddleware, Siste
 sistemaRouter.post('/db-config/probar',   authMiddleware, adminMiddleware, SistemaController.probarConexionBD);
 sistemaRouter.post('/db-config/guardar',  authMiddleware, adminMiddleware, SistemaController.guardarDbConfig);
 sistemaRouter.post('/actualizar',         authMiddleware, adminMiddleware, SistemaController.actualizarApp);
+sistemaRouter.get('/seq-pedidos',         authMiddleware, adminMiddleware, SistemaController.getSeqPedidos);
+sistemaRouter.post('/seq-pedidos',        authMiddleware, adminMiddleware, SistemaController.setSeqPedidos);
+sistemaRouter.get('/psicotropicos',       authMiddleware, adminMiddleware, SistemaController.getDptoPsicotropicos);
+sistemaRouter.post('/psicotropicos',      authMiddleware, adminMiddleware, SistemaController.guardarDptoPsicotropicos);
 
 export default sistemaRouter;

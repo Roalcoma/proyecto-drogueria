@@ -106,8 +106,8 @@
             </template>
 
             <template v-slot:item.TOTALPRECIO="{ item }">
-              <v-chip color="secondary" variant="tonal" class="font-weight-black">
-                $ {{ (item.TOTALPRECIO || 0).toFixed(2) }}
+              <v-chip color="secondary" variant="tonal" class="font-weight-black" style="height: auto; padding: 6px 12px;">
+                <MontoDisplay :usd="item.TOTALPRECIO || 0" :tasa="carritoStore.tasa" align-end />
               </v-chip>
             </template>
 
@@ -208,9 +208,12 @@ import axios from 'axios';
 import { useRouter } from 'vue-router';
 import { generarPedidoPDF } from '../utils/pedidoPDF';
 import { useAuthStore } from '../stores/useAuthStore';
+import { useCarritoStore } from '../stores/useCarritoStore';
+import MontoDisplay from '../components/MontoDisplay.vue';
 
-const router    = useRouter();
-const authStore = useAuthStore();
+const router       = useRouter();
+const authStore    = useAuthStore();
+const carritoStore = useCarritoStore();
 
 const BIT_AUTORIZADOR = 2048;
 const BIT_BACKOFFICE  = 16;
