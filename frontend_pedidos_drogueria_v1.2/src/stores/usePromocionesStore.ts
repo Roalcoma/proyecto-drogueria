@@ -12,6 +12,7 @@ export interface PromocionVigente {
     alcanceCliente: 'TODOS' | 'INCLUIR_GRUPO' | 'EXCLUIR_GRUPO';
     codigosArticulo: number[];
     codigosCliente: number[];
+    codigosClienteExcluir: number[];
     escalas: { minimo: number; maximo: number | null; porcentaje: number }[];
 }
 
@@ -35,10 +36,11 @@ export const usePromocionesStore = defineStore('promociones', () => {
     };
 
     const clienteCalifica = (promo: PromocionVigente, cliente: Cliente | null): boolean => {
-        if (promo.alcanceCliente === 'TODOS') return true;
-        const codCliente = cliente ? Number(cliente.CODCLIENTE) : null;
-        const perteneceAlGrupo = codCliente !== null && promo.codigosCliente.includes(codCliente);
-        return promo.alcanceCliente === 'INCLUIR_GRUPO' ? perteneceAlGrupo : !perteneceAlGrupo;
+        const cod = cliente ? Number(cliente.CODCLIENTE) : null;
+        const excluido = cod !== null && (promo.codigosClienteExcluir ?? []).includes(cod);
+        if (promo.alcanceCliente === 'TODOS') return !excluido;
+        if (cod === null) return false;
+        return promo.codigosCliente.includes(cod) && !excluido;
     };
 
     const precioBase = (item: ArticuloCarrito): number =>

@@ -159,11 +159,12 @@
         <v-card-title class="pa-4 bg-primary text-white">{{ modalPromo.id ? 'Editar' : 'Nueva' }} Promoción</v-card-title>
         <v-card-text class="pa-4">
           <v-text-field v-model="modalPromo.nombre" label="Nombre" variant="outlined" density="comfortable" class="mb-3" />
-          <v-select v-model="modalPromo.idGrupoArticulos" :items="todosLosGrupos" item-title="NOMBRE" item-value="ID"
-            label="Grupo de artículos (incluir)" variant="outlined" density="comfortable" class="mb-2" />
-          <v-select v-model="modalPromo.idGrupoArticulosExcluir" :items="todosLosGrupos" item-title="NOMBRE" item-value="ID"
-            label="Grupo de artículos a excluir (opcional)" variant="outlined" density="comfortable" class="mb-3"
-            clearable hint="Los artículos de este grupo quedarán fuera de la promoción" persistent-hint />
+          <v-select v-model="modalPromo.idsGruposArticulosIncluir" :items="todosLosGrupos" item-title="NOMBRE" item-value="ID"
+            label="Grupos de artículos a incluir" variant="outlined" density="comfortable" class="mb-2"
+            multiple chips closable-chips hint="Artículos de estos grupos participan en la promoción" persistent-hint />
+          <v-select v-model="modalPromo.idsGruposArticulosExcluir" :items="todosLosGrupos" item-title="NOMBRE" item-value="ID"
+            label="Grupos de artículos a excluir (opcional)" variant="outlined" density="comfortable" class="mb-3"
+            multiple chips closable-chips clearable hint="Artículos de estos grupos quedan fuera aunque estén en los incluidos" persistent-hint />
           <v-row dense>
             <v-col cols="6">
               <v-select v-model="modalPromo.base" :items="['UNIDADES', 'MONTO']" label="Base de la escala" variant="outlined" density="comfortable" />
@@ -173,12 +174,13 @@
                 label="Alcance de cliente" variant="outlined" density="comfortable" />
             </v-col>
           </v-row>
-          <v-select v-if="modalPromo.alcanceCliente !== 'TODOS'" v-model="modalPromo.idGrupoClientes"
-            :items="todosLosGruposClientes" item-title="NOMBRE" item-value="ID" label="Grupo de clientes (incluir)"
-            variant="outlined" density="comfortable" class="mb-2" />
-          <v-select v-model="modalPromo.idGrupoClientesExcluir" :items="todosLosGruposClientes" item-title="NOMBRE" item-value="ID"
-            label="Grupo de clientes a excluir (opcional)" variant="outlined" density="comfortable" class="mb-3"
-            clearable hint="Los clientes de este grupo no recibirán la promoción" persistent-hint />
+          <v-select v-if="modalPromo.alcanceCliente !== 'TODOS'" v-model="modalPromo.idsGruposClientesIncluir"
+            :items="todosLosGruposClientes" item-title="NOMBRE" item-value="ID" label="Grupos de clientes a incluir"
+            variant="outlined" density="comfortable" class="mb-2"
+            multiple chips closable-chips hint="Solo estos grupos de clientes recibirán la promoción" persistent-hint />
+          <v-select v-model="modalPromo.idsGruposClientesExcluir" :items="todosLosGruposClientes" item-title="NOMBRE" item-value="ID"
+            label="Grupos de clientes a excluir (opcional)" variant="outlined" density="comfortable" class="mb-3"
+            multiple chips closable-chips clearable hint="Estos clientes no recibirán la promoción aunque califiquen" persistent-hint />
           <v-row dense class="mb-3">
             <v-col cols="6"><v-text-field v-model="modalPromo.fechaInicio" type="date" label="Fecha inicio" variant="outlined" density="comfortable" /></v-col>
             <v-col cols="6"><v-text-field v-model="modalPromo.fechaFin" type="date" label="Fecha fin" variant="outlined" density="comfortable" /></v-col>
@@ -260,7 +262,7 @@ const toggleActivo = async (item: any, activo: boolean) => {
   } catch { lanzarAviso('Error al actualizar estado', 'error'); }
 };
 
-const modalPromo = ref<any>({ mostrar: false, id: null, nombre: '', idGrupoArticulos: null, idGrupoArticulosExcluir: null, base: 'UNIDADES', alcanceCliente: 'TODOS', idGrupoClientes: null, idGrupoClientesExcluir: null, fechaInicio: '', fechaFin: '', escalas: [] });
+const modalPromo = ref<any>({ mostrar: false, id: null, nombre: '', idsGruposArticulosIncluir: [], idsGruposArticulosExcluir: [], base: 'UNIDADES', alcanceCliente: 'TODOS', idsGruposClientesIncluir: [], idsGruposClientesExcluir: [], fechaInicio: '', fechaFin: '', escalas: [] });
 const guardandoPromo = ref(false);
 const todosLosGrupos = ref<any[]>([]);
 const todosLosGruposClientes = ref<any[]>([]);
@@ -275,16 +277,18 @@ const cargarSelectsGrupos = async () => {
 };
 
 const abrirNuevaPromo = () => {
-  modalPromo.value = { mostrar: true, id: null, nombre: '', idGrupoArticulos: null, idGrupoArticulosExcluir: null, base: 'UNIDADES', alcanceCliente: 'TODOS', idGrupoClientes: null, idGrupoClientesExcluir: null, fechaInicio: '', fechaFin: '', escalas: [] };
+  modalPromo.value = { mostrar: true, id: null, nombre: '', idsGruposArticulosIncluir: [], idsGruposArticulosExcluir: [], base: 'UNIDADES', alcanceCliente: 'TODOS', idsGruposClientesIncluir: [], idsGruposClientesExcluir: [], fechaInicio: '', fechaFin: '', escalas: [] };
 };
 const abrirEditarPromo = (item: any) => {
+  const grpArt = (item.gruposArticulos ?? []);
+  const grpCli = (item.gruposClientes ?? []);
   modalPromo.value = {
     mostrar: true, id: item.ID, nombre: item.NOMBRE,
-    idGrupoArticulos: item.IDGRUPOARTICULOS ?? null,
-    idGrupoArticulosExcluir: item.IDGRUPOARTICULOS_EXCLUIR ?? null,
+    idsGruposArticulosIncluir: grpArt.filter((g: any) => g.TIPO === 'INCLUIR').map((g: any) => g.ID),
+    idsGruposArticulosExcluir: grpArt.filter((g: any) => g.TIPO === 'EXCLUIR').map((g: any) => g.ID),
     base: item.BASE, alcanceCliente: item.ALCANCE_CLIENTE,
-    idGrupoClientes: item.IDGRUPOCLIENTES ?? null,
-    idGrupoClientesExcluir: item.IDGRUPOCLIENTES_EXCLUIR ?? null,
+    idsGruposClientesIncluir: grpCli.filter((g: any) => g.TIPO === 'INCLUIR').map((g: any) => g.ID),
+    idsGruposClientesExcluir: grpCli.filter((g: any) => g.TIPO === 'EXCLUIR').map((g: any) => g.ID),
     fechaInicio: (item.FECHAINICIO || '').slice(0, 10), fechaFin: (item.FECHAFIN || '').slice(0, 10),
     escalas: (item.escalas || []).map((e: any) => ({ minimo: e.MINIMO, maximo: e.MAXIMO, porcentaje: e.PORCENTAJE })),
   };
@@ -292,19 +296,25 @@ const abrirEditarPromo = (item: any) => {
 const agregarEscala = () => modalPromo.value.escalas.push({ minimo: 0, maximo: null, porcentaje: 0 });
 
 const guardarPromo = async () => {
-  if (!modalPromo.value.nombre || !modalPromo.value.idGrupoArticulos || !modalPromo.value.fechaInicio || !modalPromo.value.fechaFin) {
-    lanzarAviso('Completa nombre, grupo de artículos y fechas', 'warning'); return;
+  if (!modalPromo.value.nombre || modalPromo.value.idsGruposArticulosIncluir.length === 0 || !modalPromo.value.fechaInicio || !modalPromo.value.fechaFin) {
+    lanzarAviso('Completa nombre, al menos un grupo de artículos a incluir y fechas', 'warning'); return;
   }
   guardandoPromo.value = true;
   try {
+    const gruposArticulos = [
+      ...modalPromo.value.idsGruposArticulosIncluir.map((id: number) => ({ id, tipo: 'INCLUIR' })),
+      ...modalPromo.value.idsGruposArticulosExcluir.map((id: number) => ({ id, tipo: 'EXCLUIR' })),
+    ];
+    const gruposClientes = [
+      ...(modalPromo.value.alcanceCliente !== 'TODOS' ? modalPromo.value.idsGruposClientesIncluir.map((id: number) => ({ id, tipo: 'INCLUIR' })) : []),
+      ...modalPromo.value.idsGruposClientesExcluir.map((id: number) => ({ id, tipo: 'EXCLUIR' })),
+    ];
     const payload = {
       nombre: modalPromo.value.nombre,
-      idGrupoArticulos: modalPromo.value.idGrupoArticulos,
-      idGrupoArticulosExcluir: modalPromo.value.idGrupoArticulosExcluir || null,
+      gruposArticulos,
+      gruposClientes,
       base: modalPromo.value.base,
       alcanceCliente: modalPromo.value.alcanceCliente,
-      idGrupoClientes: modalPromo.value.alcanceCliente === 'TODOS' ? null : modalPromo.value.idGrupoClientes,
-      idGrupoClientesExcluir: modalPromo.value.idGrupoClientesExcluir || null,
       fechaInicio: modalPromo.value.fechaInicio, fechaFin: modalPromo.value.fechaFin, escalas: modalPromo.value.escalas,
     };
     if (modalPromo.value.id) await axios.put(`${API}/promociones/${modalPromo.value.id}`, payload);

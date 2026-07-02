@@ -46,9 +46,9 @@ export const useCarritoStore = defineStore('carrito', () => {
         }));
     }, { deep: true });
 
-    // Solo descuento global del cliente (configurable desde Gestión Clientes).
-    // Los descuentos por promoción se agregan al final en recalcularPromociones().
-    const recalcularDescuentosArticulo = (_producto: Producto): number[] => {
+    // Solo descuento global del cliente. Artículos con NODTOAPLICABLE='T' no reciben ningún descuento.
+    const recalcularDescuentosArticulo = (producto: Producto): number[] => {
+        if (producto.NODTOAPLICABLE === 'T') return [];
         const lista: number[] = [];
         const cli = clienteSeleccionado.value;
         if (Number(cli?.DESCUENTO) > 0) lista.push(Number(cli?.DESCUENTO));
