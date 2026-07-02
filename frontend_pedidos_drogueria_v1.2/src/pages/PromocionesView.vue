@@ -160,7 +160,10 @@
         <v-card-text class="pa-4">
           <v-text-field v-model="modalPromo.nombre" label="Nombre" variant="outlined" density="comfortable" class="mb-3" />
           <v-select v-model="modalPromo.idGrupoArticulos" :items="todosLosGrupos" item-title="NOMBRE" item-value="ID"
-            label="Grupo de artículos" variant="outlined" density="comfortable" class="mb-3" />
+            label="Grupo de artículos (incluir)" variant="outlined" density="comfortable" class="mb-2" />
+          <v-select v-model="modalPromo.idGrupoArticulosExcluir" :items="todosLosGrupos" item-title="NOMBRE" item-value="ID"
+            label="Grupo de artículos a excluir (opcional)" variant="outlined" density="comfortable" class="mb-3"
+            clearable hint="Los artículos de este grupo quedarán fuera de la promoción" persistent-hint />
           <v-row dense>
             <v-col cols="6">
               <v-select v-model="modalPromo.base" :items="['UNIDADES', 'MONTO']" label="Base de la escala" variant="outlined" density="comfortable" />
@@ -254,7 +257,7 @@ const toggleActivo = async (item: any, activo: boolean) => {
   } catch { lanzarAviso('Error al actualizar estado', 'error'); }
 };
 
-const modalPromo = ref<any>({ mostrar: false, id: null, nombre: '', idGrupoArticulos: null, base: 'UNIDADES', alcanceCliente: 'TODOS', idGrupoClientes: null, fechaInicio: '', fechaFin: '', escalas: [] });
+const modalPromo = ref<any>({ mostrar: false, id: null, nombre: '', idGrupoArticulos: null, idGrupoArticulosExcluir: null, base: 'UNIDADES', alcanceCliente: 'TODOS', idGrupoClientes: null, fechaInicio: '', fechaFin: '', escalas: [] });
 const guardandoPromo = ref(false);
 const todosLosGrupos = ref<any[]>([]);
 const todosLosGruposClientes = ref<any[]>([]);
@@ -269,11 +272,13 @@ const cargarSelectsGrupos = async () => {
 };
 
 const abrirNuevaPromo = () => {
-  modalPromo.value = { mostrar: true, id: null, nombre: '', idGrupoArticulos: null, base: 'UNIDADES', alcanceCliente: 'TODOS', idGrupoClientes: null, fechaInicio: '', fechaFin: '', escalas: [] };
+  modalPromo.value = { mostrar: true, id: null, nombre: '', idGrupoArticulos: null, idGrupoArticulosExcluir: null, base: 'UNIDADES', alcanceCliente: 'TODOS', idGrupoClientes: null, fechaInicio: '', fechaFin: '', escalas: [] };
 };
 const abrirEditarPromo = (item: any) => {
   modalPromo.value = {
-    mostrar: true, id: item.ID, nombre: item.NOMBRE, idGrupoArticulos: item.IDGRUPOARTICULOS ?? null,
+    mostrar: true, id: item.ID, nombre: item.NOMBRE,
+    idGrupoArticulos: item.IDGRUPOARTICULOS ?? null,
+    idGrupoArticulosExcluir: item.IDGRUPOARTICULOS_EXCLUIR ?? null,
     base: item.BASE, alcanceCliente: item.ALCANCE_CLIENTE, idGrupoClientes: item.IDGRUPOCLIENTES ?? null,
     fechaInicio: (item.FECHAINICIO || '').slice(0, 10), fechaFin: (item.FECHAFIN || '').slice(0, 10),
     escalas: (item.escalas || []).map((e: any) => ({ minimo: e.MINIMO, maximo: e.MAXIMO, porcentaje: e.PORCENTAJE })),
@@ -288,8 +293,12 @@ const guardarPromo = async () => {
   guardandoPromo.value = true;
   try {
     const payload = {
-      nombre: modalPromo.value.nombre, idGrupoArticulos: modalPromo.value.idGrupoArticulos, base: modalPromo.value.base,
-      alcanceCliente: modalPromo.value.alcanceCliente, idGrupoClientes: modalPromo.value.alcanceCliente === 'TODOS' ? null : modalPromo.value.idGrupoClientes,
+      nombre: modalPromo.value.nombre,
+      idGrupoArticulos: modalPromo.value.idGrupoArticulos,
+      idGrupoArticulosExcluir: modalPromo.value.idGrupoArticulosExcluir || null,
+      base: modalPromo.value.base,
+      alcanceCliente: modalPromo.value.alcanceCliente,
+      idGrupoClientes: modalPromo.value.alcanceCliente === 'TODOS' ? null : modalPromo.value.idGrupoClientes,
       fechaInicio: modalPromo.value.fechaInicio, fechaFin: modalPromo.value.fechaFin, escalas: modalPromo.value.escalas,
     };
     if (modalPromo.value.id) await axios.put(`${API}/promociones/${modalPromo.value.id}`, payload);

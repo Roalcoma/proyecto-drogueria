@@ -17,6 +17,10 @@ import { ReclamosService }    from "./services/reclamos.service";
 import { EcommerceService }   from "./services/ecommerce.service";
 import { dbModeMiddleware } from "./db/dbMode.middleware";
 
+// Evitar que errores no capturados tumben el proceso
+process.on('uncaughtException',   (err) => console.error('[uncaughtException]', err));
+process.on('unhandledRejection',  (err) => console.error('[unhandledRejection]', err));
+
 const app  = Express();
 const port = process.env.PORT || 9000;
 

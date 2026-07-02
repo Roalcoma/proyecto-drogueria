@@ -154,6 +154,9 @@ export class PromocionesService {
                 IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='APP_GRUPOS_CLIENTES' AND COLUMN_NAME='TIPO')
                 ALTER TABLE APP_GRUPOS_CLIENTES ADD TIPO VARCHAR(10) NOT NULL DEFAULT 'MANUAL' CHECK (TIPO IN ('MANUAL','CONDICION'));
 
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='APP_PROMOCIONES' AND COLUMN_NAME='IDGRUPOARTICULOS_EXCLUIR')
+                ALTER TABLE APP_PROMOCIONES ADD IDGRUPOARTICULOS_EXCLUIR INT NULL REFERENCES APP_GRUPOS_ARTICULOS(ID);
+
                 IF NOT EXISTS (SELECT 1 FROM sysobjects WHERE name='APP_GRUPOS_ARTICULOS_CONDICIONES' AND xtype='U')
                 CREATE TABLE APP_GRUPOS_ARTICULOS_CONDICIONES (
                     ID INT IDENTITY PRIMARY KEY,
@@ -376,32 +379,50 @@ export class PromocionesService {
             `);
     }
 
-    static async importarArticulosExcel(idGrupo: number, buffer: Buffer): Promise<{ insertados: number; noEncontrados: number[]; yaEnGrupo: number[] }> {
+    static async importarArticulosExcel(idGrupo: number, buffer: Buffer): Promise<{ insertados: number; noEncontrados: string[]; yaEnGrupo: string[] }> {
         const tipo = await this.getTipoGrupoArticulos(idGrupo);
         if (tipo === 'CONDICION') throw new Error('Grupo dinámico: edita las condiciones.');
         const XLSX = await import('xlsx');
         const wb = XLSX.read(buffer, { type: 'buffer' });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
-        const codigos: number[] = rows.map(r => parseInt(r[0])).filter(n => !isNaN(n) && n > 0);
-        if (codigos.length === 0) return { insertados: 0, noEncontrados: [], yaEnGrupo: [] };
+        // Acepta CODARTICULO (número) o REFPROVEEDOR (texto de referencia/código de barras)
+        const valores: string[] = rows.map(r => String(r[0] ?? '').trim()).filter(v => v.length > 0);
+        if (valores.length === 0) return { insertados: 0, noEncontrados: [], yaEnGrupo: [] };
 
         const pool = await connectDb();
         const req = pool.request();
-        const placeholders = codigos.map((c, i) => { req.input(`c${i}`, c); return `@c${i}`; }).join(',');
-        const validos = (await req.query(`SELECT CODARTICULO FROM ARTICULOS WHERE CODARTICULO IN (${placeholders})`))
-            .recordset.map((r: any) => r.CODARTICULO as number);
+        // Búsqueda dual: por CODARTICULO si es numérico, por REFPROVEEDOR siempre
+        const placeholders = valores.map((v, i) => {
+            req.input(`v${i}`, mssql.NVarChar, v);
+            req.input(`n${i}`, mssql.Int, parseInt(v) || 0);
+            return `(CAST(CODARTICULO AS VARCHAR) = @v${i} OR REFPROVEEDOR = @v${i})`;
+        }).join(' OR ');
+        const validos = (await req.query(
+            `SELECT CODARTICULO, ISNULL(REFPROVEEDOR,'') AS REFPROVEEDOR FROM ARTICULOS WHERE ${placeholders}`
+        )).recordset;
 
-        const existentes = (await pool.request()
+        const validosPorClave = new Map<string, number>();
+        for (const r of validos) {
+            validosPorClave.set(String(r.CODARTICULO), r.CODARTICULO);
+            if (r.REFPROVEEDOR) validosPorClave.set(r.REFPROVEEDOR, r.CODARTICULO);
+        }
+
+        const existentes = new Set((await pool.request()
             .input('IDGRUPO', mssql.Int, idGrupo)
             .query(`SELECT CODARTICULO FROM APP_GRUPOS_ARTICULOS_DETALLE WHERE IDGRUPO = @IDGRUPO`))
-            .recordset.map((r: any) => r.CODARTICULO as number);
+            .recordset.map((r: any) => r.CODARTICULO as number));
 
-        const validosSet = new Set(validos);
-        const existentesSet = new Set(existentes);
-        const noEncontrados = codigos.filter(c => !validosSet.has(c));
-        const yaEnGrupo = codigos.filter(c => validosSet.has(c) && existentesSet.has(c));
-        const aNuevos = validos.filter(c => !existentesSet.has(c));
+        const noEncontrados: string[] = [];
+        const yaEnGrupo: string[] = [];
+        const aNuevos: number[] = [];
+
+        for (const v of valores) {
+            const cod = validosPorClave.get(v);
+            if (cod === undefined) { noEncontrados.push(v); continue; }
+            if (existentes.has(cod)) { yaEnGrupo.push(v); continue; }
+            if (!aNuevos.includes(cod)) aNuevos.push(cod);
+        }
 
         for (const cod of aNuevos) {
             await pool.request()
@@ -610,32 +631,49 @@ export class PromocionesService {
             `);
     }
 
-    static async importarClientesExcel(idGrupo: number, buffer: Buffer): Promise<{ insertados: number; noEncontrados: number[]; yaEnGrupo: number[] }> {
+    static async importarClientesExcel(idGrupo: number, buffer: Buffer): Promise<{ insertados: number; noEncontrados: string[]; yaEnGrupo: string[] }> {
         const tipo = await this.getTipoGrupoClientes(idGrupo);
         if (tipo === 'CONDICION') throw new Error('Grupo dinámico: edita las condiciones.');
         const XLSX = await import('xlsx');
         const wb = XLSX.read(buffer, { type: 'buffer' });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
-        const codigos: number[] = rows.map(r => parseInt(r[0])).filter(n => !isNaN(n) && n > 0);
-        if (codigos.length === 0) return { insertados: 0, noEncontrados: [], yaEnGrupo: [] };
+        // Acepta CODCLIENTE (número), CIF o NIF20 (texto)
+        const valores: string[] = rows.map(r => String(r[0] ?? '').trim()).filter(v => v.length > 0);
+        if (valores.length === 0) return { insertados: 0, noEncontrados: [], yaEnGrupo: [] };
 
         const pool = await connectDb();
         const req = pool.request();
-        const placeholders = codigos.map((c, i) => { req.input(`c${i}`, c); return `@c${i}`; }).join(',');
-        const validos = (await req.query(`SELECT CODCLIENTE FROM CLIENTES WHERE CODCLIENTE IN (${placeholders})`))
-            .recordset.map((r: any) => r.CODCLIENTE as number);
+        const placeholders = valores.map((v, i) => {
+            req.input(`v${i}`, mssql.NVarChar, v);
+            return `(CAST(CODCLIENTE AS VARCHAR) = @v${i} OR ISNULL(CIF,'') = @v${i} OR ISNULL(NIF20,'') = @v${i})`;
+        }).join(' OR ');
+        const validos = (await req.query(
+            `SELECT CODCLIENTE, ISNULL(CIF,'') AS CIF, ISNULL(NIF20,'') AS NIF20 FROM CLIENTES WHERE ${placeholders}`
+        )).recordset;
 
-        const existentes = (await pool.request()
+        const validosPorClave = new Map<string, number>();
+        for (const r of validos) {
+            validosPorClave.set(String(r.CODCLIENTE), r.CODCLIENTE);
+            if (r.CIF)   validosPorClave.set(r.CIF, r.CODCLIENTE);
+            if (r.NIF20) validosPorClave.set(r.NIF20, r.CODCLIENTE);
+        }
+
+        const existentes = new Set((await pool.request()
             .input('IDGRUPO', mssql.Int, idGrupo)
             .query(`SELECT CODCLIENTE FROM APP_GRUPOS_CLIENTES_DETALLE WHERE IDGRUPO = @IDGRUPO`))
-            .recordset.map((r: any) => r.CODCLIENTE as number);
+            .recordset.map((r: any) => r.CODCLIENTE as number));
 
-        const validosSet = new Set(validos);
-        const existentesSet = new Set(existentes);
-        const noEncontrados = codigos.filter(c => !validosSet.has(c));
-        const yaEnGrupo = codigos.filter(c => validosSet.has(c) && existentesSet.has(c));
-        const aNuevos = validos.filter(c => !existentesSet.has(c));
+        const noEncontrados: string[] = [];
+        const yaEnGrupo: string[] = [];
+        const aNuevos: number[] = [];
+
+        for (const v of valores) {
+            const cod = validosPorClave.get(v);
+            if (cod === undefined) { noEncontrados.push(v); continue; }
+            if (existentes.has(cod)) { yaEnGrupo.push(v); continue; }
+            if (!aNuevos.includes(cod)) aNuevos.push(cod);
+        }
 
         for (const cod of aNuevos) {
             await pool.request()
@@ -668,10 +706,13 @@ export class PromocionesService {
             .input('LIMIT', mssql.Int, limit)
             .query(`
                 SELECT P.ID, P.NOMBRE, P.BASE, P.ALCANCE_CLIENTE, P.FECHAINICIO, P.FECHAFIN, P.ACTIVO,
-                    GA.NOMBRE AS NOMBREGRUPOARTICULOS, GC.NOMBRE AS NOMBREGRUPOCLIENTES
+                    P.IDGRUPOARTICULOS, P.IDGRUPOCLIENTES, P.IDGRUPOARTICULOS_EXCLUIR,
+                    GA.NOMBRE AS NOMBREGRUPOARTICULOS, GC.NOMBRE AS NOMBREGRUPOCLIENTES,
+                    GAE.NOMBRE AS NOMBREGRUPOARTICULOS_EXCLUIR
                 FROM APP_PROMOCIONES P
                     INNER JOIN APP_GRUPOS_ARTICULOS GA ON GA.ID = P.IDGRUPOARTICULOS
                     LEFT JOIN APP_GRUPOS_CLIENTES GC ON GC.ID = P.IDGRUPOCLIENTES
+                    LEFT JOIN APP_GRUPOS_ARTICULOS GAE ON GAE.ID = P.IDGRUPOARTICULOS_EXCLUIR
                 WHERE P.NOMBRE LIKE @FILTRO
                 ORDER BY P.FECHACREACION DESC
                 OFFSET @OFFSET ROWS FETCH NEXT @LIMIT ROWS ONLY
@@ -696,7 +737,7 @@ export class PromocionesService {
     }
 
     static async crearPromocion(promo: {
-        nombre: string; idGrupoArticulos: number; base: 'UNIDADES' | 'MONTO';
+        nombre: string; idGrupoArticulos: number; idGrupoArticulosExcluir: number | null; base: 'UNIDADES' | 'MONTO';
         alcanceCliente: 'TODOS' | 'INCLUIR_GRUPO' | 'EXCLUIR_GRUPO'; idGrupoClientes: number | null;
         fechaInicio: string; fechaFin: string; escalas: EscalaInput[];
     }) {
@@ -708,15 +749,16 @@ export class PromocionesService {
             const result = await headerReq
                 .input('NOMBRE', mssql.NVarChar, promo.nombre)
                 .input('IDGRUPOARTICULOS', mssql.Int, promo.idGrupoArticulos)
+                .input('IDGRUPOARTICULOS_EXCLUIR', mssql.Int, promo.idGrupoArticulosExcluir)
                 .input('BASE', mssql.VarChar, promo.base)
                 .input('ALCANCE', mssql.VarChar, promo.alcanceCliente)
                 .input('IDGRUPOCLIENTES', mssql.Int, promo.idGrupoClientes)
                 .input('FECHAINICIO', mssql.Date, promo.fechaInicio)
                 .input('FECHAFIN', mssql.Date, promo.fechaFin)
                 .query(`
-                    INSERT INTO APP_PROMOCIONES (NOMBRE, IDGRUPOARTICULOS, BASE, ALCANCE_CLIENTE, IDGRUPOCLIENTES, FECHAINICIO, FECHAFIN)
+                    INSERT INTO APP_PROMOCIONES (NOMBRE, IDGRUPOARTICULOS, IDGRUPOARTICULOS_EXCLUIR, BASE, ALCANCE_CLIENTE, IDGRUPOCLIENTES, FECHAINICIO, FECHAFIN)
                     OUTPUT INSERTED.ID
-                    VALUES (@NOMBRE, @IDGRUPOARTICULOS, @BASE, @ALCANCE, @IDGRUPOCLIENTES, @FECHAINICIO, @FECHAFIN)
+                    VALUES (@NOMBRE, @IDGRUPOARTICULOS, @IDGRUPOARTICULOS_EXCLUIR, @BASE, @ALCANCE, @IDGRUPOCLIENTES, @FECHAINICIO, @FECHAFIN)
                 `);
             const idPromocion = result.recordset[0].ID;
 
@@ -738,7 +780,7 @@ export class PromocionesService {
     }
 
     static async actualizarPromocion(id: number, promo: {
-        nombre: string; idGrupoArticulos: number; base: 'UNIDADES' | 'MONTO';
+        nombre: string; idGrupoArticulos: number; idGrupoArticulosExcluir: number | null; base: 'UNIDADES' | 'MONTO';
         alcanceCliente: 'TODOS' | 'INCLUIR_GRUPO' | 'EXCLUIR_GRUPO'; idGrupoClientes: number | null;
         fechaInicio: string; fechaFin: string; escalas: EscalaInput[];
     }) {
@@ -751,6 +793,7 @@ export class PromocionesService {
                 .input('ID', mssql.Int, id)
                 .input('NOMBRE', mssql.NVarChar, promo.nombre)
                 .input('IDGRUPOARTICULOS', mssql.Int, promo.idGrupoArticulos)
+                .input('IDGRUPOARTICULOS_EXCLUIR', mssql.Int, promo.idGrupoArticulosExcluir)
                 .input('BASE', mssql.VarChar, promo.base)
                 .input('ALCANCE', mssql.VarChar, promo.alcanceCliente)
                 .input('IDGRUPOCLIENTES', mssql.Int, promo.idGrupoClientes)
@@ -758,8 +801,9 @@ export class PromocionesService {
                 .input('FECHAFIN', mssql.Date, promo.fechaFin)
                 .query(`
                     UPDATE APP_PROMOCIONES SET
-                        NOMBRE = @NOMBRE, IDGRUPOARTICULOS = @IDGRUPOARTICULOS, BASE = @BASE,
-                        ALCANCE_CLIENTE = @ALCANCE, IDGRUPOCLIENTES = @IDGRUPOCLIENTES,
+                        NOMBRE = @NOMBRE, IDGRUPOARTICULOS = @IDGRUPOARTICULOS,
+                        IDGRUPOARTICULOS_EXCLUIR = @IDGRUPOARTICULOS_EXCLUIR,
+                        BASE = @BASE, ALCANCE_CLIENTE = @ALCANCE, IDGRUPOCLIENTES = @IDGRUPOCLIENTES,
                         FECHAINICIO = @FECHAINICIO, FECHAFIN = @FECHAFIN
                     WHERE ID = @ID
                 `);
@@ -794,7 +838,7 @@ export class PromocionesService {
     static async getVigentes() {
         const pool = await connectDb();
         const result = await pool.request().query(`
-            SELECT P.ID, P.NOMBRE, P.BASE, P.ALCANCE_CLIENTE, P.IDGRUPOCLIENTES
+            SELECT P.ID, P.NOMBRE, P.BASE, P.ALCANCE_CLIENTE, P.IDGRUPOCLIENTES, P.IDGRUPOARTICULOS_EXCLUIR
             FROM APP_PROMOCIONES P
             WHERE P.ACTIVO = 1
                 AND CAST(GETDATE() AS DATE) BETWEEN P.FECHAINICIO AND P.FECHAFIN
@@ -807,19 +851,27 @@ export class PromocionesService {
         const ph1 = ids.map((id: number, i: number) => { req1.input(`id${i}`, id); return `@id${i}`; }).join(',');
         const escalasResult = await req1.query(`SELECT IDPROMOCION, MINIMO, MAXIMO, PORCENTAJE FROM APP_PROMOCIONES_ESCALAS WHERE IDPROMOCION IN (${ph1}) ORDER BY MINIMO`);
 
-        const headerFull = await pool.request().query(`SELECT ID, IDGRUPOARTICULOS FROM APP_PROMOCIONES WHERE ID IN (${ids.join(',')})`);
+        const headerFull = await pool.request().query(`SELECT ID, IDGRUPOARTICULOS, IDGRUPOARTICULOS_EXCLUIR FROM APP_PROMOCIONES WHERE ID IN (${ids.join(',')})`);
         const grupoPorPromo: Record<number, number> = {};
-        headerFull.recordset.forEach((r: any) => { grupoPorPromo[r.ID] = r.IDGRUPOARTICULOS; });
+        const grupoExcluirPorPromo: Record<number, number | null> = {};
+        headerFull.recordset.forEach((r: any) => {
+            grupoPorPromo[r.ID] = r.IDGRUPOARTICULOS;
+            grupoExcluirPorPromo[r.ID] = r.IDGRUPOARTICULOS_EXCLUIR ?? null;
+        });
 
+        // Grupos de inclusión + exclusión de artículos juntos
         const idsGrupoArticulos = [...new Set(Object.values(grupoPorPromo))];
+        const idsGrupoExcluir = [...new Set(Object.values(grupoExcluirPorPromo).filter(Boolean) as number[])];
+        const todosIdsGrupoArt = [...new Set([...idsGrupoArticulos, ...idsGrupoExcluir])];
+
         const tiposGrupoArt: Record<number, string> = {};
-        if (idsGrupoArticulos.length > 0) {
-            const tiposResult = await pool.request().query(`SELECT ID, TIPO FROM APP_GRUPOS_ARTICULOS WHERE ID IN (${idsGrupoArticulos.join(',')})`);
+        if (todosIdsGrupoArt.length > 0) {
+            const tiposResult = await pool.request().query(`SELECT ID, TIPO FROM APP_GRUPOS_ARTICULOS WHERE ID IN (${todosIdsGrupoArt.join(',')})`);
             tiposResult.recordset.forEach((r: any) => { tiposGrupoArt[r.ID] = r.TIPO; });
         }
 
         const articulosPorGrupo: Record<number, number[]> = {};
-        const idsGrupoArtManual = idsGrupoArticulos.filter(id => tiposGrupoArt[id as number] !== 'CONDICION');
+        const idsGrupoArtManual = todosIdsGrupoArt.filter(id => tiposGrupoArt[id as number] !== 'CONDICION');
         if (idsGrupoArtManual.length > 0) {
             const articulosResult = await pool.request().query(`
                 SELECT D.IDGRUPO, D.CODARTICULO
@@ -828,7 +880,7 @@ export class PromocionesService {
             `);
             articulosResult.recordset.forEach((r: any) => { (articulosPorGrupo[r.IDGRUPO] ??= []).push(r.CODARTICULO); });
         }
-        for (const idGrupo of idsGrupoArticulos) {
+        for (const idGrupo of todosIdsGrupoArt) {
             if (tiposGrupoArt[idGrupo as number] === 'CONDICION') {
                 articulosPorGrupo[idGrupo as number] = await this.resolverMiembrosCondicionArticulos(idGrupo as number);
             }
@@ -858,15 +910,24 @@ export class PromocionesService {
         const escalasPorPromo: Record<number, any[]> = {};
         escalasResult.recordset.forEach((e: any) => { (escalasPorPromo[e.IDPROMOCION] ??= []).push(e); });
 
-        return promos.map((p: any) => ({
-            id: p.ID,
-            nombre: p.NOMBRE,
-            base: p.BASE,
-            alcanceCliente: p.ALCANCE_CLIENTE,
-            codigosArticulo: articulosPorGrupo[grupoPorPromo[p.ID]] ?? [],
-            codigosCliente: p.IDGRUPOCLIENTES ? (clientesPorGrupo[p.IDGRUPOCLIENTES] ?? []) : [],
-            escalas: (escalasPorPromo[p.ID] ?? []).map((e: any) => ({ minimo: e.MINIMO, maximo: e.MAXIMO, porcentaje: e.PORCENTAJE })),
-        }));
+        return promos.map((p: any) => {
+            const incluidos = articulosPorGrupo[grupoPorPromo[p.ID]] ?? [];
+            const excluidos = p.IDGRUPOARTICULOS_EXCLUIR
+                ? new Set(articulosPorGrupo[p.IDGRUPOARTICULOS_EXCLUIR] ?? [])
+                : null;
+            const codigosArticulo = excluidos
+                ? incluidos.filter((cod: number) => !excluidos.has(cod))
+                : incluidos;
+            return {
+                id: p.ID,
+                nombre: p.NOMBRE,
+                base: p.BASE,
+                alcanceCliente: p.ALCANCE_CLIENTE,
+                codigosArticulo,
+                codigosCliente: p.IDGRUPOCLIENTES ? (clientesPorGrupo[p.IDGRUPOCLIENTES] ?? []) : [],
+                escalas: (escalasPorPromo[p.ID] ?? []).map((e: any) => ({ minimo: e.MINIMO, maximo: e.MAXIMO, porcentaje: e.PORCENTAJE })),
+            };
+        });
     }
 
     static async registrarAplicadas(orderId: string, promociones: PromocionAplicada[]) {

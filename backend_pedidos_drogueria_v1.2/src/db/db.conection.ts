@@ -26,16 +26,27 @@ function buildConfig(): { prod: sql.config; pruebas: sql.config } {
     };
 }
 
+function attachPoolErrorHandler(pool: sql.ConnectionPool, isPruebas: boolean) {
+    pool.on('error', (err: Error) => {
+        console.error(`[Pool${isPruebas ? ' PRUEBAS' : ''}] Error en conexión:`, err.message);
+        // Reset la referencia para que la próxima request cree un pool nuevo
+        if (!isPruebas) poolProd = null;
+        else poolPruebas = null;
+    });
+}
+
 export async function connectDb(): Promise<sql.ConnectionPool> {
     const usarPruebas = dbModeContext.getStore()?.modoPruebas === true;
     if (usarPruebas) {
         if (poolPruebas && poolPruebas.connected) return poolPruebas;
         poolPruebas = await new sql.ConnectionPool(buildConfig().pruebas).connect();
+        attachPoolErrorHandler(poolPruebas, true);
         console.log(`Conexión a BD de PRUEBAS establecida (${buildConfig().pruebas.database}).`);
         return poolPruebas;
     }
     if (poolProd && poolProd.connected) return poolProd;
     poolProd = await new sql.ConnectionPool(buildConfig().prod).connect();
+    attachPoolErrorHandler(poolProd, false);
     console.log(`Conexión a SQL Server establecida (${buildConfig().prod.database}).`);
     return poolProd;
 }
