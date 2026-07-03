@@ -22,6 +22,32 @@
       </v-col>
     </v-row>
 
+    <!-- Filtros -->
+    <v-row class="mb-2">
+      <v-col cols="12" sm="6" md="2">
+        <v-text-field v-model="filtros.buscarId" label="N° Pedido" density="compact" variant="outlined"
+          clearable hide-details prepend-inner-icon="mdi-pound" @update:model-value="aplicarFiltros" />
+      </v-col>
+      <v-col cols="12" sm="6" md="2">
+        <v-text-field v-model="filtros.clienteId" label="Código Cliente" density="compact" variant="outlined"
+          clearable hide-details prepend-inner-icon="mdi-account" type="number" @update:model-value="aplicarFiltros" />
+      </v-col>
+      <v-col cols="12" sm="6" md="2">
+        <v-text-field v-model="filtros.codVendedor" label="Código Vendedor" density="compact" variant="outlined"
+          clearable hide-details prepend-inner-icon="mdi-account-tie" type="number" @update:model-value="aplicarFiltros" />
+      </v-col>
+      <v-col cols="12" sm="6" md="3">
+        <v-select v-model="filtros.estatus" label="Estatus" density="compact" variant="outlined"
+          clearable hide-details prepend-inner-icon="mdi-list-status"
+          :items="estatusOpciones" @update:model-value="aplicarFiltros" />
+      </v-col>
+      <v-col cols="12" sm="6" md="3">
+        <v-select v-model="filtros.riesgo" label="Riesgo Crédito" density="compact" variant="outlined"
+          clearable hide-details prepend-inner-icon="mdi-shield-half-full"
+          :items="['BAJO','MEDIO','ALTO','SUPERADO','SIN LIMITE']" @update:model-value="aplicarFiltros" />
+      </v-col>
+    </v-row>
+
     <v-row>
       <v-col cols="12">
         <v-card elevation="2" class="rounded-xl border-0 overflow-hidden">
@@ -49,6 +75,10 @@
                 <span class="font-weight-bold">{{ formatearFecha(item.FECHA) }}</span>
                 <span class="text-grey">{{ formatearHora(item.FECHA) }}</span>
               </div>
+            </template>
+
+            <template v-slot:item.vendedor_col="{ item }">
+              <span class="text-caption">{{ item.NOMVENDEDOR || item.CODVENDEDOR || '—' }}</span>
             </template>
 
             <template v-slot:item.RIESGO="{ item }">
@@ -246,19 +276,39 @@ const transicionesPermitidas = (estatus: string): string[] => {
 };
 
 const headers = [
-  { title: 'ORDEN', key: 'ORDERID', align: 'start' as const },
-  { title: 'REGISTRO', key: 'FECHA', align: 'start' as const },
-  { title: 'CLIENTE', key: 'cliente_col', align: 'start' as const, sortable: false },
-  { title: 'RIESGO', key: 'RIESGO', align: 'center' as const, sortable: false },
-  { title: 'ESTADO ACTUAL', key: 'ESTATUS', align: 'center' as const, sortable: false },
-  { title: 'TOTAL', key: 'TOTALPRECIO', align: 'end' as const },
-  { title: 'ACCIONES', key: 'acciones', align: 'center' as const, sortable: false },
+  { title: 'ORDEN',       key: 'ORDERID',      align: 'start'  as const },
+  { title: 'REGISTRO',    key: 'FECHA',         align: 'start'  as const },
+  { title: 'CLIENTE',     key: 'cliente_col',   align: 'start'  as const, sortable: false },
+  { title: 'VENDEDOR',    key: 'vendedor_col',  align: 'start'  as const, sortable: false },
+  { title: 'RIESGO',      key: 'RIESGO',        align: 'center' as const, sortable: false },
+  { title: 'ESTADO ACTUAL', key: 'ESTATUS',     align: 'center' as const, sortable: false },
+  { title: 'TOTAL',       key: 'TOTALPRECIO',   align: 'end'    as const },
+  { title: 'ACCIONES',    key: 'acciones',      align: 'center' as const, sortable: false },
 ];
+
+const estatusOpciones = [
+  'PENDIENTE', 'PENDIENTE POR AUTORIZACION', 'APROBACION PSICOTROPICOS',
+  'AUTORIZADO', 'EMPACADO', 'FINALIZADO', 'CANCELADO',
+];
+
+const filtros = ref({ buscarId: '', clienteId: '', codVendedor: '', estatus: null as string | null, riesgo: null as string | null });
+
+let filtroTimer: ReturnType<typeof setTimeout> | null = null;
+const aplicarFiltros = () => {
+  if (filtroTimer) clearTimeout(filtroTimer);
+  filtroTimer = setTimeout(() => obtenerPedidos(1, itemsPerPage.value), 400);
+};
 
 const obtenerPedidos = async (page = 1, limit = 10) => {
   loading.value = true;
   try {
-    const response = await axios.get(`${import.meta.env.VITE_API_URL}/pedidos?page=${page}&limit=${limit}`);
+    const params: Record<string, any> = { page, limit };
+    if (filtros.value.buscarId)   params.buscarId    = filtros.value.buscarId;
+    if (filtros.value.clienteId)  params.clienteId   = filtros.value.clienteId;
+    if (filtros.value.codVendedor) params.codVendedor = filtros.value.codVendedor;
+    if (filtros.value.estatus)    params.estatus     = filtros.value.estatus;
+    if (filtros.value.riesgo)     params.riesgo      = filtros.value.riesgo;
+    const response = await axios.get(`${import.meta.env.VITE_API_URL}/pedidos`, { params });
     if (response.data.success) {
       pedidos.value = response.data.data;
       totalPedidos.value = response.data.total ?? 0;

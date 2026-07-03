@@ -27,9 +27,13 @@
           </v-chip>
         </template>
         <template v-slot:item.acciones="{ item }">
-          <v-btn size="small" color="purple-darken-1" variant="tonal" prepend-icon="mdi-eye" @click="abrirDetalle(item)">
-            Revisar
-          </v-btn>
+          <div class="d-flex gap-2">
+            <v-btn size="small" color="purple-darken-1" variant="tonal" prepend-icon="mdi-eye" @click="abrirDetalle(item)">
+              Revisar
+            </v-btn>
+            <v-btn size="small" color="red-darken-2" variant="tonal" icon="mdi-file-pdf-box"
+              :loading="pdfCargando === item.ORDERID" @click="imprimirPDF(item)" />
+          </div>
         </template>
       </v-data-table-server>
     </v-card>
@@ -81,9 +85,12 @@
 import { ref, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
 import { useCarritoStore } from '../stores/useCarritoStore';
+import { useAuthStore } from '../stores/useAuthStore';
 import MontoDisplay from '../components/MontoDisplay.vue';
+import { generarPedidoPDF } from '../utils/pedidoPDF';
 
 const carritoStore = useCarritoStore();
+const authStore    = useAuthStore();
 const API = import.meta.env.VITE_API_URL;
 const ESTATUS = 'APROBACION PSICOTROPICOS';
 
@@ -100,6 +107,7 @@ const headers = [
   { title: '', key: 'acciones', sortable: false },
 ];
 
+const pdfCargando = ref<string | null>(null);
 const aviso = ref({ mostrar: false, texto: '', color: 'success' });
 const lanzarAviso = (texto: string, color = 'success') => aviso.value = { mostrar: true, texto, color };
 
@@ -115,6 +123,43 @@ const cargarPagina = (opt: any) => { pagina.value = opt.page; itemsPerPage.value
 const modalDetalle = ref<any>({ mostrar: false, pedido: null });
 const codigoAprobacion = ref('');
 const aprobando = ref(false);
+
+const imprimirPDF = async (item: any) => {
+  pdfCargando.value = item.ORDERID;
+  try {
+    const res = await axios.get(`${API}/pedidos`, { params: { orderId: item.ORDERID } });
+    if (!res.data.success) { lanzarAviso('No se pudo cargar el pedido', 'error'); return; }
+    const pedido = res.data.data;
+    const tz = { timeZone: 'America/Caracas' };
+    await generarPedidoPDF({
+      numeroOrden: item.ORDERID,
+      fecha: item.FECHA,
+      estatus: item.ESTATUS,
+      cliente: {
+        codcliente: item.CLIENTEID,
+        nombrecliente: item.NOMBRECLIENTE || `Cliente ${item.CLIENTEID}`,
+      },
+      lineas: (pedido.lineas || []).map((l: any) => ({
+        codigo: l.CODARTICULO,
+        descripcion: l.DESCRIPCION || '',
+        cantidad: Number(l.PRODUCTCOUNT),
+        precioUnitario: 0,
+        diasProteccion: Number(l.DIASPROTECCION ?? 0),
+        esControlado: true,
+      })),
+      totalUSD: 0,
+      ocultarPrecios: true,
+      firmante: {
+        usuario: authStore.usuario?.usuario || 'Usuario desconocido',
+        fecha: new Date().toLocaleString('es-VE', tz),
+      },
+    });
+  } catch {
+    lanzarAviso('Error al generar el PDF', 'error');
+  } finally {
+    pdfCargando.value = null;
+  }
+};
 
 const abrirDetalle = async (item: any) => {
   codigoAprobacion.value = '';

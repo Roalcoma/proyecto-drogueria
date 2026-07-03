@@ -26,6 +26,8 @@ export interface PedidoPDFData {
     };
     lineas: LineaPDF[];
     totalUSD: number;
+    ocultarPrecios?: boolean;
+    firmante?: { usuario: string; fecha: string };
 }
 
 export async function generarPedidoPDF(data: PedidoPDFData): Promise<void> {
@@ -102,53 +104,72 @@ export async function generarPedidoPDF(data: PedidoPDFData): Promise<void> {
     );
 
     // --- Tabla de líneas ---
+    const sinPrecios = data.ocultarPrecios === true;
+
     const filas = data.lineas.map(l => {
-        const descPct = l.descuentos?.length
-            ? `${l.descuentos.join('%+')}%`
-            : '';
-        return [
+        const descPct = (!sinPrecios && l.descuentos?.length) ? `${l.descuentos.join('%+')}%` : '';
+        const row: any[] = [
             l.codigo,
             (l.descripcion || '') + (l.esControlado ? ' (CONTROLADO)' : ''),
             l.cantidad,
-            (l.diasProteccion ?? 0) > 0 ? `${l.diasProteccion}d NI` : '',   // Seg.
-            '',   // ESC PRD
-            '',   // ESC PRD
-            '',   // ESC PRV
+            (l.diasProteccion ?? 0) > 0 ? `${l.diasProteccion}d NI` : '',
+            '', '', '',
             descPct,
-            l.precioUnitario.toFixed(2),
-            (l.precioUnitario * l.cantidad).toFixed(2),
         ];
+        if (!sinPrecios) {
+            row.push(l.precioUnitario.toFixed(2));
+            row.push((l.precioUnitario * l.cantidad).toFixed(2));
+        }
+        return row;
     });
+
+    const headCols = sinPrecios
+        ? ['Código', 'Descripción', 'Cant.', 'Seg.', 'ESC PRD', 'ESC PRD', 'ESC PRV', 'DESC.']
+        : ['Código', 'Descripción', 'Cant.', 'Seg.', 'ESC PRD', 'ESC PRD', 'ESC PRV', 'DESC.', 'Precio', 'Importe'];
 
     autoTable(doc, {
         startY: datosFin + 5,
-        head: [['Código', 'Descripción', 'Cant.', 'Seg.', 'ESC PRD', 'ESC PRD', 'ESC PRV', 'DESC.', 'Precio', 'Importe']],
+        head: [headCols],
         body: filas,
         theme: 'plain',
         styles: { fontSize: 7, cellPadding: 1 },
         headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], fontStyle: 'bold', lineWidth: 0.1 },
         columnStyles: {
             0: { cellWidth: 18 },
-            1: { cellWidth: 52 },
-            8: { halign: 'right' },
-            9: { halign: 'right' },
+            1: { cellWidth: sinPrecios ? 80 : 52 },
+            ...(sinPrecios ? {} : { 8: { halign: 'right' as const }, 9: { halign: 'right' as const } }),
         },
     });
 
-    // --- Totales ---
+    // --- Totales (solo con precios) ---
     const finalY = (doc as any).lastAutoTable.finalY + 6;
-    doc.setFont('helvetica', 'normal');
-    doc.rect(50, finalY, 146, 6);
-    doc.text('Monto Total de la Base Imponible según Alícuota: USD:', 86, finalY + 4.5);
-    doc.text(data.totalUSD.toFixed(2), 192, finalY + 4.5, { align: 'right' });
+    if (!sinPrecios) {
+        doc.setFont('helvetica', 'normal');
+        doc.rect(50, finalY, 146, 6);
+        doc.text('Monto Total de la Base Imponible según Alícuota: USD:', 86, finalY + 4.5);
+        doc.text(data.totalUSD.toFixed(2), 192, finalY + 4.5, { align: 'right' });
 
-    doc.setFont('helvetica', 'bold');
-    doc.rect(50, finalY + 12, 146, 8);
-    doc.text('VALOR TOTAL:    USD:', 132, finalY + 17.5);
-    doc.text(data.totalUSD.toFixed(2), 192, finalY + 17.5, { align: 'right' });
+        doc.setFont('helvetica', 'bold');
+        doc.rect(50, finalY + 12, 146, 8);
+        doc.text('VALOR TOTAL:    USD:', 132, finalY + 17.5);
+        doc.text(data.totalUSD.toFixed(2), 192, finalY + 17.5, { align: 'right' });
+    }
+
+    // --- Firmante (opcional) ---
+    const pageH = doc.internal.pageSize.getHeight();
+    if (data.firmante) {
+        const firmaY = sinPrecios ? finalY + 10 : finalY + 30;
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.setDrawColor(180);
+        doc.line(14, firmaY, 90, firmaY);
+        doc.setFont('helvetica', 'bold');
+        doc.text(data.firmante.usuario, 14, firmaY + 5);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Emitido: ${data.firmante.fecha}`, 14, firmaY + 10);
+    }
 
     // Copyright footer
-    const pageH = doc.internal.pageSize.getHeight();
     doc.setFontSize(7);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(150);

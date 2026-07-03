@@ -47,9 +47,15 @@ export class PedidosControllers {
             }
 
             // Lista paginada con filtros opcionales
-            const estatusFiltro   = estatus  as string | undefined;
-            const buscarIdFiltro  = buscarId as string | undefined;
-            const result = await PedidosServices.getPedidos(page, limit, estatusFiltro, buscarIdFiltro);
+            const { clienteId, codVendedor, riesgo } = req.query;
+            const result = await PedidosServices.getPedidos(
+                page, limit,
+                estatus     as string | undefined,
+                buscarId    as string | undefined,
+                clienteId   as string | undefined,
+                codVendedor as string | undefined,
+                riesgo      as string | undefined,
+            );
             if (!result.success) return res.status(500).json(result);
             return res.status(200).json(result);
 
