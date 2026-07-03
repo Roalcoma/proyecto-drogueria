@@ -72,7 +72,8 @@ export class ProductsController {
             const rows = await ProductsService.getCatalogoSegmentos(tarifaIds);
             res.status(200).json({ success: true, data: rows, tarifas: tarifaIds });
         } catch (error) {
-            res.status(500).json({ success: false, message: 'Error al obtener catálogo por segmentos' });
+            console.error('[getCatalogoSegmentos]', error);
+            res.status(500).json({ success: false, message: 'Error al obtener catálogo por segmentos', detail: error instanceof Error ? error.message : String(error) });
         }
     }
 

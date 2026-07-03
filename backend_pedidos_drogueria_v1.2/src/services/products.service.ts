@@ -154,27 +154,22 @@ export class ProductsService {
     }
 
     static async getCatalogoSegmentos(tarifaIds: number[]): Promise<any[]> {
-        try {
-            const pool = await connectDb();
-            const ids = tarifaIds.length > 0 ? tarifaIds.join(',') : '0';
-            const result = await pool.request().query(`
-                SELECT DISTINCT A.CODARTICULO, A.REFPROVEEDOR,
-                    ACL.DESCRIPCIONLARGA AS DESCRIPCION,
-                    PV.IDTARIFAV, PV.PNETO
-                FROM ARTICULOS A WITH(NOLOCK)
-                    INNER JOIN ARTICULOSCAMPOSLIBRES ACL WITH(NOLOCK) ON A.CODARTICULO = ACL.CODARTICULO
-                    INNER JOIN PRECIOSVENTA PV WITH(NOLOCK) ON PV.CODARTICULO = A.CODARTICULO
-                        AND PV.IDTARIFAV IN (${ids})
-                WHERE A.TIPOARTICULO = 'A'
-                    AND A.DESCATALOGADO = 'F'
-                    AND ${STOCK_DISPONIBLE_SQL} > 0
-                ORDER BY ACL.DESCRIPCIONLARGA, PV.IDTARIFAV
-            `);
-            return result.recordset;
-        } catch (error) {
-            console.error('Error al obtener catálogo por segmentos:', error);
-            throw error;
-        }
+        const pool = await connectDb();
+        const ids = tarifaIds.length > 0 ? tarifaIds.join(',') : '0';
+        const result = await pool.request().query(`
+            SELECT DISTINCT A.CODARTICULO, A.REFPROVEEDOR,
+                ACL.DESCRIPCIONLARGA AS DESCRIPCION,
+                PV.IDTARIFAV, PV.PNETO,
+                ${STOCK_DISPONIBLE_SQL} AS STOCK_DISP
+            FROM ARTICULOS A WITH(NOLOCK)
+                INNER JOIN ARTICULOSCAMPOSLIBRES ACL WITH(NOLOCK) ON A.CODARTICULO = ACL.CODARTICULO
+                INNER JOIN PRECIOSVENTA PV WITH(NOLOCK) ON PV.CODARTICULO = A.CODARTICULO
+                    AND PV.IDTARIFAV IN (${ids})
+            WHERE A.TIPOARTICULO = 'A'
+                AND A.DESCATALOGADO = 'F'
+            ORDER BY ACL.DESCRIPCIONLARGA, PV.IDTARIFAV
+        `);
+        return result.recordset;
     }
 
     static async getPrices(codarticulo: number, tarifa: number): Promise<any[]> {

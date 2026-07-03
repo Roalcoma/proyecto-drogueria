@@ -348,7 +348,7 @@ const exportarCatalogoSegmentos = async () => {
     const mapaProductos = new Map<number, any>();
     rows.forEach(r => {
       if (!mapaProductos.has(r.CODARTICULO)) {
-        mapaProductos.set(r.CODARTICULO, { REFERENCIA: r.REFPROVEEDOR, DESCRIPCION: r.DESCRIPCION, precios: {} });
+        mapaProductos.set(r.CODARTICULO, { REFERENCIA: r.REFPROVEEDOR, DESCRIPCION: r.DESCRIPCION, stock: r.STOCK_DISP, precios: {} });
       }
       mapaProductos.get(r.CODARTICULO).precios[r.IDTARIFAV] = r.PNETO;
     });
@@ -372,16 +372,16 @@ const exportarCatalogoSegmentos = async () => {
       ws.addImage(imageId, { tl: { col: 0, row: 0 }, ext: { width: 180, height: 50 } });
 
       const headerRow = ws.getRow(FILA_INICIO - 1);
-      headerRow.values = ['REFERENCIA', 'DESCRIPCION', 'PRECIO ($)', 'CANTIDAD', 'SUBTOTAL'];
+      headerRow.values = ['REFERENCIA', 'DESCRIPCION', 'PRECIO ($)', 'STOCK', 'CANTIDAD', 'SUBTOTAL'];
       headerRow.font = { bold: true };
 
       productosTarifa.forEach((p, i) => {
         const rowNum = FILA_INICIO + i;
         const row = ws.getRow(rowNum);
-        row.values = [p.REFERENCIA, p.DESCRIPCION, p.precios[tid], 0];
+        row.values = [p.REFERENCIA, p.DESCRIPCION, p.precios[tid], p.stock ?? 0, 0];
         row.getCell(3).numFmt = FORMATO_DOLAR;
-        row.getCell(5).value = { formula: `C${rowNum}*D${rowNum}` };
-        row.getCell(5).numFmt = FORMATO_DOLAR;
+        row.getCell(6).value = { formula: `C${rowNum}*E${rowNum}` };
+        row.getCell(6).numFmt = FORMATO_DOLAR;
       });
     });
 
