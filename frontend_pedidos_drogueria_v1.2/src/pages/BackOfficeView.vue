@@ -392,6 +392,34 @@
       </v-card-text>
     </v-card>
 
+    <!-- Almacén de stock -->
+    <v-card rounded="xl" elevation="2" class="mt-6">
+      <v-card-title class="pa-4 d-flex align-center">
+        <v-icon color="blue-grey" class="mr-2">mdi-warehouse</v-icon>
+        <span class="font-weight-bold">Almacén de Stock</span>
+      </v-card-title>
+      <v-divider />
+      <v-card-text class="pa-4">
+        <p class="text-caption text-grey mb-3">
+          Código del almacén (<code>STOCKS.CODALMACEN</code>) usado para calcular stock disponible, reservas y líneas de pedido.
+        </p>
+        <div class="d-flex align-center gap-3">
+          <v-text-field
+            v-model="codAlmacen"
+            label="Código de almacén"
+            variant="outlined"
+            density="compact"
+            hide-details
+            prepend-inner-icon="mdi-store"
+            style="max-width:220px;"
+          />
+          <v-btn color="blue-grey" variant="elevated" :loading="guardandoAlmacen" @click="guardarCodAlmacen">
+            Guardar
+          </v-btn>
+        </div>
+      </v-card-text>
+    </v-card>
+
     <!-- Configuración integración Ecommerce -->
     <v-card rounded="xl" elevation="2" class="mt-6">
       <v-card-title class="pa-4 d-flex align-center">
@@ -740,6 +768,27 @@ const guardarDptoPsicotropicos = async () => {
   } finally { guardandoDpto.value = false; }
 };
 
+// ─── Almacén de stock ────────────────────────────────────────
+const codAlmacen = ref<string>('ZAV');
+const guardandoAlmacen = ref(false);
+
+const cargarCodAlmacen = async () => {
+  try {
+    const res = await axios.get(`${API_SIS}/cod-almacen`);
+    if (res.data.success) codAlmacen.value = res.data.codAlmacen;
+  } catch { /* silencioso */ }
+};
+
+const guardarCodAlmacen = async () => {
+  guardandoAlmacen.value = true;
+  try {
+    await axios.post(`${API_SIS}/cod-almacen`, { codAlmacen: codAlmacen.value });
+    mostrarSnack(`Almacén actualizado a ${codAlmacen.value}`, 'success');
+  } catch (e: any) {
+    mostrarSnack(e.response?.data?.message ?? 'Error al guardar', 'error');
+  } finally { guardandoAlmacen.value = false; }
+};
+
 // ─── Tarifa base catálogo ─────────────────────────────────────
 const tarifaBaseCatalogo = ref<number>(2);
 const guardandoTarifa = ref(false);
@@ -786,6 +835,7 @@ onMounted(async () => {
   await cargarRutaEcommerce();
   await cargarDbConfig();
   await cargarDptoPsicotropicos();
+  await cargarCodAlmacen();
   await cargarTarifaCatalogo();
   await cargarSeq();
 });

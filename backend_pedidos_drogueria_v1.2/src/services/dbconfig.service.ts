@@ -13,6 +13,7 @@ export interface DbConfig {
     port:                number;
     dptoPsicotropicos:   number;
     tarifaBaseCatalogo:  number;
+    codAlmacen:          string;
 }
 
 const CONFIG_PATH = path.resolve(process.cwd(), 'config', 'connections.json');
@@ -41,6 +42,7 @@ export function getDbConfig(): DbConfig {
         port:                Number(file.port                ?? process.env.DB_PORT          ?? 1433),
         dptoPsicotropicos:   Number((file as any).dptoPsicotropicos  ?? 9),
         tarifaBaseCatalogo:  Number((file as any).tarifaBaseCatalogo  ?? 2),
+        codAlmacen:          String((file as any).codAlmacen ?? 'ZAV'),
     };
 }
 
@@ -65,5 +67,6 @@ export function getDbConfigPublica(): Omit<DbConfig, 'password'> & { passwordMas
         port:                cfg.port,
         dptoPsicotropicos:   cfg.dptoPsicotropicos,
         tarifaBaseCatalogo:  cfg.tarifaBaseCatalogo,
+        codAlmacen:          cfg.codAlmacen,
     };
 }

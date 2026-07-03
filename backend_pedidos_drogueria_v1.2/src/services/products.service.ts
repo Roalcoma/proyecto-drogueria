@@ -10,8 +10,9 @@ const USD: number = Number(process.env.USD) || 2; // Asegúrate de que USD esté
 // PENDIENTE/PENDIENTE POR AUTORIZACION/AUTORIZADO/EMPACADO. Misma regla que usa
 // getStocks() para el chip que ve el usuario — se reutiliza aquí para que el
 // filtro con_stock/sin_stock y el orden por stock no contradigan lo que se muestra.
+// ponytail: usa @ALMACEN como parámetro SQL para no interpolar strings del config
 const STOCK_DISPONIBLE_SQL = `(
-    ISNULL((SELECT SUM(STOCK) FROM STOCKS WHERE CODARTICULO = A.CODARTICULO AND CODALMACEN = 'ZAV'), 0)
+    ISNULL((SELECT SUM(STOCK) FROM STOCKS WHERE CODARTICULO = A.CODARTICULO AND CODALMACEN = @ALMACEN), 0)
     - ISNULL((
         SELECT SUM(LP.PRODUCTCOUNT) FROM CABECERA_PED CP
         INNER JOIN LINEA_PED LP ON LP.ORDERID = CP.ORDERID
@@ -27,7 +28,8 @@ export class ProductsService {
             const pool = await connectDb();
             const result = await pool.request()
                 .input('ARTICULO', mssql.NVarChar, !articulo ? '%' : articulo)
-                .input('STOCK_STATUS', mssql.VarChar, stockStatus) // <-- Pasamos el estado al SQL
+                .input('STOCK_STATUS', mssql.VarChar, stockStatus)
+                .input('ALMACEN', mssql.VarChar(10), getDbConfig().codAlmacen)
                 .query(`
                     DECLARE @FILTRO AS NVARCHAR(50)='%'+UPPER(REPLACE(LTRIM(RTRIM(@ARTICULO)),' ','%'))+'%'
                     
@@ -68,6 +70,7 @@ export class ProductsService {
                 .input('LIMIT', mssql.Int, limit)
                 .input('STOCK_STATUS', mssql.VarChar, stockStatus)
                 .input('dptoPsico', mssql.Int, getDbConfig().dptoPsicotropicos)
+                .input('ALMACEN', mssql.VarChar(10), getDbConfig().codAlmacen)
                 .query(`
                     DECLARE @FILTRO AS NVARCHAR(50)='%'+UPPER(REPLACE(LTRIM(RTRIM(@ARTICULO)),' ','%'))+'%'
 
@@ -122,6 +125,7 @@ export class ProductsService {
             const pool = await connectDb();
             const result = await pool.request()
                 .input('CODARTICULO', mssql.Int, !codarticulo ? 0 : Number(codarticulo))
+                .input('ALMACEN', mssql.VarChar(10), getDbConfig().codAlmacen)
                 .query(`;WITH CTE_STOCK_RESERVADO AS (
                             SELECT CODARTICULO, ISNULL(SUM(LP.PRODUCTCOUNT), 0) STOCK FROM CABECERA_PED CP
                             INNER JOIN LINEA_PED LP ON LP.ORDERID = CP.ORDERID
@@ -141,7 +145,7 @@ export class ProductsService {
                             LEFT JOIN CTE_STOCK_RESERVADO CSR ON CSR.CODARTICULO = S.CODARTICULO
                         WHERE
                             (S.CODARTICULO = @CODARTICULO OR ISNULL(@CODARTICULO, 0) = 0)
-                            AND S.CODALMACEN = 'ZAV'
+                            AND S.CODALMACEN = @ALMACEN
                         GROUP BY
                             S.CODALMACEN
                             , S.CODARTICULO
@@ -167,10 +171,11 @@ export class ProductsService {
     }
 
     static async getCatalogoSegmentos(): Promise<any[]> {
-        const { tarifaBaseCatalogo } = getDbConfig();
+        const { tarifaBaseCatalogo, codAlmacen } = getDbConfig();
         const pool = await connectDb();
         const result = await pool.request()
             .input('TARIFA', mssql.Int, tarifaBaseCatalogo)
+            .input('ALMACEN', mssql.VarChar(10), codAlmacen)
             .query(`
                 SELECT DISTINCT A.CODARTICULO, A.REFPROVEEDOR,
                     ACL.DESCRIPCIONLARGA AS DESCRIPCION,

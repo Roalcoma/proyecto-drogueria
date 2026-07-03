@@ -189,9 +189,9 @@ export class PedidosServices {
 
             // 3. LLENAR LA TABLA
             for (let i = 0; i < lineas.length; i++) {
-                const { 
-                    codarticulo, codalmacen, idtarifav, cantidad, precio,
-                    DESCUENTO1, DESCUENTO2, DESCUENTO3, DESCUENTO4, PRECIOBRUTO 
+                const {
+                    codarticulo, idtarifav, cantidad, precio,
+                    DESCUENTO1, DESCUENTO2, DESCUENTO3, DESCUENTO4, PRECIOBRUTO
                 } = lineas[i];
 
                 // Buscamos la referencia en nuestro mapa, si no existe usamos vacío
@@ -200,8 +200,8 @@ export class PedidosServices {
                 tablaLineas.rows.add(
                     orderId,
                     codarticulo,
-                    referenciaReal, // <--- Aquí inyectamos la referencia traída de la DB
-                    codalmacen,
+                    referenciaReal,
+                    getDbConfig().codAlmacen,
                     idtarifav,
                     cantidad,
                     precio,
@@ -586,9 +586,10 @@ export class PedidosServices {
                     const stockRes = await pool.request()
                         .input('COD', mssql.Int, linea.CODARTICULO)
                         .input('ORDERID_EXCL', mssql.VarChar(50), orderId)
+                        .input('ALMACEN', mssql.VarChar(10), getDbConfig().codAlmacen)
                         .query(`
                             SELECT
-                                ISNULL((SELECT SUM(STOCK) FROM STOCKS WHERE CODARTICULO = @COD AND CODALMACEN = 'ZAV'), 0)
+                                ISNULL((SELECT SUM(STOCK) FROM STOCKS WHERE CODARTICULO = @COD AND CODALMACEN = @ALMACEN), 0)
                                 - ISNULL((
                                     SELECT SUM(LP2.PRODUCTCOUNT) FROM ${esquema}.CABECERA_PED CP2
                                     INNER JOIN ${esquema}.LINEA_PED LP2 ON LP2.ORDERID = CP2.ORDERID

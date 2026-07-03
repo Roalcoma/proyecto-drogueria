@@ -103,6 +103,21 @@ export class SistemaController {
         res.json({ success: true, message: `Departamento de psicotrópicos actualizado a ${dptoPsicotropicos}` });
     }
 
+    static async getCodAlmacen(_req: Request, res: Response): Promise<void> {
+        const cfg = getDbConfigPublica() as any;
+        res.json({ success: true, codAlmacen: cfg.codAlmacen ?? 'ZAV' });
+    }
+
+    static async guardarCodAlmacen(req: Request, res: Response): Promise<void> {
+        const { codAlmacen } = req.body;
+        if (!codAlmacen || typeof codAlmacen !== 'string' || codAlmacen.trim().length === 0) {
+            res.status(400).json({ success: false, message: 'codAlmacen no puede estar vacío' });
+            return;
+        }
+        guardarDbConfig({ codAlmacen: codAlmacen.trim().toUpperCase() } as any);
+        res.json({ success: true, message: `Almacén actualizado a ${codAlmacen.trim().toUpperCase()}` });
+    }
+
     static async getTarifaCatalogo(_req: Request, res: Response): Promise<void> {
         const cfg = getDbConfigPublica() as any;
         res.json({ success: true, tarifaBaseCatalogo: cfg.tarifaBaseCatalogo ?? 2 });
