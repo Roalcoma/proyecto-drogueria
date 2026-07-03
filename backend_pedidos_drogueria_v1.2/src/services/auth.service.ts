@@ -151,7 +151,6 @@ export class AuthService {
                 ISNULL(${CAMPO_VIS}, 0)           AS VISIBILIDAD,
                 ${CAMPO_ID}                       AS CODVENDEDOR
             FROM VENDEDORES
-            WHERE ACTIVO = 'T'
             ORDER BY ${CAMPO_USUARIO}
         `);
         return result.recordset;

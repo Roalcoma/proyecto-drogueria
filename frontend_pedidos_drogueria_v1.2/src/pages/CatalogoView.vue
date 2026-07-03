@@ -251,7 +251,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
 import * as ExcelJS from 'exceljs';
@@ -297,23 +297,26 @@ const headersProductos = [
 const modalCantidad = ref({ mostrar: false, producto: null as any, cantidad: 1, stockMaximo: 0 });
 const aviso = ref({ mostrar: false, texto: '', color: 'success' });
 
-// EXCEL
-const segmentosDisponibles = [
-  { id: 2,  nombre: 'Segmento 2%'  },
-  { id: 4,  nombre: 'Segmento 4%'  },
-  { id: 7,  nombre: 'Segmento 7%'  },
-  { id: 8,  nombre: 'Segmento 8%'  },
-  { id: 9,  nombre: 'Segmento 9%'  },
-  { id: 12, nombre: 'Segmento 12%' },
-  { id: 14, nombre: 'Segmento 14%' },
-  { id: 15, nombre: 'Segmento 15%' },
-];
+// EXCEL — segmentos dinámicos desde D1 de clientes
+const segmentosDisponibles = ref<{ id: number; nombre: string }[]>([]);
 const modalExcel = ref({
   mostrar: false,
   descargando: false,
   archivo: null as any,
-  segmentosSeleccionados: [2, 4, 7, 8, 9, 12, 14, 15] as number[],
+  segmentosSeleccionados: [] as number[],
 });
+
+const cargarSegmentos = async () => {
+  try {
+    const res = await axios.get(`${import.meta.env.VITE_API_URL}/products/segmentos-descuento`);
+    if (res.data.success) {
+      segmentosDisponibles.value = res.data.descuentos.map((d: number) => ({ id: d, nombre: `Descuento ${d}%` }));
+      modalExcel.value.segmentosSeleccionados = res.data.descuentos;
+    }
+  } catch (e) { console.error('Error al cargar segmentos', e); }
+};
+
+onMounted(cargarSegmentos);
 
 // --- MÉTODOS CLIENTES (RESTAURADOS) ---
 const buscarClientesManualmente = async () => {
@@ -334,51 +337,39 @@ const seleccionarCliente = (cliente: any) => {
 
 // --- MÉTODOS EXCEL ---
 const exportarCatalogoSegmentos = async () => {
-  const ids = modalExcel.value.segmentosSeleccionados;
-  if (!ids.length) { lanzarAviso('Selecciona al menos un segmento', 'warning'); return; }
+  const descuentos = modalExcel.value.segmentosSeleccionados;
+  if (!descuentos.length) { lanzarAviso('Selecciona al menos un segmento', 'warning'); return; }
   modalExcel.value.descargando = true;
   try {
-    const res = await axios.get(`${import.meta.env.VITE_API_URL}/products/catalogo-segmentos?tarifas=${ids.join(',')}`);
+    const res = await axios.get(`${import.meta.env.VITE_API_URL}/products/catalogo-segmentos`);
     if (!res.data.success) throw new Error('Sin datos');
 
-    const rows: any[] = res.data.data;
-    const tarifas: number[] = res.data.tarifas;
+    const productos: any[] = res.data.data;
+    if (!productos.length) { lanzarAviso('No hay artículos con precio en la tarifa base', 'warning'); return; }
 
-    // Agrupar filas por producto
-    const mapaProductos = new Map<number, any>();
-    rows.forEach(r => {
-      if (!mapaProductos.has(r.CODARTICULO)) {
-        mapaProductos.set(r.CODARTICULO, { REFERENCIA: r.REFPROVEEDOR, DESCRIPCION: r.DESCRIPCION, stock: r.STOCK_DISP, precios: {} });
-      }
-      mapaProductos.get(r.CODARTICULO).precios[r.IDTARIFAV] = r.PNETO;
-    });
-
-    // El logo es el mismo en todas las hojas, lo cargamos una sola vez.
     const logoBuffer = await fetch(logoEmpresaUrl).then(r => r.arrayBuffer());
     const FORMATO_DOLAR = '"$"#,##0.00';
-    const FILA_INICIO = 6; // filas 1-4 quedan libres para el logo, fila 5 es el encabezado
-
+    const FILA_INICIO = 6;
     const wb = new ExcelJS.Workbook();
 
-    // Una hoja por tarifa/segmento
-    tarifas.forEach(tid => {
-      const nombre = segmentosDisponibles.find(s => s.id === tid)?.nombre || `Tarifa ${tid}`;
-      const productosTarifa = [...mapaProductos.values()].filter(p => p.precios[tid] != null);
-
-      const ws = wb.addWorksheet(nombre.replace('Segmento ', 'T'));
-      ws.columns = [{ width: 15 }, { width: 50 }, { width: 12 }, { width: 10 }, { width: 12 }];
+    // Una hoja por porcentaje de descuento D1
+    descuentos.forEach(dto => {
+      const factor = 1 - dto / 100;
+      const ws = wb.addWorksheet(`Dto ${dto}%`);
+      ws.columns = [{ width: 15 }, { width: 50 }, { width: 13 }, { width: 10 }, { width: 12 }, { width: 13 }];
 
       const imageId = wb.addImage({ buffer: logoBuffer, extension: 'png' });
       ws.addImage(imageId, { tl: { col: 0, row: 0 }, ext: { width: 180, height: 50 } });
 
       const headerRow = ws.getRow(FILA_INICIO - 1);
-      headerRow.values = ['REFERENCIA', 'DESCRIPCION', 'PRECIO ($)', 'STOCK', 'CANTIDAD', 'SUBTOTAL'];
+      headerRow.values = ['REFERENCIA', 'DESCRIPCION', `PRECIO -${dto}% ($)`, 'STOCK', 'CANTIDAD', 'SUBTOTAL'];
       headerRow.font = { bold: true };
 
-      productosTarifa.forEach((p, i) => {
+      productos.forEach((p, i) => {
         const rowNum = FILA_INICIO + i;
         const row = ws.getRow(rowNum);
-        row.values = [p.REFERENCIA, p.DESCRIPCION, p.precios[tid], p.stock ?? 0, 0];
+        const precioConDto = Number(p.PRECIO_BASE) * factor;
+        row.values = [p.REFPROVEEDOR, p.DESCRIPCION, precioConDto, p.STOCK_DISP ?? 0, 0];
         row.getCell(3).numFmt = FORMATO_DOLAR;
         row.getCell(6).value = { formula: `C${rowNum}*E${rowNum}` };
         row.getCell(6).numFmt = FORMATO_DOLAR;
@@ -390,15 +381,16 @@ const exportarCatalogoSegmentos = async () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Catalogo_Segmentos_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    link.download = `Catalogo_Descuentos_${new Date().toISOString().slice(0, 10)}.xlsx`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 
-    lanzarAviso(`Catálogo generado con ${tarifas.length} segmento(s)`, 'success');
+    lanzarAviso(`Catálogo generado con ${descuentos.length} segmento(s)`, 'success');
   } catch (e) {
-    lanzarAviso('Error al generar catálogo por segmentos', 'error');
+    console.error(e);
+    lanzarAviso('Error al generar catálogo', 'error');
   } finally {
     modalExcel.value.descargando = false;
   }

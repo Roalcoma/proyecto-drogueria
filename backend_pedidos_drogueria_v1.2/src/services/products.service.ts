@@ -153,22 +153,35 @@ export class ProductsService {
         }
     }
 
-    static async getCatalogoSegmentos(tarifaIds: number[]): Promise<any[]> {
+    // Retorna los valores distintos de D1 (descuento global) que existen en clientes
+    static async getSegmentosDescuento(): Promise<number[]> {
         const pool = await connectDb();
-        const ids = tarifaIds.length > 0 ? tarifaIds.join(',') : '0';
         const result = await pool.request().query(`
-            SELECT DISTINCT A.CODARTICULO, A.REFPROVEEDOR,
-                ACL.DESCRIPCIONLARGA AS DESCRIPCION,
-                PV.IDTARIFAV, PV.PNETO,
-                ${STOCK_DISPONIBLE_SQL} AS STOCK_DISP
-            FROM ARTICULOS A WITH(NOLOCK)
-                INNER JOIN ARTICULOSCAMPOSLIBRES ACL WITH(NOLOCK) ON A.CODARTICULO = ACL.CODARTICULO
-                INNER JOIN PRECIOSVENTA PV WITH(NOLOCK) ON PV.CODARTICULO = A.CODARTICULO
-                    AND PV.IDTARIFAV IN (${ids})
-            WHERE A.TIPOARTICULO = 'A'
-                AND A.DESCATALOGADO = 'F'
-            ORDER BY ACL.DESCRIPCIONLARGA, PV.IDTARIFAV
+            SELECT DISTINCT TRY_CAST(D1 AS FLOAT) AS D1
+            FROM CLIENTESCAMPOSLIBRES
+            WHERE TRY_CAST(D1 AS FLOAT) > 0
+            ORDER BY D1
         `);
+        return result.recordset.map((r: any) => Number(r.D1));
+    }
+
+    static async getCatalogoSegmentos(): Promise<any[]> {
+        const pool = await connectDb();
+        const result = await pool.request()
+            .input('TARIFA', mssql.Int, USD)
+            .query(`
+                SELECT DISTINCT A.CODARTICULO, A.REFPROVEEDOR,
+                    ACL.DESCRIPCIONLARGA AS DESCRIPCION,
+                    PV.PNETO AS PRECIO_BASE,
+                    ${STOCK_DISPONIBLE_SQL} AS STOCK_DISP
+                FROM ARTICULOS A WITH(NOLOCK)
+                    INNER JOIN ARTICULOSCAMPOSLIBRES ACL WITH(NOLOCK) ON A.CODARTICULO = ACL.CODARTICULO
+                    INNER JOIN PRECIOSVENTA PV WITH(NOLOCK) ON PV.CODARTICULO = A.CODARTICULO
+                        AND PV.IDTARIFAV = @TARIFA
+                WHERE A.TIPOARTICULO = 'A'
+                    AND A.DESCATALOGADO = 'F'
+                ORDER BY ACL.DESCRIPCIONLARGA
+            `);
         return result.recordset;
     }
 

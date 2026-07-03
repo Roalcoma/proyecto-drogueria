@@ -65,15 +65,22 @@ export class ProductsController {
         }
     }
 
-    static async getCatalogoSegmentos(req: Request, res: Response): Promise<void> {
+    static async getSegmentosDescuento(_req: Request, res: Response): Promise<void> {
         try {
-            const tarifasParam = (req.query.tarifas as string) || '2,4,7,8,9,14,15,12';
-            const tarifaIds = tarifasParam.split(',').map(Number).filter(n => !isNaN(n) && n > 0);
-            const rows = await ProductsService.getCatalogoSegmentos(tarifaIds);
-            res.status(200).json({ success: true, data: rows, tarifas: tarifaIds });
+            const descuentos = await ProductsService.getSegmentosDescuento();
+            res.json({ success: true, descuentos });
+        } catch (error) {
+            res.status(500).json({ success: false, message: 'Error al obtener segmentos', detail: error instanceof Error ? error.message : String(error) });
+        }
+    }
+
+    static async getCatalogoSegmentos(_req: Request, res: Response): Promise<void> {
+        try {
+            const rows = await ProductsService.getCatalogoSegmentos();
+            res.status(200).json({ success: true, data: rows });
         } catch (error) {
             console.error('[getCatalogoSegmentos]', error);
-            res.status(500).json({ success: false, message: 'Error al obtener catálogo por segmentos', detail: error instanceof Error ? error.message : String(error) });
+            res.status(500).json({ success: false, message: 'Error al obtener catálogo', detail: error instanceof Error ? error.message : String(error) });
         }
     }
 

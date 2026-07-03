@@ -9,7 +9,8 @@ productsRouter.get('/get-stocks', ProductsController.getStock)
 
 productsRouter.get('/get-prices', ProductsController.getPrices)
 
-productsRouter.get('/catalogo-segmentos', ProductsController.getCatalogoSegmentos)
+productsRouter.get('/segmentos-descuento', ProductsController.getSegmentosDescuento)
+productsRouter.get('/catalogo-segmentos',  ProductsController.getCatalogoSegmentos)
 
 export default productsRouter;
 
