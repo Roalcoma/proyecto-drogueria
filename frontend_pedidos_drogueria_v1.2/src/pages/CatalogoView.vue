@@ -374,7 +374,7 @@ const exportarCatalogoSegmentos = async () => {
       'STOCK', 'CANTIDAD', 'SUBTOTAL',
     ];
 
-    const aplicarEstiloCelda = (cell: ExcelJS.Cell, bg: string, bold = true, size = 9) => {
+    const aplicarEstiloCelda = (cell: any, bg: string, bold = true, size = 9) => {
       cell.font = { bold, color: { argb: COLOR_TEXTO }, size };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } };
       cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
@@ -432,7 +432,7 @@ const exportarCatalogoSegmentos = async () => {
       }
 
       // --- AutoFilter en fila de encabezados ---
-      ws.autoFilter = { from: { row: FILA_HEADER, column: 1 }, to: { row: FILA_HEADER, column: NCOLS } };
+      ws.autoFilter = `A${FILA_HEADER}:J${FILA_HEADER}`;
 
       // --- Filas de datos ---
       productos.forEach((p, i) => {
