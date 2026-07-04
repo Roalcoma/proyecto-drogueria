@@ -420,6 +420,37 @@
       </v-card-text>
     </v-card>
 
+    <!-- Máximo de líneas por pedido -->
+    <v-card rounded="xl" elevation="2" class="mt-6">
+      <v-card-title class="pa-4 d-flex align-center">
+        <v-icon color="orange-darken-2" class="mr-2">mdi-format-list-numbered</v-icon>
+        <span class="font-weight-bold">Máximo de Líneas por Pedido</span>
+      </v-card-title>
+      <v-divider />
+      <v-card-text class="pa-4">
+        <p class="text-caption text-grey mb-3">
+          Cantidad máxima de líneas (artículos distintos) por pedido. Si se supera, el pedido se divide automáticamente
+          en partes con sufijo <code>-1</code>, <code>-2</code>, etc.
+        </p>
+        <div class="d-flex align-center gap-3">
+          <v-text-field
+            v-model.number="maxLineasPorPedido"
+            label="Máximo de líneas"
+            type="number"
+            min="1"
+            variant="outlined"
+            density="compact"
+            hide-details
+            prepend-inner-icon="mdi-numeric"
+            style="max-width:220px;"
+          />
+          <v-btn color="orange-darken-2" variant="elevated" :loading="guardandoMaxLineas" @click="guardarMaxLineasFn">
+            Guardar
+          </v-btn>
+        </div>
+      </v-card-text>
+    </v-card>
+
     <!-- Configuración integración Ecommerce -->
     <v-card rounded="xl" elevation="2" class="mt-6">
       <v-card-title class="pa-4 d-flex align-center">
@@ -810,6 +841,27 @@ const guardarTarifaCatalogo = async () => {
   } finally { guardandoTarifa.value = false; }
 };
 
+// ─── Máximo de líneas por pedido ─────────────────────────────
+const maxLineasPorPedido = ref<number>(50);
+const guardandoMaxLineas = ref(false);
+
+const cargarMaxLineas = async () => {
+  try {
+    const res = await axios.get(`${API_SIS}/max-lineas`);
+    if (res.data.success) maxLineasPorPedido.value = res.data.maxLineasPorPedido;
+  } catch { /* silencioso */ }
+};
+
+const guardarMaxLineasFn = async () => {
+  guardandoMaxLineas.value = true;
+  try {
+    await axios.post(`${API_SIS}/max-lineas`, { maxLineasPorPedido: maxLineasPorPedido.value });
+    mostrarSnack(`Máximo de líneas actualizado a ${maxLineasPorPedido.value}`, 'success');
+  } catch (e: any) {
+    mostrarSnack(e.response?.data?.message ?? 'Error al guardar', 'error');
+  } finally { guardandoMaxLineas.value = false; }
+};
+
 // ─── Auto-actualizador ────────────────────────────────────────
 const actualizando          = ref(false);
 const resultadoActualizacion = ref<any>(null);
@@ -838,5 +890,6 @@ onMounted(async () => {
   await cargarCodAlmacen();
   await cargarTarifaCatalogo();
   await cargarSeq();
+  await cargarMaxLineas();
 });
 </script>

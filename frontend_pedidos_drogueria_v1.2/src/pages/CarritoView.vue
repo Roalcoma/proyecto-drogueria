@@ -396,6 +396,15 @@ const procesarVenta = async () => {
   const codVendedor = authStore.usuario?.codVendedor ?? 1;
   const promocionesAplicadas = carritoStore.promocionesAplicadas;
 
+  const maxLineas = await axios.get(`${import.meta.env.VITE_API_URL}/sistema/max-lineas`)
+    .then(r => r.data.maxLineasPorPedido ?? 50).catch(() => 50);
+
+  const chunkArray = (arr: any[], size: number) => {
+    const chunks: any[][] = [];
+    for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
+    return chunks;
+  };
+
   const crearPedido = (sufijo: string, items: any[]) => {
     const total = items.reduce((acc, art) => acc + (calcularPrecioConDescuento(art) * art.cantidad), 0);
     return axios.post(`${import.meta.env.VITE_API_URL}/pedidos`, {
@@ -403,10 +412,16 @@ const procesarVenta = async () => {
     });
   };
 
-  if (itemsNormal.length > 0) promesas.push(crearPedido('', itemsNormal));
-  if (itemsP.length  > 0) promesas.push(crearPedido('P',  itemsP));
-  if (itemsSD.length > 0) promesas.push(crearPedido('SD', itemsSD));
-  if (itemsNI.length > 0) promesas.push(crearPedido('NI', itemsNI));
+  const crearPedidosGrupo = (sufijo: string, items: any[]) => {
+    const chunks = chunkArray(items, maxLineas);
+    if (chunks.length === 1) return [crearPedido(sufijo, chunks[0])];
+    return chunks.map((chunk, i) => crearPedido(`${sufijo}-${i + 1}`, chunk));
+  };
+
+  if (itemsNormal.length > 0) promesas.push(...crearPedidosGrupo('',   itemsNormal));
+  if (itemsP.length  > 0)     promesas.push(...crearPedidosGrupo('P',  itemsP));
+  if (itemsSD.length > 0)     promesas.push(...crearPedidosGrupo('SD', itemsSD));
+  if (itemsNI.length > 0)     promesas.push(...crearPedidosGrupo('NI', itemsNI));
 
   try {
     const resultados = await Promise.all(promesas);

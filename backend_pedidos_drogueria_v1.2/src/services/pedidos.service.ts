@@ -266,7 +266,8 @@ export class PedidosServices {
                     CP.ORDERID, CP.CLIENTEID, CP.FECHA, CP.ESTATUS, CP.CODVENDEDOR, CP.TOTALPRECIO,
                     CL.NOMBRECLIENTE,
                     V.NOMVENDEDOR,
-                    CR.ESTATUS AS RIESGO_ESTATUS
+                    CR.ESTATUS AS RIESGO_ESTATUS,
+                    (SELECT SUM(LP.PRODUCTCOUNT) FROM ${esquema}.LINEA_PED LP WHERE LP.ORDERID = CP.ORDERID) AS TOTALUNIDADES
                 FROM
                     ${esquema}.CABECERA_PED CP
                     LEFT JOIN CLIENTES CL ON CL.CODCLIENTE = CP.CLIENTEID

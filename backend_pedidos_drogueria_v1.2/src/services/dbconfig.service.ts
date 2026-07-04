@@ -14,6 +14,7 @@ export interface DbConfig {
     dptoPsicotropicos:   number;
     tarifaBaseCatalogo:  number;
     codAlmacen:          string;
+    maxLineasPorPedido:  number;
 }
 
 const CONFIG_PATH = path.resolve(process.cwd(), 'config', 'connections.json');
@@ -43,6 +44,7 @@ export function getDbConfig(): DbConfig {
         dptoPsicotropicos:   Number((file as any).dptoPsicotropicos  ?? 9),
         tarifaBaseCatalogo:  Number((file as any).tarifaBaseCatalogo  ?? 2),
         codAlmacen:          String((file as any).codAlmacen ?? 'ZAV'),
+        maxLineasPorPedido:  Number((file as any).maxLineasPorPedido ?? 50),
     };
 }
 
@@ -68,5 +70,6 @@ export function getDbConfigPublica(): Omit<DbConfig, 'password'> & { passwordMas
         dptoPsicotropicos:   cfg.dptoPsicotropicos,
         tarifaBaseCatalogo:  cfg.tarifaBaseCatalogo,
         codAlmacen:          cfg.codAlmacen,
+        maxLineasPorPedido:  cfg.maxLineasPorPedido,
     };
 }

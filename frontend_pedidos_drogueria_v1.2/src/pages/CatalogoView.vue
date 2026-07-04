@@ -311,7 +311,7 @@ const cargarSegmentos = async () => {
   try {
     const res = await axios.get(`${import.meta.env.VITE_API_URL}/products/segmentos-descuento`);
     if (res.data.success) {
-      segmentosDisponibles.value = res.data.descuentos.map((d: number) => ({ id: d, nombre: `Descuento ${d}%` }));
+      segmentosDisponibles.value = res.data.descuentos.map((d: number) => ({ id: d, nombre: d === 0 ? 'Sin descuento' : `Descuento ${d}%` }));
       modalExcel.value.segmentosSeleccionados = res.data.descuentos;
     }
   } catch (e) { console.error('Error al cargar segmentos', e); }
@@ -356,14 +356,14 @@ const exportarCatalogoSegmentos = async () => {
     // Una hoja por porcentaje de descuento D1
     descuentos.forEach(dto => {
       const factor = 1 - dto / 100;
-      const ws = wb.addWorksheet(`Dto ${dto}%`);
+      const ws = wb.addWorksheet(dto === 0 ? 'Sin descuento' : `Dto ${dto}%`);
       ws.columns = [{ width: 15 }, { width: 50 }, { width: 30 }, { width: 20 }, { width: 20 }, { width: 13 }, { width: 10 }, { width: 12 }, { width: 13 }];
 
       const imageId = wb.addImage({ buffer: logoBuffer, extension: 'png' });
       ws.addImage(imageId, { tl: { col: 0, row: 0 }, ext: { width: 180, height: 50 } });
 
       const headerRow = ws.getRow(FILA_INICIO - 1);
-      headerRow.values = ['REFERENCIA', 'DESCRIPCION', 'PRINCIPIO ACTIVO', 'MARCA', 'SECCION', `PRECIO -${dto}% ($)`, 'STOCK', 'CANTIDAD', 'SUBTOTAL'];
+      headerRow.values = ['REFERENCIA', 'DESCRIPCION', 'PRINCIPIO ACTIVO', 'MARCA', 'SECCION', dto === 0 ? 'PRECIO ($)' : `PRECIO -${dto}% ($)`, 'STOCK', 'CANTIDAD', 'SUBTOTAL'];
       headerRow.font = { bold: true };
 
       productos.forEach((p, i) => {

@@ -135,6 +135,12 @@
               </v-chip>
             </template>
 
+            <template v-slot:item.TOTALUNIDADES="{ item }">
+              <v-chip size="small" color="blue-grey" variant="tonal" class="font-weight-bold">
+                {{ item.TOTALUNIDADES ?? 0 }}
+              </v-chip>
+            </template>
+
             <template v-slot:item.TOTALPRECIO="{ item }">
               <v-chip color="secondary" variant="tonal" class="font-weight-black" style="height: auto; padding: 6px 12px;">
                 <MontoDisplay :usd="item.TOTALPRECIO || 0" :tasa="carritoStore.tasa" align-end />
@@ -311,12 +317,13 @@ const transicionesPermitidas = (estatus: string): string[] => {
 };
 
 const headers = [
-  { title: 'ORDEN',       key: 'ORDERID',      align: 'start'  as const },
-  { title: 'REGISTRO',    key: 'FECHA',         align: 'start'  as const },
-  { title: 'CLIENTE',     key: 'cliente_col',   align: 'start'  as const, sortable: false },
+  { title: 'ORDEN',       key: 'ORDERID',       align: 'start'  as const },
+  { title: 'REGISTRO',    key: 'FECHA',          align: 'start'  as const },
+  { title: 'CLIENTE',     key: 'cliente_col',    align: 'start'  as const, sortable: false },
   { title: 'VENDEDOR',    key: 'vendedor_col',  align: 'start'  as const, sortable: false },
   { title: 'RIESGO',      key: 'RIESGO',        align: 'center' as const, sortable: false },
   { title: 'ESTADO ACTUAL', key: 'ESTATUS',     align: 'center' as const, sortable: false },
+  { title: 'UNIDADES',    key: 'TOTALUNIDADES', align: 'center' as const, sortable: false },
   { title: 'TOTAL',       key: 'TOTALPRECIO',   align: 'end'    as const },
   { title: 'ACCIONES',    key: 'acciones',      align: 'center' as const, sortable: false },
 ];

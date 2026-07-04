@@ -133,6 +133,21 @@ export class SistemaController {
         res.json({ success: true, message: `Tarifa base del catálogo actualizada a ${tarifaBaseCatalogo}` });
     }
 
+    static async getMaxLineas(_req: Request, res: Response): Promise<void> {
+        const cfg = getDbConfigPublica() as any;
+        res.json({ success: true, maxLineasPorPedido: cfg.maxLineasPorPedido ?? 50 });
+    }
+
+    static async guardarMaxLineas(req: Request, res: Response): Promise<void> {
+        const { maxLineasPorPedido } = req.body;
+        if (!Number.isInteger(Number(maxLineasPorPedido)) || Number(maxLineasPorPedido) < 1) {
+            res.status(400).json({ success: false, message: 'maxLineasPorPedido debe ser un entero >= 1' });
+            return;
+        }
+        guardarDbConfig({ maxLineasPorPedido: Number(maxLineasPorPedido) } as any);
+        res.json({ success: true, message: `Máximo de líneas por pedido actualizado a ${maxLineasPorPedido}` });
+    }
+
     static async actualizarApp(_req: Request, res: Response): Promise<void> {
         try {
             const resultado = await ejecutarActualizacion();

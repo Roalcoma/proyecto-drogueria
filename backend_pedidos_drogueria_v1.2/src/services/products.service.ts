@@ -168,7 +168,9 @@ export class ProductsService {
             WHERE TRY_CAST(D1 AS FLOAT) > 0
             ORDER BY D1
         `);
-        return result.recordset.map((r: any) => Number(r.D1));
+        const descuentos = result.recordset.map((r: any) => Number(r.D1));
+        // ponytail: 0 siempre disponible para el segmento sin descuento
+        return [0, ...descuentos];
     }
 
     static async getCatalogoSegmentos(): Promise<any[]> {
