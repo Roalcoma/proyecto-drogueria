@@ -304,6 +304,7 @@ const TRANSICIONES_BASE: Record<string, string[]> = {
   'PENDIENTE':                  ['PENDIENTE POR AUTORIZACION', 'AUTORIZADO', 'CANCELADO'],
   'PENDIENTE POR AUTORIZACION': ['AUTORIZADO', 'CANCELADO'],
   'AUTORIZADO':                 ['EMPACADO', 'CANCELADO'],
+  'OK':                         ['CANCELADO'],
   'EMPACADO':                   ['FINALIZADO'],
 };
 
@@ -330,7 +331,7 @@ const headers = [
 
 const estatusOpciones = [
   'PENDIENTE', 'PENDIENTE POR AUTORIZACION', 'APROBACION PSICOTROPICOS',
-  'AUTORIZADO', 'EMPACADO', 'FINALIZADO', 'CANCELADO',
+  'AUTORIZADO', 'OK', 'EMPACADO', 'FINALIZADO', 'CANCELADO',
 ];
 
 const filtros = ref({ buscarId: '', clienteId: '', codVendedor: '', estatus: null as string | null, riesgo: null as string | null });
@@ -435,6 +436,7 @@ const getColores = (status: string) => {
   if (s.includes('AUTORIZACION'))       return { color: 'orange-darken-3', icon: 'mdi-clock-alert' };
   if (s === 'PENDIENTE')                return { color: 'amber-darken-3',  icon: 'mdi-clock-outline' };
   if (s === 'AUTORIZADO')               return { color: 'blue-darken-2',   icon: 'mdi-check-circle' };
+  if (s === 'OK')                       return { color: 'teal-darken-2',   icon: 'mdi-check-all' };
   if (s === 'EMPACADO')                 return { color: 'purple-darken-1', icon: 'mdi-package-variant-closed' };
   if (s === 'CANCELADO')                return { color: 'red-darken-2',    icon: 'mdi-cancel' };
   if (s === 'FINALIZADO')               return { color: 'green-darken-2',  icon: 'mdi-flag-checkered' };
