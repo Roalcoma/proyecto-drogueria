@@ -70,9 +70,9 @@
                   <div v-if="item.descuentos?.length" class="text-caption text-grey text-decoration-line-through">
                     $ {{ obtenerPrecioBase(item).toFixed(2) }}
                   </div>
-                  <MontoDisplay :usd="precioConIVA(item)" :tasa="carritoStore.tasa" main-class="font-weight-bold text-on-surface" align-end />
+                  <MontoDisplay :usd="calcularPrecioConDescuento(item)" :tasa="carritoStore.tasa" main-class="font-weight-bold text-on-surface" align-end />
                   <div v-if="Number(item.PORCENTAJEIVA) > 0" class="text-caption text-blue-darken-2">
-                    IVA {{ item.PORCENTAJEIVA }}% incl.
+                    + IVA {{ item.PORCENTAJEIVA }}%
                   </div>
                 </td>
 

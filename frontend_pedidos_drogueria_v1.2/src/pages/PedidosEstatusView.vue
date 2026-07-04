@@ -142,28 +142,33 @@
             </template>
 
             <template v-slot:item.acciones="{ item }">
-              <v-btn
-                v-if="puedeEditar"
-                icon="mdi-pencil-outline"
-                variant="text"
-                :disabled="item.ESTATUS !== 'PENDIENTE'"
-                :color="item.ESTATUS === 'PENDIENTE' ? 'blue-grey-darken-2' : 'grey-lighten-2'"
-                @click="irAEdicion(item)"
-              ></v-btn>
-              <v-btn
-                v-if="item.ESTATUS === 'PENDIENTE'"
-                icon="mdi-delete-outline"
-                variant="text"
-                color="error"
-                @click="pedidoAEliminar = item; dialogEliminar = true"
-              ></v-btn>
-              <v-btn
-                icon="mdi-file-pdf-box"
-                variant="text"
-                color="red-darken-2"
-                :loading="pdfCargando === item.ORDERID"
-                @click="imprimirPDF(item)"
-              ></v-btn>
+              <div class="d-flex align-center" style="gap: 2px;">
+                <v-btn
+                  v-if="puedeEditar"
+                  icon="mdi-pencil-outline"
+                  variant="text"
+                  size="small"
+                  :disabled="item.ESTATUS !== 'PENDIENTE'"
+                  :color="item.ESTATUS === 'PENDIENTE' ? 'blue-grey-darken-2' : 'grey-lighten-2'"
+                  @click="irAEdicion(item)"
+                ></v-btn>
+                <v-btn
+                  v-if="item.ESTATUS === 'PENDIENTE'"
+                  icon="mdi-delete-outline"
+                  variant="text"
+                  size="small"
+                  color="error"
+                  @click="pedidoAEliminar = item; dialogEliminar = true"
+                ></v-btn>
+                <v-btn
+                  icon="mdi-file-pdf-box"
+                  variant="text"
+                  size="small"
+                  color="red-darken-2"
+                  :loading="pdfCargando === item.ORDERID"
+                  @click="imprimirPDF(item)"
+                ></v-btn>
+              </div>
             </template>
 
           </v-data-table-server>
