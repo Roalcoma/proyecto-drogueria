@@ -357,23 +357,23 @@ const exportarCatalogoSegmentos = async () => {
     descuentos.forEach(dto => {
       const factor = 1 - dto / 100;
       const ws = wb.addWorksheet(`Dto ${dto}%`);
-      ws.columns = [{ width: 15 }, { width: 50 }, { width: 13 }, { width: 10 }, { width: 12 }, { width: 13 }];
+      ws.columns = [{ width: 15 }, { width: 50 }, { width: 30 }, { width: 20 }, { width: 20 }, { width: 13 }, { width: 10 }, { width: 12 }, { width: 13 }];
 
       const imageId = wb.addImage({ buffer: logoBuffer, extension: 'png' });
       ws.addImage(imageId, { tl: { col: 0, row: 0 }, ext: { width: 180, height: 50 } });
 
       const headerRow = ws.getRow(FILA_INICIO - 1);
-      headerRow.values = ['REFERENCIA', 'DESCRIPCION', `PRECIO -${dto}% ($)`, 'STOCK', 'CANTIDAD', 'SUBTOTAL'];
+      headerRow.values = ['REFERENCIA', 'DESCRIPCION', 'PRINCIPIO ACTIVO', 'MARCA', 'SECCION', `PRECIO -${dto}% ($)`, 'STOCK', 'CANTIDAD', 'SUBTOTAL'];
       headerRow.font = { bold: true };
 
       productos.forEach((p, i) => {
         const rowNum = FILA_INICIO + i;
         const row = ws.getRow(rowNum);
         const precioConDto = Number(p.PRECIO_BASE) * factor;
-        row.values = [p.REFPROVEEDOR, p.DESCRIPCION, precioConDto, p.STOCK_DISP ?? 0, 0];
-        row.getCell(3).numFmt = FORMATO_DOLAR;
-        row.getCell(6).value = { formula: `C${rowNum}*E${rowNum}` };
+        row.values = [p.REFPROVEEDOR, p.DESCRIPCION, p.PRINCIPIOACTIVO ?? '', p.MARCA ?? '', p.SECCION ?? '', precioConDto, p.STOCK_DISP ?? 0, 0];
         row.getCell(6).numFmt = FORMATO_DOLAR;
+        row.getCell(9).value = { formula: `F${rowNum}*H${rowNum}` };
+        row.getCell(9).numFmt = FORMATO_DOLAR;
       });
     });
 
