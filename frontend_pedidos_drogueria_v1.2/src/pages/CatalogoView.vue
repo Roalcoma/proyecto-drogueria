@@ -139,6 +139,7 @@
                   <span class="text-caption text-grey text-decoration-line-through">$ {{ obtenerPrecioDolar(item).toFixed(2) }}</span>
                 </div>
                 <MontoDisplay :usd="calcularPrecioFinalDolar(item)" :tasa="carritoStore.tasa" main-class="text-secondary font-weight-black text-subtitle-1" align-end />
+                <span v-if="Number(item.PORCENTAJEIVA) > 0" class="text-caption text-blue-darken-2">IVA {{ item.PORCENTAJEIVA }}% incl.</span>
               </div>
             </template>
 
@@ -435,9 +436,10 @@ const obtenerPrecioDolar = (item: any): number => (item.prices && item.prices.le
 const tieneDescuentos = (_item: any): boolean => (Number(carritoStore.clienteSeleccionado?.DESCUENTO) || 0) > 0;
 const calcularPrecioFinalDolar = (item: any): number => {
   let p = obtenerPrecioDolar(item);
-  const dc = Number(carritoStore.clienteSeleccionado?.DESCUENTO) || 0;
+  const dc  = Number(carritoStore.clienteSeleccionado?.DESCUENTO) || 0;
   if (dc > 0) p -= (p * (dc / 100));
-  return p;
+  const iva = Number(item.PORCENTAJEIVA ?? 0);
+  return p * (1 + iva / 100);
 };
 const getStockTotal = (p: any) => p.stocks?.reduce((t: number, s: any) => t + s.STOCK, 0) || 0;
 const lanzarAviso = (texto: string, color: string) => aviso.value = { mostrar: true, texto, color };
