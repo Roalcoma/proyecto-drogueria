@@ -190,7 +190,7 @@ export class ProductsService {
                     INNER JOIN PRECIOSVENTA PV WITH(NOLOCK) ON PV.CODARTICULO = A.CODARTICULO
                         AND PV.IDTARIFAV = @TARIFA
                     LEFT JOIN MARCA M WITH(NOLOCK) ON M.CODMARCA = A.CODMARCA
-                    LEFT JOIN SECCIONES S WITH(NOLOCK) ON S.CODSECCION = A.SECCION
+                    LEFT JOIN SECCIONES S WITH(NOLOCK) ON S.NUMSECCION = A.SECCION
                 WHERE A.TIPOARTICULO = 'A'
                     AND A.DESCATALOGADO = 'F'
                     AND ISNULL(A.NODTOAPLICABLE, 0) <> 1
