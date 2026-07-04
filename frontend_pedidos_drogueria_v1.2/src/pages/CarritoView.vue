@@ -76,8 +76,10 @@
                   </div>
                 </td>
 
-                <td class="text-right font-weight-bold text-success">
+                <td class="text-right">
+                  <div class="text-caption text-grey">$ {{ (calcularPrecioConDescuento(item) * item.cantidad).toFixed(2) }}</div>
                   <MontoDisplay :usd="precioConIVA(item) * item.cantidad" :tasa="carritoStore.tasa" main-class="font-weight-bold text-success" align-end />
+                  <div v-if="Number(item.PORCENTAJEIVA) > 0" class="text-caption text-blue-darken-2">c/IVA</div>
                 </td>
 
                 <td class="text-center">
