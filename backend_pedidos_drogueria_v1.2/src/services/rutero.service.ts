@@ -29,7 +29,14 @@ export class RuteroService {
                     CL.NOMBRECLIENTE                                     AS CLIENTE,
                     ISNULL(CL.DOMICILIO1, ISNULL(CL.DOMICILIO, ''))     AS DIRECCION,
                     ISNULL(R.DESCRIPCION, '')                             AS NOMBRE_RUTA,
-                    ISNULL(FVCL.BULTOS, 1)                               AS BULTOS
+                    (
+                        SELECT COUNT(DISTINCT BC.IDBULTO)
+                        FROM BULTOS_CONTEO BC WITH(NOLOCK)
+                        INNER JOIN PEDVENTASCAB PV WITH(NOLOCK) ON PV.SUPEDIDO = BC.IDPEDIDO
+                        INNER JOIN ALBVENTACAB AV WITH(NOLOCK)
+                            ON AV.NUMSERIE = PV.SERIEALBARAN AND AV.NUMALBARAN = PV.NUMEROALBARAN
+                        WHERE AV.NUMSERIEFAC = FV.NUMSERIE AND AV.NUMFAC = FV.NUMFACTURA
+                    )                                                        AS BULTOS
                 FROM FACTURASVENTA FV WITH(NOLOCK)
                 INNER JOIN CLIENTES CL WITH(NOLOCK)
                     ON CL.CODCLIENTE = FV.CODCLIENTE
