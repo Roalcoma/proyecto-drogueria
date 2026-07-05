@@ -26,6 +26,7 @@ export const MODULOS_SISTEMA = [
     { bit: 512,  codigo: 'ECOMMERCE',         nombre: 'Pedidos Ecommerce',           ruta: '/ecommerce',               icono: 'mdi-shopping',              orden: 10 },
     { bit: 1024, codigo: 'AUDITORIA',         nombre: 'Auditoría',                   ruta: '/auditoria',               icono: 'mdi-clipboard-text-clock',  orden: 11 },
     { bit: 2048, codigo: 'AUTORIZADOR',       nombre: 'Puede autorizar pedidos',     ruta: '',                         icono: 'mdi-check-decagram',        orden: 12 },
+    { bit: 4096, codigo: 'RUTERO',            nombre: 'Rutero de Entrega',           ruta: '/rutero',                  icono: 'mdi-truck-delivery',        orden: 13 },
 ];
 
 export interface ModuloPermiso {

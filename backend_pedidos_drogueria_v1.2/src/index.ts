@@ -7,6 +7,7 @@ import clientesRouter from "./routers/clientes.router";
 import authRouter     from "./routers/auth.router";
 import promocionesRouter from "./routers/promociones.router";
 import reclamosRouter from "./routers/reclamos.router";
+import ruteroRouter   from "./routers/rutero.router";
 import sistemaRouter    from "./routers/sistema.router";
 import ecommerceRouter  from "./routers/ecommerce.router";
 import { ExchangeService }    from "./services/exchange.service";
@@ -50,6 +51,7 @@ app.use('/clientes', clientesRouter);
 app.use('/auth',     authRouter);
 app.use('/promociones', promocionesRouter);
 app.use('/reclamos',   reclamosRouter);
+app.use('/rutero',     ruteroRouter);
 app.use('/sistema',    sistemaRouter);
 app.use('/ecommerce',  ecommerceRouter);
 
