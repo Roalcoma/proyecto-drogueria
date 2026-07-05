@@ -26,7 +26,8 @@ export class RuteroService {
                     CL.NOMBRECLIENTE                                     AS CLIENTE,
                     ISNULL(CL.DOMICILIO1, ISNULL(CL.DOMICILIO, ''))     AS DIRECCION,
                     ISNULL(CLC.ZONA, '')                                 AS ZONA,
-                    ISNULL(FVCL.BULTOS, 1)                               AS BULTOS
+                    ISNULL(FVCL.BULTOS, 1)                               AS BULTOS,
+                    ISNULL(R.RUTA, ISNULL(R.NOMBRE, ''))                 AS NOMBRE_RUTA
                 FROM FACTURASVENTA FV WITH(NOLOCK)
                 INNER JOIN FACTURASVENTACAMPOSLIBRES FVCL WITH(NOLOCK)
                     ON FVCL.NUMSERIE = FV.NUMSERIE AND FVCL.NUMFACTURA = FV.NUMFACTURA AND FVCL.N = FV.N
@@ -34,6 +35,8 @@ export class RuteroService {
                     ON CL.CODCLIENTE = FV.CODCLIENTE
                 INNER JOIN CLIENTESCAMPOSLIBRES CLC WITH(NOLOCK)
                     ON CLC.CODCLIENTE = CL.CODCLIENTE
+                LEFT JOIN RUTAS R WITH(NOLOCK)
+                    ON R.CODRUTA = CL.CODRUTA
                 WHERE FVCL.FECHARECIBIDO IS NULL
                   AND CLC.ZONA LIKE @ZONA
                 ORDER BY CL.NOMBRECLIENTE, FV.NUMSERIE, FV.NUMFACTURA
