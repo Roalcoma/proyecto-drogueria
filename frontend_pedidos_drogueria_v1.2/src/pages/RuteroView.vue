@@ -115,6 +115,7 @@ const headersOficina = [
   { title: 'Factura',    key: 'FACTURA_VISUAL', sortable: false },
   { title: 'Cliente',    key: 'CLIENTE' },
   { title: 'Dirección',  key: 'DIRECCION', sortable: false },
+  { title: 'Ruta',       key: 'NOMBRE_RUTA' },
   { title: 'Zona',       key: 'ZONA' },
   { title: 'Bultos',     key: 'BULTOS', align: 'center' as const },
   { title: 'Total',      key: 'TOTAL', align: 'end' as const },
@@ -210,10 +211,12 @@ const generarPDF = () => {
   for (const key of Object.keys(grouped)) {
     const grupo = grouped[key];
     const [cliente, direccion] = key.split('||');
+    const ruta = grupo[0]?.NOMBRE_RUTA || '';
     const factsList = grupo.map(f => f.FACTURA_VISUAL).join('\n');
     const bultos = grupo.reduce((s, f) => s + Number(f.BULTOS || 1), 0);
     totalBultos += bultos;
-    rows.push([`${cliente}\n${direccion}`, factsList, String(bultos), '']);
+    const clienteTexto = ruta ? `${cliente}\n${direccion}\nRuta: ${ruta}` : `${cliente}\n${direccion}`;
+    rows.push([clienteTexto, factsList, String(bultos), '']);
   }
 
   rows.push([{ content: 'TOTALES', styles: { fontStyle: 'bold' } }, '', { content: String(totalBultos), styles: { fontStyle: 'bold' } }, '']);

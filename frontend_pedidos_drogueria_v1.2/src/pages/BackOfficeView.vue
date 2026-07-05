@@ -532,6 +532,7 @@ const MODULOS = [
   { bit: 512,  codigo: 'ECOMMERCE',   nombre: 'Pedidos Ecommerce',        icono: 'mdi-shopping'             },
   { bit: 1024, codigo: 'AUDITORIA',   nombre: 'Auditoría',                icono: 'mdi-clipboard-text-clock' },
   { bit: 2048, codigo: 'AUTORIZADOR', nombre: 'Puede autorizar pedidos',  icono: 'mdi-check-decagram'       },
+  { bit: 4096, codigo: 'RUTERO',     nombre: 'Rutero de Entrega',        icono: 'mdi-truck-delivery'       },
 ];
 
 const headers = [
