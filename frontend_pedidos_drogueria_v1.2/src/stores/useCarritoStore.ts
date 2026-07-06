@@ -70,8 +70,10 @@ export const useCarritoStore = defineStore('carrito', () => {
     const agregarArticulo = (producto: Producto, cantidad: number = 1) => {
         const existe = articulos.value.find(p => p.CODARTICULO === producto.CODARTICULO);
 
+        const stockMax = (producto as any).stocks?.reduce((t: number, s: any) => t + s.STOCK, 0) || 0;
         if (existe) {
-            existe.cantidad += cantidad;
+            const nueva = existe.cantidad + cantidad;
+            existe.cantidad = stockMax > 0 ? Math.min(nueva, stockMax) : nueva;
         } else {
             articulos.value.push({
                 ...producto,

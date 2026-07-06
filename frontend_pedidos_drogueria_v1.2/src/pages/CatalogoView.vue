@@ -548,7 +548,17 @@ const ejecutarBusquedaProductos = async () => {
   } catch (e) { console.error(e); } finally { cargandoProductos.value = false; }
 };
 const prepararAgregar = (p: any) => { modalCantidad.value = { mostrar: true, producto: p, cantidad: 1, stockMaximo: getStockTotal(p) }; };
-const confirmarAgregar = () => { carritoStore.agregarArticulo(modalCantidad.value.producto, modalCantidad.value.cantidad); modalCantidad.value.mostrar = false; lanzarAviso("Agregado al carrito", "success"); };
+const confirmarAgregar = () => {
+  const { producto, cantidad, stockMaximo } = modalCantidad.value;
+  if (cantidad < 1) return;
+  if (stockMaximo > 0 && cantidad > stockMaximo) {
+    lanzarAviso(`Stock insuficiente. Solo hay ${stockMaximo} unidades disponibles.`, 'error');
+    return;
+  }
+  carritoStore.agregarArticulo(producto, cantidad);
+  modalCantidad.value.mostrar = false;
+  lanzarAviso('Agregado al carrito', 'success');
+};
 </script>
 
 <style scoped>
