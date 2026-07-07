@@ -170,9 +170,16 @@ export class EcommerceService {
                         `);
                 }
 
+                // Auto-aprobar: insertar directamente en CABECERA_PED
+                const aprob = await this.aprobarPedido(idPedido);
+                if (aprob.success) {
+                    console.log(`[Ecommerce] Pedido ${aprob.orderId} creado en Control de Estatus`);
+                } else {
+                    console.warn(`[Ecommerce] ${archivo}: no se pudo aprobar — ${aprob.message}`);
+                }
+
                 fs.renameSync(rutaArchivo, rutaArchivo + '.done');
                 importados++;
-                console.log(`[Ecommerce] Importado: ${archivo}`);
             } catch (e) {
                 console.error(`[Ecommerce] Error al importar ${archivo}:`, e);
                 errores++;

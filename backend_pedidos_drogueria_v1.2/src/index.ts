@@ -68,5 +68,5 @@ app.listen(port, async () => {
     await EcommerceService.initTablas();
     await RuteroService.initTablas();
     // Cron: escanear carpeta ecommerce cada 60 segundos
-    setInterval(() => EcommerceService.escanearCarpeta().catch(console.error), 60_000);
+    setInterval(() => EcommerceService.escanearCarpeta().catch(console.error), 30_000);
 });

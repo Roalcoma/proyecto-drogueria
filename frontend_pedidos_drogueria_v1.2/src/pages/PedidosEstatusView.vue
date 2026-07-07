@@ -105,6 +105,10 @@
             <template v-slot:item.ORDERID="{ item }">
               <div class="d-flex align-center" style="gap:4px">
                 <span class="font-weight-black text-primary">#{{ item.ORDERID }}</span>
+                <v-chip v-if="item.ORDERID?.startsWith('EC-')" size="x-small" color="teal-darken-1"
+                  variant="flat" prepend-icon="mdi-shopping" class="font-weight-bold">
+                  EC
+                </v-chip>
                 <v-tooltip v-if="item.OBSERVACIONES" location="top">
                   <template #activator="{ props }">
                     <v-chip v-bind="props" size="x-small" color="purple-darken-2" variant="flat"
