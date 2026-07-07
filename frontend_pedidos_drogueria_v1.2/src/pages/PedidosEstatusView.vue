@@ -668,6 +668,7 @@ const imprimirPDF = async (item: any) => {
       numeroOrden: item.ORDERID,
       fecha: item.FECHA,
       estatus: item.ESTATUS,
+      esPsicotropico: String(item.ORDERID ?? '').endsWith('P'),
       cliente: {
         codcliente: item.CLIENTEID,
         nombrecliente: cliente?.NOMBRECLIENTE || `Cliente ${item.CLIENTEID}`,
