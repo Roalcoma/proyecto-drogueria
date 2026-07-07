@@ -10,6 +10,7 @@ import reclamosRouter from "./routers/reclamos.router";
 import ruteroRouter   from "./routers/rutero.router";
 import sistemaRouter    from "./routers/sistema.router";
 import ecommerceRouter  from "./routers/ecommerce.router";
+import facturasRouter   from "./routers/facturas.router";
 import { ExchangeService }    from "./services/exchange.service";
 import { AuthService }        from "./services/auth.service";
 import { PromocionesService } from "./services/promociones.service";
@@ -55,6 +56,7 @@ app.use('/reclamos',   reclamosRouter);
 app.use('/rutero',     ruteroRouter);
 app.use('/sistema',    sistemaRouter);
 app.use('/ecommerce',  ecommerceRouter);
+app.use('/facturas',   facturasRouter);
 
 app.listen(port, async () => {
     console.log(`Servidor en http://localhost:${port}`);
