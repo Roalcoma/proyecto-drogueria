@@ -2,7 +2,6 @@ import fs from 'fs';
 import path from 'path';
 import { mssql, connectDb } from '../db/db.conection';
 import { PromocionesService } from './promociones.service';
-import { ExchangeService }    from './exchange.service';
 import { getDbConfig }        from './dbconfig.service';
 
 const VED     = Number(process.env.VED) || 1;
@@ -290,31 +289,36 @@ export class EcommerceService {
         const barcodes = [...new Set(lineas.map((l: any) => String(l.COD_ARTICULO).trim()).filter(Boolean))];
         const barcodeToArt = new Map<string, {
             codarticulo: number; nodto: boolean; ref: string;
-            seccion: number; diasProteccion: number;
+            seccion: number; diasProteccion: number; precioUnitario: number;
         }>();
         if (barcodes.length > 0) {
             const artReq = pool.request();
+            artReq.input('TARIFA', mssql.Int, getDbConfig().tarifaBaseCatalogo);
             const artPH  = barcodes.map((b, i) => { artReq.input(`b${i}`, mssql.NVarChar(50), b); return `@b${i}`; }).join(',');
             const artRes = await artReq.query(`
                 SELECT AL.CODBARRAS AS LOOKUP_KEY, A.CODARTICULO,
                        ISNULL(A.NODTOAPLICABLE, 0)   AS NODTOAPLICABLE,
                        ISNULL(A.REFPROVEEDOR,'')      AS REFPROVEEDOR,
                        ISNULL(A.SECCION, 0)           AS SECCION,
-                       ISNULL(PCL.DIASPROTECCION, 0)  AS DIASPROTECCION
+                       ISNULL(PCL.DIASPROTECCION, 0)  AS DIASPROTECCION,
+                       ISNULL(PV.PNETO, 0)            AS PNETO
                 FROM ARTICULOSLIN AL
                 JOIN ARTICULOS A ON A.CODARTICULO = AL.CODARTICULO
                 LEFT JOIN ARTICULOSCAMPOSLIBRES ACL ON ACL.CODARTICULO = A.CODARTICULO
                 LEFT JOIN PROVEEDORESCAMPOSLIBRES PCL ON PCL.CODPROVEEDOR = ACL.CODPROVEEDORICG
+                LEFT JOIN PRECIOSVENTA PV ON PV.CODARTICULO = A.CODARTICULO AND PV.IDTARIFAV = @TARIFA
                 WHERE AL.CODBARRAS IN (${artPH})
                 UNION
                 SELECT CAST(A.CODARTICULO AS NVARCHAR(50)) AS LOOKUP_KEY, A.CODARTICULO,
                        ISNULL(A.NODTOAPLICABLE, 0)   AS NODTOAPLICABLE,
                        ISNULL(A.REFPROVEEDOR,'')      AS REFPROVEEDOR,
                        ISNULL(A.SECCION, 0)           AS SECCION,
-                       ISNULL(PCL.DIASPROTECCION, 0)  AS DIASPROTECCION
+                       ISNULL(PCL.DIASPROTECCION, 0)  AS DIASPROTECCION,
+                       ISNULL(PV.PNETO, 0)            AS PNETO
                 FROM ARTICULOS A
                 LEFT JOIN ARTICULOSCAMPOSLIBRES ACL ON ACL.CODARTICULO = A.CODARTICULO
                 LEFT JOIN PROVEEDORESCAMPOSLIBRES PCL ON PCL.CODPROVEEDOR = ACL.CODPROVEEDORICG
+                LEFT JOIN PRECIOSVENTA PV ON PV.CODARTICULO = A.CODARTICULO AND PV.IDTARIFAV = @TARIFA
                 WHERE CAST(A.CODARTICULO AS NVARCHAR(50)) IN (${artPH})
             `);
             artRes.recordset.forEach((r: any) => {
@@ -324,6 +328,7 @@ export class EcommerceService {
                     ref:            r.REFPROVEEDOR,
                     seccion:        Number(r.SECCION),
                     diasProteccion: Number(r.DIASPROTECCION),
+                    precioUnitario: Number(r.PNETO),
                 });
             });
         }
@@ -331,10 +336,6 @@ export class EcommerceService {
         const noResueltos = barcodes.filter(b => !barcodeToArt.has(b));
         if (noResueltos.length > 0)
             console.warn(`[Ecommerce] Barcodes no encontrados en ARTICULOS: ${noResueltos.join(', ')}`);
-
-        // 5b. Tasa de cambio
-        let tasa = 1;
-        try { tasa = await ExchangeService.getCotizacion(); } catch { /* usa 1 si falla */ }
 
         // 6. Descuentos promocionales
         const promoDescMap = new Map<number, number>();
@@ -353,7 +354,10 @@ export class EcommerceService {
                 if (!matchLineas.length) continue;
                 const base = p.base === 'UNIDADES'
                     ? matchLineas.reduce((s: number, l: any) => s + Number(l.CANTIDAD), 0)
-                    : matchLineas.reduce((s: number, l: any) => s + (Number(l.PRECIO_UNITARIO) / tasa) * Number(l.CANTIDAD), 0);
+                    : matchLineas.reduce((s: number, l: any) => {
+                        const art = barcodeToArt.get(String(l.COD_ARTICULO).trim())!;
+                        return s + art.precioUnitario * Number(l.CANTIDAD);
+                    }, 0);
                 const escala = (p.escalas as any[]).find(e => base >= e.minimo && (e.maximo == null || base <= e.maximo));
                 if (!escala) continue;
                 for (const l of matchLineas) {
@@ -409,7 +413,7 @@ export class EcommerceService {
 
             let total = 0;
             for (const { linea: l, art } of items) {
-                const precioUsdBruto = Number(l.PRECIO_UNITARIO) / tasa;
+                const precioUsdBruto = art.precioUnitario;
                 const cantidad       = Number(l.CANTIDAD);
                 const desc1 = art.nodto ? 0 : descuentoGlobal;
                 const desc2 = art.nodto ? 0 : (promoDescMap.get(art.codarticulo) ?? 0);
