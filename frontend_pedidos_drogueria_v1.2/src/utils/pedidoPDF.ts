@@ -144,7 +144,7 @@ export async function generarPedidoPDF(data: PedidoPDFData): Promise<void> {
             const pct = l.porcentajeIva ?? 0;
             const ivaTag = (!sinPrecios && pct > 0) ? `+${pct}%` : '';
             const row: any[] = [l.codigo, (l.descripcion || '') + (l.esControlado ? ' (CONTROLADO)' : ''),
-                l.cantidad, (l.diasProteccion ?? 0) > 0 ? `${l.diasProteccion}d NI` : '', '', '', '', descPct];
+                l.cantidad, '', '', '', descPct];
             if (!sinPrecios) { row.push(ivaTag); row.push(l.precioUnitario.toFixed(2)); row.push((l.precioUnitario * l.cantidad).toFixed(2)); }
             return row;
         });
@@ -155,8 +155,8 @@ export async function generarPedidoPDF(data: PedidoPDFData): Promise<void> {
             : ['Código', 'Descripción', 'Cant.', 'ESC PRD', 'ESC PRD', 'ESC PRV', 'DESC.', 'IVA', 'Precio', 'Importe'];
     } else {
         headCols = sinPrecios
-            ? ['Código', 'Descripción', 'Cant.', 'Seg.', 'ESC PRD', 'ESC PRD', 'ESC PRV', 'DESC.']
-            : ['Código', 'Descripción', 'Cant.', 'Seg.', 'ESC PRD', 'ESC PRD', 'ESC PRV', 'DESC.', 'IVA', 'Precio', 'Importe'];
+            ? ['Código', 'Descripción', 'Cant.', 'ESC PRD', 'ESC PRD', 'ESC PRV', 'DESC.']
+            : ['Código', 'Descripción', 'Cant.', 'ESC PRD', 'ESC PRD', 'ESC PRV', 'DESC.', 'IVA', 'Precio', 'Importe'];
     }
 
     autoTable(doc, {
@@ -181,9 +181,9 @@ export async function generarPedidoPDF(data: PedidoPDFData): Promise<void> {
             0: { cellWidth: 18 },
             1: { cellWidth: sinPrecios ? 80 : 48 },
             ...(sinPrecios ? {} : {
-                8:  { cellWidth: 10, halign: 'center' as const },
+                7:  { cellWidth: 10, halign: 'center' as const },
+                8:  { halign: 'right' as const },
                 9:  { halign: 'right' as const },
-                10: { halign: 'right' as const },
             }),
         },
     });
