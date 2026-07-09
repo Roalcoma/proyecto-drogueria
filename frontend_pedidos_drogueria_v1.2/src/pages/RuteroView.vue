@@ -126,6 +126,24 @@
 
         <!-- TAB RUTEROS ACTIVOS -->
         <v-tabs-window-item value="ruteros">
+          <div class="pa-3 d-flex flex-wrap gap-3 align-center border-b">
+            <v-text-field
+              v-model="filtroRuteros.numero"
+              label="N° Rutero"
+              prepend-inner-icon="mdi-clipboard-list"
+              variant="outlined" density="compact" hide-details clearable
+              style="min-width:160px;max-width:200px"
+            />
+            <v-text-field
+              v-model="filtroRuteros.factura"
+              label="N° Factura"
+              prepend-inner-icon="mdi-file-document"
+              variant="outlined" density="compact" hide-details clearable
+              style="min-width:160px;max-width:200px"
+            />
+            <v-btn color="primary" variant="tonal" prepend-icon="mdi-magnify" @click="cargarRuteros">Buscar</v-btn>
+            <v-btn variant="text" color="grey" prepend-icon="mdi-close" @click="limpiarFiltrosRuteros">Limpiar</v-btn>
+          </div>
           <div class="pa-4">
             <div v-if="cargandoRuteros" class="text-center pa-8">
               <v-progress-circular indeterminate color="primary" />
@@ -246,6 +264,8 @@ const cargandoRuteros   = ref(false);
 const facturasRutero    = reactive<Record<number, any[]>>({});
 const confirmandoRutero = ref<number | null>(null);
 const confirmandoFactura = ref<string | null>(null);
+const filtroRuteros     = ref({ numero: '', factura: '' });
+const limpiarFiltrosRuteros = () => { filtroRuteros.value = { numero: '', factura: '' }; cargarRuteros(); };
 
 const todasSeleccionadas = computed(() =>
   facturas.value.length > 0 && facturas.value.every(f => seleccionadas.value.has(clave(f)))
@@ -344,7 +364,10 @@ const cargarRuteros = async () => {
   cargandoRuteros.value = true;
   try {
     const codruta = zonaSeleccionada.value?.zona ? parseInt(zonaSeleccionada.value.zona) : undefined;
-    const params = codruta ? { codruta } : {};
+    const params: any = {};
+    if (codruta)                        params.codruta       = codruta;
+    if (filtroRuteros.value.numero)     params.buscarNumero  = filtroRuteros.value.numero;
+    if (filtroRuteros.value.factura)    params.buscarFactura = filtroRuteros.value.factura;
     const res = await axios.get(`${API}/rutero/ruteros`, { params });
     ruteros.value = res.data.data ?? [];
   } catch (e: any) {

@@ -37,9 +37,11 @@ export class RuteroController {
     }
 
     static async getRuteros(req: Request, res: Response): Promise<void> {
-        const codruta = req.query.codruta ? Number(req.query.codruta) : undefined;
+        const codruta       = req.query.codruta       ? Number(req.query.codruta)            : undefined;
+        const buscarNumero  = req.query.buscarNumero  ? String(req.query.buscarNumero).trim() : undefined;
+        const buscarFactura = req.query.buscarFactura ? String(req.query.buscarFactura).trim(): undefined;
         try {
-            const data = await RuteroService.getRuteros(codruta);
+            const data = await RuteroService.getRuteros(codruta, buscarNumero, buscarFactura);
             res.json({ success: true, data });
         } catch (error) {
             res.status(500).json({ success: false, message: 'Error al obtener ruteros', error: error instanceof Error ? error.message : String(error) });

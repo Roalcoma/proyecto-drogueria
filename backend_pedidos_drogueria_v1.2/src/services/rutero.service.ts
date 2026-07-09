@@ -116,15 +116,17 @@ export class RuteroService {
                 FROM FACTURASVENTA FV WITH(NOLOCK)
                 INNER JOIN CLIENTES CL WITH(NOLOCK)
                     ON CL.CODCLIENTE = FV.CODCLIENTE
-                INNER JOIN CLIENTESCAMPOSLIBRES CLC WITH(NOLOCK)
-                    ON CLC.CODCLIENTE = CL.CODCLIENTE
+                OUTER APPLY (
+                    SELECT TOP 1 ZONA FROM CLIENTESCAMPOSLIBRES WITH(NOLOCK)
+                    WHERE CODCLIENTE = CL.CODCLIENTE
+                ) CLC
                 LEFT JOIN FACTURASVENTACAMPOSLIBRES FVCL WITH(NOLOCK)
                     ON FVCL.NUMSERIE   COLLATE DATABASE_DEFAULT = FV.NUMSERIE COLLATE DATABASE_DEFAULT
                    AND FVCL.NUMFACTURA = FV.NUMFACTURA
                 LEFT JOIN RUTAS R WITH(NOLOCK)
                     ON R.CODRUTA = TRY_CAST(CLC.ZONA AS INT)
                 WHERE TRY_CAST(CLC.ZONA AS INT) = @CODRUTA
-                  AND ISNULL(FVCL.FECHARECIBIDO, '') = ''
+                  AND FVCL.FECHARECIBIDO IS NULL
                 ORDER BY CL.NOMBRECLIENTE, FV.NUMSERIE, FV.NUMFACTURA
             `);
 
@@ -174,13 +176,26 @@ export class RuteroService {
         return { id, numero };
     }
 
-    static async getRuteros(codruta?: number): Promise<any[]> {
+    static async getRuteros(codruta?: number, buscarNumero?: string, buscarFactura?: string): Promise<any[]> {
         const pool = await connectRuteroDB();
         const req  = pool.request();
         let where  = `WHERE AR.ESTADO = 'PENDIENTE'`;
         if (codruta) {
             req.input('CODRUTA', mssql.Int, codruta);
             where += ' AND AR.CODRUTA = @CODRUTA';
+        }
+        if (buscarNumero) {
+            req.input('BUSCAR_NUM', mssql.NVarChar(100), `%${buscarNumero}%`);
+            where += ' AND AR.NUMERO LIKE @BUSCAR_NUM';
+        }
+        if (buscarFactura) {
+            req.input('BUSCAR_FAC', mssql.NVarChar(100), `%${buscarFactura}%`);
+            where += ` AND EXISTS (
+                SELECT 1 FROM APP_RUTEROS_DETALLE ARD2
+                WHERE ARD2.IDRUTERO = AR.ID
+                  AND (CAST(ARD2.NUMFACTURA AS NVARCHAR(20)) LIKE @BUSCAR_FAC
+                    OR ARD2.NUMSERIE LIKE @BUSCAR_FAC)
+            )`;
         }
         const result = await req.query(`
             SELECT
