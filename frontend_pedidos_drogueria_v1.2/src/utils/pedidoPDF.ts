@@ -121,7 +121,7 @@ export async function generarPedidoPDF(data: PedidoPDFData): Promise<void> {
     doc.text(
         maxDiasProteccion > 0
             ? (isPsico ? 'Monto Factura' : `Monto Factura — NO INDEXADO (Protección proveedor: ${maxDiasProteccion} días)`)
-            : (isPsico ? 'Indexado' : 'Monto Factura — Indexado'),
+            : 'Indexada',
         30, datosFin - 1
     );
 
