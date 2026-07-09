@@ -270,50 +270,116 @@
         <!-- TAB MI PICKING -->
         <v-tabs-window-item value="picking">
           <div class="pa-4">
-            <div v-if="cargandoSesion" class="text-center pa-8">
-              <v-progress-circular indeterminate color="deep-purple" />
-            </div>
-            <div v-else-if="!sesionPicking.length" class="text-center pa-8 text-grey-darken-1">
+
+            <!-- Sin sesión activa -->
+            <div v-if="!cargandoSesion && !sesionPicking.length" class="text-center pa-8 text-grey-darken-1">
               <v-icon size="48" class="mb-2">mdi-barcode-scan</v-icon>
               <div>No tienes ruteros en tu sesión de picking.</div>
               <div class="text-caption mt-1">Ve a "Ruteros Activos" y haz clic en "Agregar al picking".</div>
             </div>
-            <v-row v-else>
-              <v-col v-for="r in sesionPicking" :key="r.ID" cols="12" sm="6" md="4">
-                <v-card rounded="xl" elevation="2" class="pa-4">
-                  <div class="d-flex align-center gap-2 mb-2">
-                    <v-chip color="deep-purple" size="small" variant="tonal" class="font-weight-bold">{{ r.NUMERO }}</v-chip>
-                    <span class="text-body-2 font-weight-medium">{{ r.CODRUTA }} - {{ r.NOMBRE_RUTA }}</span>
-                  </div>
-                  <div class="text-caption text-grey-darken-1 mb-3">{{ r.FECHA }}</div>
 
-                  <!-- Progreso de cajas -->
-                  <div class="d-flex align-center gap-2 mb-3">
-                    <v-icon size="16" color="deep-purple">mdi-package-variant</v-icon>
-                    <span class="text-caption">Cajas: {{ r.CAJAS_ESCANEADAS }} escaneadas</span>
-                  </div>
+            <template v-else>
+              <!-- Input de escaneo global -->
+              <v-card rounded="xl" elevation="2" class="mb-4 pa-4">
+                <div class="d-flex align-center gap-3 mb-3">
+                  <v-icon color="deep-purple" size="22">mdi-barcode-scan</v-icon>
+                  <span class="text-subtitle-2 font-weight-bold">Escanear caja</span>
+                  <v-spacer />
+                  <span class="text-caption text-grey-darken-1">
+                    {{ registroPicking.length }} escaneos en esta sesión
+                  </span>
+                </div>
+                <v-text-field
+                  ref="barcodeGlobalRef"
+                  v-model="pickingBarcodeGlobal"
+                  placeholder="Escanea el código de la caja..."
+                  prepend-inner-icon="mdi-barcode"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                  :loading="escaneandoGlobal"
+                  :disabled="escaneandoGlobal"
+                  autofocus
+                  clearable
+                  @keyup.enter="escanearCajaGlobal"
+                />
 
-                  <!-- Facturas entregadas -->
-                  <div class="d-flex align-center gap-2 mb-4">
-                    <v-icon size="16" color="primary">mdi-file-document</v-icon>
-                    <span class="text-caption">Facturas: {{ r.ENTREGADAS }}/{{ r.TOTAL_FACTURAS }} entregadas</span>
+                <!-- Último resultado del escaneo -->
+                <v-expand-transition>
+                  <div v-if="ultimoResultadoGlobal" class="mt-3">
+                    <v-alert
+                      :type="ultimoResultadoGlobal.tipo"
+                      variant="tonal"
+                      density="compact"
+                      :title="ultimoResultadoGlobal.titulo"
+                    >
+                      <template v-if="ultimoResultadoGlobal.detalle">
+                        <div class="text-caption mt-1">{{ ultimoResultadoGlobal.detalle }}</div>
+                      </template>
+                    </v-alert>
                   </div>
+                </v-expand-transition>
+              </v-card>
 
-                  <div class="d-flex gap-2">
-                    <v-btn
-                      color="deep-purple" variant="tonal" size="small" flex="1"
-                      prepend-icon="mdi-barcode-scan"
-                      @click="abrirPicking(r)"
-                    >Escanear</v-btn>
-                    <v-btn
-                      color="error" variant="text" size="small" icon="mdi-close-circle-outline"
-                      :loading="liberandoPicking === r.ID"
-                      @click="liberarDeSesion(r)"
-                    />
+              <!-- Ruteros en sesión (chips de progreso) -->
+              <div class="d-flex flex-wrap gap-3 mb-4">
+                <v-card
+                  v-for="r in sesionPicking"
+                  :key="r.ID"
+                  rounded="xl" variant="tonal" color="deep-purple"
+                  class="pa-3 d-flex align-center gap-3"
+                  style="min-width:220px"
+                >
+                  <div class="flex-grow-1">
+                    <div class="d-flex align-center gap-2 mb-1">
+                      <v-chip size="x-small" color="deep-purple" variant="elevated" class="font-weight-bold">{{ r.NUMERO }}</v-chip>
+                      <span class="text-caption font-weight-medium">{{ r.NOMBRE_RUTA }}</span>
+                    </div>
+                    <div class="text-caption text-grey-darken-2">
+                      {{ r.CAJAS_ESCANEADAS }} cajas · {{ r.ENTREGADAS }}/{{ r.TOTAL_FACTURAS }} facturas
+                    </div>
                   </div>
+                  <v-btn
+                    icon="mdi-close" size="x-small" variant="text" color="error"
+                    :loading="liberandoPicking === r.ID"
+                    @click="liberarDeSesion(r)"
+                  />
                 </v-card>
-              </v-col>
-            </v-row>
+              </div>
+
+              <!-- Log de escaneos -->
+              <v-card rounded="xl" elevation="1">
+                <v-card-title class="d-flex align-center pa-3 pb-0">
+                  <v-icon start size="18" color="deep-purple">mdi-history</v-icon>
+                  <span class="text-subtitle-2">Registro de escaneos</span>
+                  <v-spacer />
+                  <v-btn size="x-small" variant="text" prepend-icon="mdi-refresh" @click="cargarRegistroPicking">
+                    Actualizar
+                  </v-btn>
+                </v-card-title>
+                <v-data-table
+                  :headers="headersRegistro"
+                  :items="registroPicking"
+                  density="compact"
+                  :loading="cargandoRegistro"
+                  :items-per-page="20"
+                  no-data-text="Aún no hay escaneos en esta sesión"
+                >
+                  <template #item.caja="{ item }">
+                    <span class="font-weight-bold">{{ item.POSICION }}/{{ item.NCAJAS }}</span>
+                  </template>
+                  <template #item.factura="{ item }">
+                    {{ item.NUMSERIE }}-{{ item.NUMFACTURA }}
+                  </template>
+                  <template #item.rutero="{ item }">
+                    <v-chip size="x-small" color="deep-purple" variant="tonal">{{ item.RUTERO_NUMERO }}</v-chip>
+                  </template>
+                  <template #item.FECHAESCAN="{ item }">
+                    <span class="text-caption text-grey-darken-1">{{ item.FECHAESCAN }}</span>
+                  </template>
+                </v-data-table>
+              </v-card>
+            </template>
           </div>
         </v-tabs-window-item>
 
@@ -448,12 +514,17 @@ const liberandoPicking = ref<number | null>(null);
 const cargarSesionPicking = async () => {
   cargandoSesion.value = true;
   try {
-    const res = await axios.get(`${API}/rutero/ruteros/picking/sesion`);
-    sesionPicking.value = res.data.data ?? [];
+    const [sesRes] = await Promise.all([
+      axios.get(`${API}/rutero/ruteros/picking/sesion`),
+      cargarRegistroPicking(),
+    ]);
+    sesionPicking.value = sesRes.data.data ?? [];
   } catch (e: any) {
     notify(e.response?.data?.message || 'Error al cargar sesión', 'error');
   } finally {
     cargandoSesion.value = false;
+    await nextTick();
+    barcodeGlobalRef.value?.focus();
   }
 };
 
@@ -490,7 +561,75 @@ const liberarDeSesion = async (r: any) => {
   }
 };
 
-// Picking (dialog de escaneo)
+// Picking generalizado (escaneo global de sesión)
+const pickingBarcodeGlobal  = ref('');
+const escaneandoGlobal      = ref(false);
+const barcodeGlobalRef      = ref<any>(null);
+const registroPicking       = ref<any[]>([]);
+const cargandoRegistro      = ref(false);
+const ultimoResultadoGlobal = ref<{ tipo: 'success' | 'warning' | 'error'; titulo: string; detalle?: string } | null>(null);
+
+const headersRegistro = [
+  { title: 'Caja',    key: 'caja',      sortable: false, width: '80px' },
+  { title: 'Factura', key: 'factura',   sortable: false },
+  { title: 'Cliente', key: 'CLIENTE',   sortable: false },
+  { title: 'Rutero',  key: 'rutero',    sortable: false },
+  { title: 'Hora',    key: 'FECHAESCAN', sortable: false },
+];
+
+const cargarRegistroPicking = async () => {
+  cargandoRegistro.value = true;
+  try {
+    const res = await axios.get(`${API}/rutero/ruteros/picking/registro`);
+    registroPicking.value = res.data.data ?? [];
+  } catch { /* silencioso */ } finally {
+    cargandoRegistro.value = false;
+  }
+};
+
+const escanearCajaGlobal = async () => {
+  const barcode = pickingBarcodeGlobal.value.trim();
+  if (!barcode || escaneandoGlobal.value) return;
+  escaneandoGlobal.value      = true;
+  ultimoResultadoGlobal.value = null;
+  try {
+    const res = await axios.post(`${API}/rutero/ruteros/picking/escanear`, { barcode });
+    if (res.data.success) {
+      ultimoResultadoGlobal.value = {
+        tipo:   'success',
+        titulo: `Caja ${res.data.posicion}/${res.data.ncajas} — ${res.data.factura}`,
+        detalle: `${res.data.cliente}  ·  Rutero ${res.data.ruteroNumero}  ·  ${res.data.ruteroRuta}`,
+      };
+      // Prepend al log local para feedback inmediato
+      registroPicking.value.unshift({
+        POSICION: res.data.posicion, NCAJAS: res.data.ncajas,
+        NUMSERIE: res.data.factura?.split('-')[0], NUMFACTURA: res.data.factura?.split('-')[1],
+        CLIENTE: res.data.cliente, RUTERO_NUMERO: res.data.ruteroNumero,
+        FECHAESCAN: new Date().toLocaleString('es-VE'),
+      });
+      // Actualizar cajas_escaneadas del rutero en la sesión
+      const r = sesionPicking.value.find(x => x.ID === res.data.ruteroId);
+      if (r) r.CAJAS_ESCANEADAS = (r.CAJAS_ESCANEADAS ?? 0) + 1;
+    } else if (res.data.duplicado) {
+      ultimoResultadoGlobal.value = {
+        tipo:   'warning',
+        titulo: res.data.message,
+        detalle: `${res.data.cliente}  ·  Rutero ${res.data.ruteroNumero}`,
+      };
+    } else {
+      ultimoResultadoGlobal.value = { tipo: 'error', titulo: res.data.message };
+    }
+  } catch (e: any) {
+    ultimoResultadoGlobal.value = { tipo: 'error', titulo: e.response?.data?.message || 'Error al escanear' };
+  } finally {
+    escaneandoGlobal.value       = false;
+    pickingBarcodeGlobal.value   = '';
+    await nextTick();
+    barcodeGlobalRef.value?.focus();
+  }
+};
+
+// Picking (dialog de escaneo por rutero — secundario)
 const pickingDialog    = ref(false);
 const pickingRutero    = ref<any>(null);
 const pickingBarcode   = ref('');

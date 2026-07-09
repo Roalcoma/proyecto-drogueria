@@ -64,7 +64,7 @@ export class RuteroService {
                     CONSTRAINT UQ_RUTERO_CAJA UNIQUE (IDRUTERO, IDCONTEO, POSICION)
                 )
             `);
-            // Migración: columnas de sesión de picking
+            // Migración: columnas de sesión de picking en APP_RUTEROS
             await pool.request().query(`
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('APP_RUTEROS') AND name='PICKING_USUARIO')
                     ALTER TABLE APP_RUTEROS ADD PICKING_USUARIO VARCHAR(100) NULL
@@ -72,6 +72,15 @@ export class RuteroService {
             await pool.request().query(`
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('APP_RUTEROS') AND name='PICKING_FECHA')
                     ALTER TABLE APP_RUTEROS ADD PICKING_FECHA DATETIME NULL
+            `);
+            // Migración: cliente y ncajas en APP_RUTEROS_CAJAS para log auto-suficiente
+            await pool.request().query(`
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('APP_RUTEROS_CAJAS') AND name='CLIENTE')
+                    ALTER TABLE APP_RUTEROS_CAJAS ADD CLIENTE NVARCHAR(200) NULL
+            `);
+            await pool.request().query(`
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('APP_RUTEROS_CAJAS') AND name='NCAJAS')
+                    ALTER TABLE APP_RUTEROS_CAJAS ADD NCAJAS INT NULL
             `);
             console.log('Tablas de rutero verificadas (BD rutero).');
         } catch (err) {
@@ -590,6 +599,129 @@ export class RuteroService {
                 return { success: false, duplicado: true, message: `Caja ${posicion}/${ncajas} ya fue escaneada`, factura: `${numserie}-${numfactura}`, posicion, ncajas };
             throw e;
         }
+    }
+
+    // ── Picking generalizado (sin rutero previo) ──────────────────────────────
+
+    static async escanearCajaGlobal(barcode: string, usuario: string): Promise<{
+        success: boolean; message: string; duplicado?: boolean;
+        ruteroId?: number; ruteroNumero?: string; ruteroRuta?: string;
+        factura?: string; cliente?: string; posicion?: number; ncajas?: number;
+    }> {
+        const parts = barcode.trim().split('|');
+        if (parts.length !== 2) return { success: false, message: 'Código de barras inválido' };
+        const idConteo = parseInt(parts[0]);
+        const posicion = parseInt(parts[1]);
+        if (isNaN(idConteo) || isNaN(posicion) || posicion < 1)
+            return { success: false, message: 'Código de barras inválido' };
+
+        const pool     = await connectDb();
+        const ruteroDB = await connectRuteroDB();
+
+        // 1. Resolver factura y cliente desde DROGUERIA
+        const conteoRes = await pool.request()
+            .input('IDCONTEO', mssql.Int, idConteo)
+            .query(`
+                SELECT DISTINCT CC.NCAJAS, FV.NUMSERIE, FV.NUMFACTURA,
+                       ISNULL(CL.NOMBRECLIENTE, '') AS CLIENTE
+                FROM CONTEO_CAJAS CC WITH(NOLOCK)
+                INNER JOIN PEDIDOS_CONTEOS PC  WITH(NOLOCK) ON PC.IDCONTEO = CC.IDCONTEO
+                INNER JOIN CABECERA_PED CP     WITH(NOLOCK) ON CP.ORDERID  = PC.IDPEDIDO
+                INNER JOIN PEDVENTACAB PVC     WITH(NOLOCK) ON PVC.SUPEDIDO    COLLATE Modern_Spanish_CI_AS = CP.ORDERID COLLATE Modern_Spanish_CI_AS
+                INNER JOIN ALBVENTACAB AVC     WITH(NOLOCK) ON AVC.NUMSERIE    = PVC.SERIEALBARAN
+                    AND AVC.NUMALBARAN = PVC.NUMEROALBARAN AND AVC.N = PVC.NALBARAN
+                INNER JOIN FACTURASVENTA FV    WITH(NOLOCK) ON FV.NUMSERIE     = AVC.NUMSERIEFAC
+                    AND FV.NUMFACTURA  = AVC.NUMFAC AND FV.N = AVC.NFAC
+                INNER JOIN CLIENTES CL         WITH(NOLOCK) ON CL.CODCLIENTE   = FV.CODCLIENTE
+                WHERE CC.IDCONTEO = @IDCONTEO
+            `);
+
+        if (!conteoRes.recordset.length)
+            return { success: false, message: `Conteo ${idConteo} no encontrado en el sistema` };
+
+        const info       = conteoRes.recordset[0];
+        const ncajas     = Number(info.NCAJAS);
+        const numserie   = info.NUMSERIE as string;
+        const numfactura = Number(info.NUMFACTURA);
+        const cliente    = info.CLIENTE as string;
+
+        if (posicion > ncajas)
+            return { success: false, message: `Posición ${posicion} excede el total de cajas del conteo (${ncajas})` };
+
+        // 2. Buscar a cuál rutero de la sesión pertenece la factura
+        const ruteroRes = await ruteroDB.request()
+            .input('NUMSERIE',   mssql.VarChar(20),  numserie)
+            .input('NUMFACTURA', mssql.Int,           numfactura)
+            .input('USUARIO',    mssql.VarChar(100),  usuario)
+            .query(`
+                SELECT AR.ID, AR.NUMERO, AR.CODRUTA, AR.NOMBRE_RUTA
+                FROM APP_RUTEROS AR WITH(NOLOCK)
+                INNER JOIN APP_RUTEROS_DETALLE ARD WITH(NOLOCK) ON ARD.IDRUTERO = AR.ID
+                WHERE AR.PICKING_USUARIO = @USUARIO
+                  AND AR.ESTADO = 'PENDIENTE'
+                  AND ARD.NUMSERIE   COLLATE DATABASE_DEFAULT = @NUMSERIE   COLLATE DATABASE_DEFAULT
+                  AND ARD.NUMFACTURA = @NUMFACTURA
+            `);
+
+        if (!ruteroRes.recordset.length)
+            return { success: false, message: `Factura ${numserie}-${numfactura} no está en ningún rutero de tu sesión` };
+
+        const rutero   = ruteroRes.recordset[0];
+        const idrutero = Number(rutero.ID);
+
+        // 3. Registrar escaneo (constraint única detecta duplicados)
+        try {
+            await ruteroDB.request()
+                .input('IDRUTERO',   mssql.Int,           idrutero)
+                .input('IDCONTEO',   mssql.Int,            idConteo)
+                .input('POSICION',   mssql.Int,            posicion)
+                .input('NUMSERIE',   mssql.VarChar(20),    numserie)
+                .input('NUMFACTURA', mssql.Int,            numfactura)
+                .input('CLIENTE',    mssql.NVarChar(200),  cliente)
+                .input('NCAJAS',     mssql.Int,            ncajas)
+                .query(`
+                    INSERT INTO APP_RUTEROS_CAJAS (IDRUTERO, IDCONTEO, POSICION, NUMSERIE, NUMFACTURA, CLIENTE, NCAJAS)
+                    VALUES (@IDRUTERO, @IDCONTEO, @POSICION, @NUMSERIE, @NUMFACTURA, @CLIENTE, @NCAJAS)
+                `);
+            return {
+                success:      true,
+                message:      `Caja ${posicion}/${ncajas}`,
+                ruteroId:     idrutero,
+                ruteroNumero: rutero.NUMERO as string,
+                ruteroRuta:   `${rutero.CODRUTA} - ${rutero.NOMBRE_RUTA}`,
+                factura:      `${numserie}-${numfactura}`,
+                cliente, posicion, ncajas,
+            };
+        } catch (e: any) {
+            if (e.number === 2627 || e.number === 2601)
+                return {
+                    success: false, duplicado: true,
+                    message:      `Caja ${posicion}/${ncajas} ya escaneada`,
+                    ruteroNumero: rutero.NUMERO as string,
+                    factura:      `${numserie}-${numfactura}`,
+                    cliente, posicion, ncajas,
+                };
+            throw e;
+        }
+    }
+
+    static async getRegistroPicking(usuario: string): Promise<any[]> {
+        const ruteroDB = await connectRuteroDB();
+        const res = await ruteroDB.request()
+            .input('USUARIO', mssql.VarChar(100), usuario)
+            .query(`
+                SELECT TOP 100
+                    ARC.ID, ARC.IDCONTEO, ARC.POSICION, ARC.NUMSERIE, ARC.NUMFACTURA,
+                    ARC.CLIENTE, ARC.NCAJAS,
+                    CONVERT(VARCHAR(19), ARC.FECHAESCAN, 120) AS FECHAESCAN,
+                    AR.NUMERO AS RUTERO_NUMERO,
+                    AR.CODRUTA, AR.NOMBRE_RUTA
+                FROM APP_RUTEROS_CAJAS ARC WITH(NOLOCK)
+                INNER JOIN APP_RUTEROS AR WITH(NOLOCK) ON AR.ID = ARC.IDRUTERO
+                WHERE AR.PICKING_USUARIO = @USUARIO
+                ORDER BY ARC.FECHAESCAN DESC
+            `);
+        return res.recordset;
     }
 
     static async confirmarRutero(idrutero: number): Promise<void> {

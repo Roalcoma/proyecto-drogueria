@@ -129,6 +129,28 @@ export class RuteroController {
         }
     }
 
+    static async escanearCajaGlobal(req: RequestConUsuario, res: Response): Promise<void> {
+        const barcode = String(req.body.barcode ?? '').trim();
+        const usuario = req.usuario?.usuario ?? '';
+        if (!barcode) { res.status(400).json({ success: false, message: 'barcode requerido' }); return; }
+        try {
+            const result = await RuteroService.escanearCajaGlobal(barcode, usuario);
+            res.json(result);
+        } catch (error) {
+            res.status(500).json({ success: false, message: 'Error al escanear caja', error: error instanceof Error ? error.message : String(error) });
+        }
+    }
+
+    static async getRegistroPicking(req: RequestConUsuario, res: Response): Promise<void> {
+        const usuario = req.usuario?.usuario ?? '';
+        try {
+            const data = await RuteroService.getRegistroPicking(usuario);
+            res.json({ success: true, data });
+        } catch (error) {
+            res.status(500).json({ success: false, message: 'Error al obtener registro', error: error instanceof Error ? error.message : String(error) });
+        }
+    }
+
     static async confirmarRutero(req: Request, res: Response): Promise<void> {
         const id = Number(req.params.id);
         try {
