@@ -411,8 +411,16 @@ export class EcommerceService {
             tabla.columns.add('DESCUENTO4',     mssql.Float,       { nullable: true  });
             tabla.columns.add('PRECIOBRUTO',    mssql.Float,       { nullable: true  });
 
-            let total = 0;
+            // Consolidar líneas duplicadas del mismo artículo sumando cantidades
+            const consolidated = new Map<number, { linea: any; art: (typeof items)[0]['art'] }>();
             for (const { linea: l, art } of items) {
+                const ex = consolidated.get(art.codarticulo);
+                if (ex) ex.linea = { ...ex.linea, CANTIDAD: Number(ex.linea.CANTIDAD) + Number(l.CANTIDAD) };
+                else    consolidated.set(art.codarticulo, { linea: { ...l }, art });
+            }
+
+            let total = 0;
+            for (const { linea: l, art } of consolidated.values()) {
                 const precioUsdBruto = art.precioUnitario;
                 const cantidad       = Number(l.CANTIDAD);
                 const desc1 = art.nodto ? 0 : descuentoGlobal;
