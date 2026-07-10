@@ -556,17 +556,19 @@ export class RuteroService {
         }).join(' OR ');
 
         const conteoRes = await req2.query(`
-            SELECT DISTINCT CC.IDCONTEO, CC.NCAJAS, FV.NUMSERIE, FV.NUMFACTURA,
-                   ISNULL(CL.NOMBRECLIENTE, '') AS CLIENTE
-            FROM CONTEO_CAJAS CC WITH(NOLOCK)
-            INNER JOIN PEDIDOS_CONTEOS PC  WITH(NOLOCK) ON PC.IDCONTEO = CC.IDCONTEO
-            INNER JOIN CABECERA_PED CP     WITH(NOLOCK) ON CP.ORDERID  = PC.IDPEDIDO
-            INNER JOIN PEDVENTACAB PVC     WITH(NOLOCK) ON PVC.SUPEDIDO    COLLATE Modern_Spanish_CI_AS = CP.ORDERID COLLATE Modern_Spanish_CI_AS
-            INNER JOIN ALBVENTACAB AVC     WITH(NOLOCK) ON AVC.NUMSERIE    = PVC.SERIEALBARAN
+            SELECT CP.ORDERID AS IDPEDIDO, FV.NUMSERIE, FV.NUMFACTURA,
+                   ISNULL(CL.NOMBRECLIENTE, '') AS CLIENTE,
+                   ISNULL((SELECT SUM(CC2.NCAJAS)
+                           FROM PEDIDOS_CONTEOS PC2 WITH(NOLOCK)
+                           INNER JOIN CONTEO_CAJAS CC2 WITH(NOLOCK) ON CC2.IDCONTEO = PC2.IDCONTEO
+                           WHERE PC2.IDPEDIDO = CP.ORDERID), 0) AS NCAJAS
+            FROM CABECERA_PED CP     WITH(NOLOCK)
+            INNER JOIN PEDVENTACAB PVC WITH(NOLOCK) ON PVC.SUPEDIDO    COLLATE Modern_Spanish_CI_AS = CP.ORDERID COLLATE Modern_Spanish_CI_AS
+            INNER JOIN ALBVENTACAB AVC WITH(NOLOCK) ON AVC.NUMSERIE    = PVC.SERIEALBARAN
                 AND AVC.NUMALBARAN = PVC.NUMEROALBARAN AND AVC.N = PVC.NALBARAN
-            INNER JOIN FACTURASVENTA FV    WITH(NOLOCK) ON FV.NUMSERIE     = AVC.NUMSERIEFAC
+            INNER JOIN FACTURASVENTA FV WITH(NOLOCK) ON FV.NUMSERIE    = AVC.NUMSERIEFAC
                 AND FV.NUMFACTURA  = AVC.NUMFAC AND FV.N = AVC.NFAC
-            INNER JOIN CLIENTES CL         WITH(NOLOCK) ON CL.CODCLIENTE   = FV.CODCLIENTE
+            INNER JOIN CLIENTES CL     WITH(NOLOCK) ON CL.CODCLIENTE   = FV.CODCLIENTE
             WHERE ${pairs}
         `);
 
@@ -577,8 +579,8 @@ export class RuteroService {
 
         const lineas = conteoRes.recordset.map((r: any) => ({
             numserie: r.NUMSERIE, numfactura: r.NUMFACTURA, cliente: r.CLIENTE,
-            idconteo: r.IDCONTEO, ncajas: Number(r.NCAJAS),
-            escaneadas: escMap.get(r.IDCONTEO) ?? 0,
+            idconteo: r.IDPEDIDO, ncajas: Number(r.NCAJAS),
+            escaneadas: escMap.get(String(r.IDPEDIDO)) ?? 0,
         }));
 
         return {
@@ -602,33 +604,35 @@ export class RuteroService {
             return { success: false, message: dueño ? `Rutero en sesión de ${dueño}` : 'Agrega este rutero a tu sesión de picking primero' };
         const parts = barcode.trim().split('|');
         if (parts.length !== 2) return { success: false, message: 'Código de barras inválido' };
-        const idConteo = parts[0].trim();
+        const idPedido = parts[0].trim();
         const posicion = parseInt(parts[1]);
-        if (!idConteo || isNaN(posicion) || posicion < 1)
+        if (!idPedido || isNaN(posicion) || posicion < 1)
             return { success: false, message: 'Código de barras inválido' };
 
         const pool     = await connectDb();
         const ruteroDB = await connectRuteroDB();
 
         const conteoRes = await pool.request()
-            .input('IDCONTEO', mssql.NVarChar(100), idConteo)
+            .input('IDPEDIDO', mssql.NVarChar(100), idPedido)
             .query(`
-                SELECT DISTINCT CC.NCAJAS, FV.NUMSERIE, FV.NUMFACTURA,
-                       ISNULL(CL.NOMBRECLIENTE, '') AS CLIENTE
-                FROM CONTEO_CAJAS CC WITH(NOLOCK)
-                INNER JOIN PEDIDOS_CONTEOS PC  WITH(NOLOCK) ON PC.IDCONTEO = CC.IDCONTEO
-                INNER JOIN CABECERA_PED CP     WITH(NOLOCK) ON CP.ORDERID  = PC.IDPEDIDO
-                INNER JOIN PEDVENTACAB PVC     WITH(NOLOCK) ON PVC.SUPEDIDO    COLLATE Modern_Spanish_CI_AS = CP.ORDERID COLLATE Modern_Spanish_CI_AS
-                INNER JOIN ALBVENTACAB AVC     WITH(NOLOCK) ON AVC.NUMSERIE    = PVC.SERIEALBARAN
+                SELECT TOP 1 FV.NUMSERIE, FV.NUMFACTURA,
+                       ISNULL(CL.NOMBRECLIENTE, '') AS CLIENTE,
+                       ISNULL((SELECT SUM(CC2.NCAJAS)
+                               FROM PEDIDOS_CONTEOS PC2 WITH(NOLOCK)
+                               INNER JOIN CONTEO_CAJAS CC2 WITH(NOLOCK) ON CC2.IDCONTEO = PC2.IDCONTEO
+                               WHERE PC2.IDPEDIDO = CP.ORDERID), 0) AS NCAJAS
+                FROM CABECERA_PED CP     WITH(NOLOCK)
+                INNER JOIN PEDVENTACAB PVC WITH(NOLOCK) ON PVC.SUPEDIDO    COLLATE Modern_Spanish_CI_AS = CP.ORDERID COLLATE Modern_Spanish_CI_AS
+                INNER JOIN ALBVENTACAB AVC WITH(NOLOCK) ON AVC.NUMSERIE    = PVC.SERIEALBARAN
                     AND AVC.NUMALBARAN = PVC.NUMEROALBARAN AND AVC.N = PVC.NALBARAN
-                INNER JOIN FACTURASVENTA FV    WITH(NOLOCK) ON FV.NUMSERIE     = AVC.NUMSERIEFAC
+                INNER JOIN FACTURASVENTA FV WITH(NOLOCK) ON FV.NUMSERIE    = AVC.NUMSERIEFAC
                     AND FV.NUMFACTURA  = AVC.NUMFAC AND FV.N = AVC.NFAC
-                INNER JOIN CLIENTES CL         WITH(NOLOCK) ON CL.CODCLIENTE   = FV.CODCLIENTE
-                WHERE CC.IDCONTEO = @IDCONTEO
+                INNER JOIN CLIENTES CL     WITH(NOLOCK) ON CL.CODCLIENTE   = FV.CODCLIENTE
+                WHERE CP.ORDERID = @IDPEDIDO
             `);
 
         if (!conteoRes.recordset.length)
-            return { success: false, message: `Conteo ${idConteo} no encontrado` };
+            return { success: false, message: `Pedido ${idPedido} no encontrado` };
 
         const info       = conteoRes.recordset[0];
         const ncajas     = Number(info.NCAJAS);
@@ -636,7 +640,7 @@ export class RuteroService {
         const numfactura = info.NUMFACTURA;
 
         if (posicion > ncajas)
-            return { success: false, message: `Posición ${posicion} fuera de rango (conteo tiene ${ncajas} cajas)` };
+            return { success: false, message: `Posición ${posicion} fuera de rango (pedido tiene ${ncajas} cajas)` };
 
         const pertRes = await ruteroDB.request()
             .input('IDRUTERO',   mssql.Int,        idrutero)
@@ -655,7 +659,7 @@ export class RuteroService {
         try {
             await ruteroDB.request()
                 .input('IDRUTERO',   mssql.Int,           idrutero)
-                .input('IDCONTEO',   mssql.NVarChar(100),  idConteo)
+                .input('IDCONTEO',   mssql.NVarChar(100),  idPedido)
                 .input('POSICION',   mssql.Int,            posicion)
                 .input('NUMSERIE',   mssql.VarChar(20),    numserie)
                 .input('NUMFACTURA', mssql.Int,            numfactura)
@@ -686,9 +690,9 @@ export class RuteroService {
     }> {
         const parts = barcode.trim().split('|');
         if (parts.length !== 2) return { success: false, message: 'Código de barras inválido' };
-        const idConteo = parts[0].trim();
+        const idPedido = parts[0].trim();
         const posicion = parseInt(parts[1]);
-        if (!idConteo || isNaN(posicion) || posicion < 1)
+        if (!idPedido || isNaN(posicion) || posicion < 1)
             return { success: false, message: 'Código de barras inválido' };
 
         const pool     = await connectDb();
@@ -696,24 +700,26 @@ export class RuteroService {
 
         // 1. Resolver factura y cliente desde DROGUERIA
         const conteoRes = await pool.request()
-            .input('IDCONTEO', mssql.NVarChar(100), idConteo)
+            .input('IDPEDIDO', mssql.NVarChar(100), idPedido)
             .query(`
-                SELECT DISTINCT CC.NCAJAS, FV.NUMSERIE, FV.NUMFACTURA,
-                       ISNULL(CL.NOMBRECLIENTE, '') AS CLIENTE
-                FROM CONTEO_CAJAS CC WITH(NOLOCK)
-                INNER JOIN PEDIDOS_CONTEOS PC  WITH(NOLOCK) ON PC.IDCONTEO = CC.IDCONTEO
-                INNER JOIN CABECERA_PED CP     WITH(NOLOCK) ON CP.ORDERID  = PC.IDPEDIDO
-                INNER JOIN PEDVENTACAB PVC     WITH(NOLOCK) ON PVC.SUPEDIDO    COLLATE Modern_Spanish_CI_AS = CP.ORDERID COLLATE Modern_Spanish_CI_AS
-                INNER JOIN ALBVENTACAB AVC     WITH(NOLOCK) ON AVC.NUMSERIE    = PVC.SERIEALBARAN
+                SELECT TOP 1 FV.NUMSERIE, FV.NUMFACTURA,
+                       ISNULL(CL.NOMBRECLIENTE, '') AS CLIENTE,
+                       ISNULL((SELECT SUM(CC2.NCAJAS)
+                               FROM PEDIDOS_CONTEOS PC2 WITH(NOLOCK)
+                               INNER JOIN CONTEO_CAJAS CC2 WITH(NOLOCK) ON CC2.IDCONTEO = PC2.IDCONTEO
+                               WHERE PC2.IDPEDIDO = CP.ORDERID), 0) AS NCAJAS
+                FROM CABECERA_PED CP     WITH(NOLOCK)
+                INNER JOIN PEDVENTACAB PVC WITH(NOLOCK) ON PVC.SUPEDIDO    COLLATE Modern_Spanish_CI_AS = CP.ORDERID COLLATE Modern_Spanish_CI_AS
+                INNER JOIN ALBVENTACAB AVC WITH(NOLOCK) ON AVC.NUMSERIE    = PVC.SERIEALBARAN
                     AND AVC.NUMALBARAN = PVC.NUMEROALBARAN AND AVC.N = PVC.NALBARAN
-                INNER JOIN FACTURASVENTA FV    WITH(NOLOCK) ON FV.NUMSERIE     = AVC.NUMSERIEFAC
+                INNER JOIN FACTURASVENTA FV WITH(NOLOCK) ON FV.NUMSERIE    = AVC.NUMSERIEFAC
                     AND FV.NUMFACTURA  = AVC.NUMFAC AND FV.N = AVC.NFAC
-                INNER JOIN CLIENTES CL         WITH(NOLOCK) ON CL.CODCLIENTE   = FV.CODCLIENTE
-                WHERE CC.IDCONTEO = @IDCONTEO
+                INNER JOIN CLIENTES CL     WITH(NOLOCK) ON CL.CODCLIENTE   = FV.CODCLIENTE
+                WHERE CP.ORDERID = @IDPEDIDO
             `);
 
         if (!conteoRes.recordset.length)
-            return { success: false, message: `Conteo ${idConteo} no encontrado en el sistema` };
+            return { success: false, message: `Pedido ${idPedido} no encontrado en el sistema` };
 
         const info       = conteoRes.recordset[0];
         const ncajas     = Number(info.NCAJAS);
@@ -722,7 +728,7 @@ export class RuteroService {
         const cliente    = info.CLIENTE as string;
 
         if (posicion > ncajas)
-            return { success: false, message: `Posición ${posicion} excede el total de cajas del conteo (${ncajas})` };
+            return { success: false, message: `Posición ${posicion} excede el total de cajas del pedido (${ncajas})` };
 
         // 2. Buscar a cuál rutero de la sesión pertenece la factura
         const ruteroRes = await ruteroDB.request()
@@ -749,7 +755,7 @@ export class RuteroService {
         try {
             await ruteroDB.request()
                 .input('IDRUTERO',   mssql.Int,           idrutero)
-                .input('IDCONTEO',   mssql.NVarChar(100),  idConteo)
+                .input('IDCONTEO',   mssql.NVarChar(100),  idPedido)
                 .input('POSICION',   mssql.Int,            posicion)
                 .input('NUMSERIE',   mssql.VarChar(20),    numserie)
                 .input('NUMFACTURA', mssql.Int,            numfactura)

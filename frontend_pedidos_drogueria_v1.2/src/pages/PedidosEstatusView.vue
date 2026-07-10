@@ -18,6 +18,15 @@
         >
           {{ totalPedidos.toLocaleString() }} pedido{{ totalPedidos !== 1 ? 's' : '' }}
         </v-chip>
+        <v-chip
+          color="green-darken-2"
+          variant="tonal"
+          size="large"
+          prepend-icon="mdi-currency-usd"
+          class="mr-3 font-weight-black text-h6 px-5"
+        >
+          {{ totalUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+        </v-chip>
         <v-btn
           prepend-icon="mdi-sync"
           variant="flat"
@@ -428,6 +437,7 @@ const puedeEditar    = computed(() => (vis.value & BIT_EDICION)     !== 0 || (vi
 const pedidos     = ref<any[]>([]);
 const pdfCargando = ref<string | null>(null);
 const totalPedidos = ref(0);
+const totalUSD = ref(0);
 const loading = ref(false);
 const itemsPerPage = ref(10);
 const snackbar = ref({ show: false, text: '', color: '' });
@@ -518,6 +528,7 @@ const obtenerPedidos = async (page = 1, limit = 10) => {
     if (response.data.success) {
       pedidos.value = response.data.data;
       totalPedidos.value = response.data.total ?? 0;
+      totalUSD.value = response.data.totalUSD ?? 0;
       cargarRiesgosMasivos();
     }
   } catch (error) {

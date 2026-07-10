@@ -325,7 +325,7 @@ export class PedidosServices {
                 .input('PSICO2',         mssql.Bit,         esPsicotropico ? 1 : null);
 
             const countResult = await countReq.query(`
-                SELECT COUNT(*) AS TOTAL
+                SELECT COUNT(*) AS TOTAL, ISNULL(SUM(CP.TOTALPRECIO), 0) AS TOTAL_USD
                 FROM ${esquema}.CABECERA_PED CP
                 LEFT JOIN CLIENTESCAMPOSLIBRES CLC ON CLC.CODCLIENTE = CP.CLIENTEID
                 LEFT JOIN (
@@ -357,7 +357,8 @@ export class PedidosServices {
                 success: true,
                 message: 'Pedidos obtenidos correctamente',
                 data: result.recordset,
-                total: countResult.recordset[0].TOTAL
+                total: countResult.recordset[0].TOTAL,
+                totalUSD: Number(countResult.recordset[0].TOTAL_USD)
             };
 
         } catch (error) {
