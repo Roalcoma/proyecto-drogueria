@@ -602,10 +602,10 @@ export class RuteroService {
         const dueño = sesRow.recordset[0]?.PICKING_USUARIO;
         if (dueño !== usuario)
             return { success: false, message: dueño ? `Rutero en sesión de ${dueño}` : 'Agrega este rutero a tu sesión de picking primero' };
-        const parts = barcode.trim().replace(/'/g, '-').replace(/ç/g, '|').split('|');
-        if (parts.length !== 2) return { success: false, message: 'Código de barras inválido' };
-        const idPedido = parts[0].trim();
-        const posicion = parseInt(parts[1]);
+        const match = barcode.trim().replace(/'/g, '-').match(/^([A-Za-z0-9-]+)[^A-Za-z0-9-]([0-9]+)$/);
+        if (!match) return { success: false, message: 'Código de barras inválido' };
+        const idPedido = match[1];
+        const posicion = parseInt(match[2]);
         if (!idPedido || isNaN(posicion) || posicion < 1)
             return { success: false, message: 'Código de barras inválido' };
 
@@ -688,10 +688,10 @@ export class RuteroService {
         ruteroId?: number; ruteroNumero?: string; ruteroRuta?: string;
         factura?: string; cliente?: string; posicion?: number; ncajas?: number;
     }> {
-        const parts = barcode.trim().replace(/'/g, '-').replace(/ç/g, '|').split('|');
-        if (parts.length !== 2) return { success: false, message: 'Código de barras inválido' };
-        const idPedido = parts[0].trim();
-        const posicion = parseInt(parts[1]);
+        const match = barcode.trim().replace(/'/g, '-').match(/^([A-Za-z0-9-]+)[^A-Za-z0-9-]([0-9]+)$/);
+        if (!match) return { success: false, message: 'Código de barras inválido' };
+        const idPedido = match[1];
+        const posicion = parseInt(match[2]);
         if (!idPedido || isNaN(posicion) || posicion < 1)
             return { success: false, message: 'Código de barras inválido' };
 
