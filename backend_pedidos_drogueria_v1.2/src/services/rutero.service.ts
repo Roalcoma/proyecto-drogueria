@@ -201,6 +201,7 @@ export class RuteroService {
                     ON R.CODRUTA = TRY_CAST(CLC.ZONA AS INT)
                 WHERE TRY_CAST(CLC.ZONA AS INT) = @CODRUTA
                   AND FVCL.FECHARECIBIDO IS NULL
+                  AND (FV.NUMSERIE LIKE '%F' OR FV.NUMSERIE LIKE '%N')
                 ORDER BY CL.NOMBRECLIENTE, FV.NUMSERIE, FV.NUMFACTURA
             `);
 
