@@ -100,7 +100,7 @@ export class PedidosServices {
         const request = pool.request();
         const placeholders = codigos.map((id, i) => { request.input(`cod${i}`, id); return `@cod${i}`; }).join(',');
         request.input('dptoPsico', mssql.Int, getDbConfig().dptoPsicotropicos);
-        const result = await request.query(`SELECT COUNT(*) AS CNT FROM ARTICULOS WHERE CODARTICULO IN (${placeholders}) AND SECCION = @dptoPsico`);
+        const result = await request.query(`SELECT COUNT(*) AS CNT FROM ARTICULOS WITH (NOLOCK) WHERE CODARTICULO IN (${placeholders}) AND SECCION = @dptoPsico`);
         return result.recordset[0].CNT > 0;
     }
 
@@ -266,11 +266,11 @@ export class PedidosServices {
                     CR.ESTATUS AS RIESGO_ESTATUS,
                     (SELECT SUM(LP.PRODUCTCOUNT) FROM ${esquema}.LINEA_PED LP WHERE LP.ORDERID = CP.ORDERID) AS TOTALUNIDADES
                 FROM
-                    ${esquema}.CABECERA_PED CP
-                    LEFT JOIN CLIENTES CL ON CL.CODCLIENTE = CP.CLIENTEID
-                    LEFT JOIN VENDEDORES V ON V.CODVENDEDOR = CP.CODVENDEDOR
-                    LEFT JOIN CLIENTESCAMPOSLIBRES CLC ON CLC.CODCLIENTE = CP.CLIENTEID
-                    LEFT JOIN RUTAS RUT ON RUT.CODRUTA = TRY_CAST(CLC.ZONA AS INT)
+                    ${esquema}.CABECERA_PED CP WITH (NOLOCK)
+                    LEFT JOIN CLIENTES CL WITH (NOLOCK) ON CL.CODCLIENTE = CP.CLIENTEID
+                    LEFT JOIN VENDEDORES V WITH (NOLOCK) ON V.CODVENDEDOR = CP.CODVENDEDOR
+                    LEFT JOIN CLIENTESCAMPOSLIBRES CLC WITH (NOLOCK) ON CLC.CODCLIENTE = CP.CLIENTEID
+                    LEFT JOIN RUTAS RUT WITH (NOLOCK) ON RUT.CODRUTA = TRY_CAST(CLC.ZONA AS INT)
                     LEFT JOIN (
                         SELECT CL.CODCLIENTE,
                             CASE
@@ -280,8 +280,8 @@ export class PedidosServices {
                                 WHEN (ISNULL(SUM(T.IMPORTE),0) * 100.0 / CL.RIESGOCONCEDIDO) >= 30  THEN 'MEDIO'
                                 ELSE 'BAJO'
                             END AS ESTATUS
-                        FROM CLIENTES CL
-                        LEFT JOIN TESORERIA T ON T.CODIGOINTERNO = CL.CODCLIENTE
+                        FROM CLIENTES CL WITH (NOLOCK)
+                        LEFT JOIN TESORERIA T WITH (NOLOCK) ON T.CODIGOINTERNO = CL.CODCLIENTE
                             AND T.ESTADO = 'P' AND T.ORIGEN = 'C' AND T.SERIE NOT LIKE '%P'
                         GROUP BY CL.CODCLIENTE, CL.RIESGOCONCEDIDO
                     ) CR ON CR.CODCLIENTE = CP.CLIENTEID
@@ -316,9 +316,9 @@ export class PedidosServices {
 
             const countResult = await countReq.query(`
                 SELECT COUNT(*) AS TOTAL, ISNULL(SUM(CP.TOTALPRECIO), 0) AS TOTAL_USD
-                FROM ${esquema}.CABECERA_PED CP
-                LEFT JOIN CLIENTES CL2 ON CL2.CODCLIENTE = CP.CLIENTEID
-                LEFT JOIN CLIENTESCAMPOSLIBRES CLC ON CLC.CODCLIENTE = CP.CLIENTEID
+                FROM ${esquema}.CABECERA_PED CP WITH (NOLOCK)
+                LEFT JOIN CLIENTES CL2 WITH (NOLOCK) ON CL2.CODCLIENTE = CP.CLIENTEID
+                LEFT JOIN CLIENTESCAMPOSLIBRES CLC WITH (NOLOCK) ON CLC.CODCLIENTE = CP.CLIENTEID
                 LEFT JOIN (
                     SELECT CL.CODCLIENTE,
                         CASE
@@ -328,8 +328,8 @@ export class PedidosServices {
                             WHEN (ISNULL(SUM(T.IMPORTE),0) * 100.0 / CL.RIESGOCONCEDIDO) >= 30  THEN 'MEDIO'
                             ELSE 'BAJO'
                         END AS ESTATUS
-                    FROM CLIENTES CL
-                    LEFT JOIN TESORERIA T ON T.CODIGOINTERNO = CL.CODCLIENTE
+                    FROM CLIENTES CL WITH (NOLOCK)
+                    LEFT JOIN TESORERIA T WITH (NOLOCK) ON T.CODIGOINTERNO = CL.CODCLIENTE
                         AND T.ESTADO = 'P' AND T.ORIGEN = 'C' AND T.SERIE NOT LIKE '%P'
                     GROUP BY CL.CODCLIENTE, CL.RIESGOCONCEDIDO
                 ) CR ON CR.CODCLIENTE = CP.CLIENTEID
@@ -427,7 +427,7 @@ export class PedidosServices {
             // 1. Buscamos la cabecera
             const cabeceraResult = await pool.request()
                 .input('ORDERID', mssql.VarChar(50), orderId)
-                .query(`SELECT * FROM ${esquema}.CABECERA_PED WHERE ORDERID = @ORDERID`);
+                .query(`SELECT * FROM ${esquema}.CABECERA_PED WITH (NOLOCK) WHERE ORDERID = @ORDERID`);
 
             if (cabeceraResult.recordset.length === 0) {
                 return {
@@ -464,15 +464,15 @@ export class PedidosServices {
                         ISNULL(LV.LOTE, '') AS LOTE,
                         ISNULL(LV.FECHA_VEN, '') AS FECHA_VENCIMIENTO
                     FROM
-                        ${esquema}.LINEA_PED LP
-                        INNER JOIN ARTICULOS ON LP.CODARTICULO = ARTICULOS.CODARTICULO
-                        LEFT JOIN ARTICULOSCAMPOSLIBRES ACL ON LP.CODARTICULO = ACL.CODARTICULO
-                        LEFT JOIN PROVEEDORESCAMPOSLIBRES PCL ON PCL.CODPROVEEDOR = ACL.CODPROVEEDORICG
+                        ${esquema}.LINEA_PED LP WITH (NOLOCK)
+                        INNER JOIN ARTICULOS WITH (NOLOCK) ON LP.CODARTICULO = ARTICULOS.CODARTICULO
+                        LEFT JOIN ARTICULOSCAMPOSLIBRES ACL WITH (NOLOCK) ON LP.CODARTICULO = ACL.CODARTICULO
+                        LEFT JOIN PROVEEDORESCAMPOSLIBRES PCL WITH (NOLOCK) ON PCL.CODPROVEEDOR = ACL.CODPROVEEDORICG
                         OUTER APPLY (
                             SELECT TOP 1
                                 AL.CODBARRAS AS LOTE,
                                 CONVERT(VARCHAR(10), AL.GARANTIACOMPRA, 103) AS FECHA_VEN
-                            FROM ARTICULOSLIN AL
+                            FROM ARTICULOSLIN AL WITH (NOLOCK)
                             WHERE AL.CODARTICULO = LP.CODARTICULO
                               AND AL.GARANTIACOMPRA IS NOT NULL
                             ORDER BY AL.GARANTIACOMPRA ASC
@@ -686,7 +686,7 @@ export class PedidosServices {
             if (codusuario) {
                 const visRes = await pool.request()
                     .input('COD', codusuario)
-                    .query(`SELECT ISNULL(VISIBILIDAD, 0) AS VIS FROM VENDEDORES WHERE CODVENDEDOR = @COD`);
+                    .query(`SELECT ISNULL(VISIBILIDAD, 0) AS VIS FROM VENDEDORES WITH (NOLOCK) WHERE CODVENDEDOR = @COD`);
                 if (visRes.recordset.length > 0) vis = Number(visRes.recordset[0].VIS);
             }
 
@@ -695,7 +695,7 @@ export class PedidosServices {
             // Obtener estatus actual (necesario antes de validar permisos)
             const checkRes = await pool.request()
                 .input('ORDERID_CHK', mssql.VarChar(50), orderId)
-                .query(`SELECT ESTATUS FROM ${esquema}.CABECERA_PED WHERE ORDERID = @ORDERID_CHK`);
+                .query(`SELECT ESTATUS FROM ${esquema}.CABECERA_PED WITH (NOLOCK) WHERE ORDERID = @ORDERID_CHK`);
 
             if (checkRes.recordset.length === 0) {
                 return { success: false, message: 'El pedido no existe' };
@@ -727,7 +727,7 @@ export class PedidosServices {
                 const lineasRes = await pool.request()
                     .input('ORDERID_LINEAS', mssql.VarChar(50), orderId)
                     .query(`SELECT LP.CODARTICULO, LP.PRODUCTCOUNT AS CANTIDAD
-                            FROM ${esquema}.LINEA_PED LP WHERE LP.ORDERID = @ORDERID_LINEAS`);
+                            FROM ${esquema}.LINEA_PED LP WITH (NOLOCK) WHERE LP.ORDERID = @ORDERID_LINEAS`);
 
                 const faltantes: string[] = [];
                 for (const linea of lineasRes.recordset) {
@@ -737,10 +737,10 @@ export class PedidosServices {
                         .input('ALMACEN', mssql.VarChar(10), getDbConfig().codAlmacen)
                         .query(`
                             SELECT
-                                ISNULL((SELECT SUM(STOCK) FROM STOCKS WHERE CODARTICULO = @COD AND CODALMACEN = @ALMACEN), 0)
+                                ISNULL((SELECT SUM(STOCK) FROM STOCKS WITH (NOLOCK) WHERE CODARTICULO = @COD AND CODALMACEN = @ALMACEN), 0)
                                 - ISNULL((
-                                    SELECT SUM(LP2.PRODUCTCOUNT) FROM ${esquema}.CABECERA_PED CP2
-                                    INNER JOIN ${esquema}.LINEA_PED LP2 ON LP2.ORDERID = CP2.ORDERID
+                                    SELECT SUM(LP2.PRODUCTCOUNT) FROM ${esquema}.CABECERA_PED CP2 WITH (NOLOCK)
+                                    INNER JOIN ${esquema}.LINEA_PED LP2 WITH (NOLOCK) ON LP2.ORDERID = CP2.ORDERID
                                     WHERE LP2.CODARTICULO = @COD
                                       AND CP2.ORDERID <> @ORDERID_EXCL
                                       AND CP2.ESTATUS IN ('PENDIENTE POR AUTORIZACION','APROBACION PSICOTROPICOS','AUTORIZADO','EMPACADO','OK')
@@ -853,7 +853,7 @@ export class PedidosServices {
             const pool = await connectDb();
             const checkRes = await pool.request()
                 .input('ORDERID_CHK', mssql.VarChar(50), orderId)
-                .query(`SELECT ESTATUS FROM ${esquema}.CABECERA_PED WHERE ORDERID = @ORDERID_CHK`);
+                .query(`SELECT ESTATUS FROM ${esquema}.CABECERA_PED WITH (NOLOCK) WHERE ORDERID = @ORDERID_CHK`);
 
             if (checkRes.recordset.length === 0) {
                 return { success: false, message: 'El pedido no existe' };

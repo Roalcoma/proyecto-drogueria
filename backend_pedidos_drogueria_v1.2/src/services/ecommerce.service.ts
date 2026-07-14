@@ -10,6 +10,8 @@ const esquema = process.env.DB_ESQUEMA  || 'dbo';
 
 export class EcommerceService {
 
+    private static escaneando = false;
+
     static async initTablas(): Promise<void> {
         try {
             const pool = await connectDb();
@@ -106,6 +108,16 @@ export class EcommerceService {
     }
 
     static async escanearCarpeta(): Promise<{ importados: number; errores: number; mensaje?: string }> {
+        if (EcommerceService.escaneando) return { importados: 0, errores: 0, mensaje: 'Scan anterior todavía en curso — omitido' };
+        EcommerceService.escaneando = true;
+        try {
+            return await EcommerceService._escanearCarpetaInterno();
+        } finally {
+            EcommerceService.escaneando = false;
+        }
+    }
+
+    private static async _escanearCarpetaInterno(): Promise<{ importados: number; errores: number; mensaje?: string }> {
         const ruta = await this.getConfig();
         if (!ruta) return { importados: 0, errores: 0, mensaje: 'Ruta de carpeta no configurada en Administración' };
         if (!fs.existsSync(ruta)) return { importados: 0, errores: 0, mensaje: `Carpeta no encontrada: ${ruta}` };
@@ -132,7 +144,7 @@ export class EcommerceService {
                     .query(`SELECT 1 FROM APP_ECOMMERCE_PEDIDOS WHERE NUMERO_PEDIDO = @NUM AND ARCHIVO = @ARCH`);
 
                 if (existe.recordset.length > 0) {
-                    fs.renameSync(rutaArchivo, rutaArchivo + '.done');
+                    try { fs.renameSync(rutaArchivo, rutaArchivo + '.done'); } catch {}
                     continue;
                 }
 
@@ -159,7 +171,7 @@ export class EcommerceService {
 
                 // Si rowsAffected=0, el otro scan ganó la carrera — no duplicamos
                 if (!insRes.recordset.length) {
-                    fs.renameSync(rutaArchivo, rutaArchivo + '.done');
+                    try { fs.renameSync(rutaArchivo, rutaArchivo + '.done'); } catch {}
                     continue;
                 }
 
@@ -183,12 +195,12 @@ export class EcommerceService {
                 // Auto-aprobar: insertar directamente en CABECERA_PED
                 const aprob = await this.aprobarPedido(idPedido);
                 if (aprob.success) {
-                    fs.renameSync(rutaArchivo, rutaArchivo + '.done');
+                    try { fs.renameSync(rutaArchivo, rutaArchivo + '.done'); } catch {}
                     console.log(`[Ecommerce] Pedido ${aprob.orderId} creado en Control de Estatus`);
                     importados++;
                 } else {
                     // Marcar como error pero NO como done — permite revisar qué falló
-                    fs.renameSync(rutaArchivo, rutaArchivo + '.error');
+                    try { fs.renameSync(rutaArchivo, rutaArchivo + '.error'); } catch {}
                     console.warn(`[Ecommerce] ${archivo}: no se pudo crear en Control de Estatus — ${aprob.message}`);
                     try {
                         await pool.request()
@@ -216,7 +228,7 @@ export class EcommerceService {
         }
 
         return { importados, errores };
-    }
+    }  // fin _escanearCarpetaInterno
 
     static async getPedidos(search: string, page: number, limit: number): Promise<{ data: any[]; total: number }> {
         const pool = await connectDb();
@@ -296,8 +308,8 @@ export class EcommerceService {
             .query(`
                 SELECT C.CODCLIENTE,
                        ISNULL(TRY_CAST(CCL.D1 AS FLOAT), 0) AS DESCUENTO_GLOBAL
-                FROM CLIENTES C
-                LEFT JOIN CLIENTESCAMPOSLIBRES CCL ON CCL.CODCLIENTE = C.CODCLIENTE
+                FROM CLIENTES C WITH (NOLOCK)
+                LEFT JOIN CLIENTESCAMPOSLIBRES CCL WITH (NOLOCK) ON CCL.CODCLIENTE = C.CODCLIENTE
                 WHERE C.CODCLIENTE = TRY_CAST(@COD AS INT)
                    OR C.CIF = @COD OR C.CIF = @RIF
             `);
@@ -326,11 +338,11 @@ export class EcommerceService {
                        ISNULL(A.SECCION, 0)           AS SECCION,
                        ISNULL(PCL.DIASPROTECCION, 0)  AS DIASPROTECCION,
                        ISNULL(PV.PNETO, 0)            AS PNETO
-                FROM ARTICULOSLIN AL
-                JOIN ARTICULOS A ON A.CODARTICULO = AL.CODARTICULO
-                LEFT JOIN ARTICULOSCAMPOSLIBRES ACL ON ACL.CODARTICULO = A.CODARTICULO
-                LEFT JOIN PROVEEDORESCAMPOSLIBRES PCL ON PCL.CODPROVEEDOR = ACL.CODPROVEEDORICG
-                LEFT JOIN PRECIOSVENTA PV ON PV.CODARTICULO = A.CODARTICULO AND PV.IDTARIFAV = @TARIFA
+                FROM ARTICULOSLIN AL WITH (NOLOCK)
+                JOIN ARTICULOS A WITH (NOLOCK) ON A.CODARTICULO = AL.CODARTICULO
+                LEFT JOIN ARTICULOSCAMPOSLIBRES ACL WITH (NOLOCK) ON ACL.CODARTICULO = A.CODARTICULO
+                LEFT JOIN PROVEEDORESCAMPOSLIBRES PCL WITH (NOLOCK) ON PCL.CODPROVEEDOR = ACL.CODPROVEEDORICG
+                LEFT JOIN PRECIOSVENTA PV WITH (NOLOCK) ON PV.CODARTICULO = A.CODARTICULO AND PV.IDTARIFAV = @TARIFA
                 WHERE AL.CODBARRAS IN (${artPH})
                 UNION
                 SELECT CAST(A.CODARTICULO AS NVARCHAR(50)) AS LOOKUP_KEY, A.CODARTICULO,
@@ -339,10 +351,10 @@ export class EcommerceService {
                        ISNULL(A.SECCION, 0)           AS SECCION,
                        ISNULL(PCL.DIASPROTECCION, 0)  AS DIASPROTECCION,
                        ISNULL(PV.PNETO, 0)            AS PNETO
-                FROM ARTICULOS A
-                LEFT JOIN ARTICULOSCAMPOSLIBRES ACL ON ACL.CODARTICULO = A.CODARTICULO
-                LEFT JOIN PROVEEDORESCAMPOSLIBRES PCL ON PCL.CODPROVEEDOR = ACL.CODPROVEEDORICG
-                LEFT JOIN PRECIOSVENTA PV ON PV.CODARTICULO = A.CODARTICULO AND PV.IDTARIFAV = @TARIFA
+                FROM ARTICULOS A WITH (NOLOCK)
+                LEFT JOIN ARTICULOSCAMPOSLIBRES ACL WITH (NOLOCK) ON ACL.CODARTICULO = A.CODARTICULO
+                LEFT JOIN PROVEEDORESCAMPOSLIBRES PCL WITH (NOLOCK) ON PCL.CODPROVEEDOR = ACL.CODPROVEEDORICG
+                LEFT JOIN PRECIOSVENTA PV WITH (NOLOCK) ON PV.CODARTICULO = A.CODARTICULO AND PV.IDTARIFAV = @TARIFA
                 WHERE CAST(A.CODARTICULO AS NVARCHAR(50)) IN (${artPH})
             `);
             artRes.recordset.forEach((r: any) => {
@@ -451,7 +463,7 @@ export class EcommerceService {
             if (codArticulos.length > 0) {
                 const stockRes = await stockReq.query(`
                     SELECT CODARTICULO, ISNULL(SUM(STOCK), 0) AS STOCK
-                    FROM STOCKS WHERE CODARTICULO IN (${stockPlaceholders}) AND CODALMACEN = @ALMACEN_ST
+                    FROM STOCKS WITH (NOLOCK) WHERE CODARTICULO IN (${stockPlaceholders}) AND CODALMACEN = @ALMACEN_ST
                     GROUP BY CODARTICULO
                 `);
                 for (const r of stockRes.recordset) stockMap.set(r.CODARTICULO, Number(r.STOCK));
