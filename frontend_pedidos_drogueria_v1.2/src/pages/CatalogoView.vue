@@ -185,7 +185,7 @@
         <v-card-title class="bg-primary text-white font-weight-bold">Cantidad</v-card-title>
         <v-card-text class="pt-6">
           <p class="font-weight-bold mb-4">{{ modalCantidad.producto?.DESCRIPCION }}</p>
-          <v-text-field v-model.number="modalCantidad.cantidad" type="number" label="Unidades" variant="outlined" min="1" :max="modalCantidad.stockMaximo"></v-text-field>
+          <v-text-field v-model.number="modalCantidad.cantidad" type="number" label="Unidades" variant="outlined" min="1" :max="modalCantidad.stockMaximo" autofocus @keyup.enter="confirmarAgregar"></v-text-field>
         </v-card-text>
         <v-card-actions>
           <v-spacer></v-spacer>

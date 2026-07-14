@@ -431,16 +431,41 @@ export class EcommerceService {
                 else    consolidated.set(art.codarticulo, { linea: { ...l }, art });
             }
 
+            // Verificar stock disponible por artículo antes de insertar
+            const codArticulos = [...consolidated.keys()];
+            const stockReq = new mssql.Request(tx);
+            const stockPlaceholders = codArticulos.map((c, i) => { stockReq.input(`sc${i}`, mssql.Int, c); return `@sc${i}`; }).join(',');
+            stockReq.input('ALMACEN_ST', mssql.VarChar(10), getDbConfig().codAlmacen);
+            const stockMap = new Map<number, number>();
+            if (codArticulos.length > 0) {
+                const stockRes = await stockReq.query(`
+                    SELECT CODARTICULO, ISNULL(SUM(STOCK), 0) AS STOCK
+                    FROM STOCKS WHERE CODARTICULO IN (${stockPlaceholders}) AND CODALMACEN = @ALMACEN_ST
+                    GROUP BY CODARTICULO
+                `);
+                for (const r of stockRes.recordset) stockMap.set(r.CODARTICULO, Number(r.STOCK));
+            }
+
             let total = 0;
             for (const { linea: l, art } of consolidated.values()) {
+                const stockDisponible = stockMap.get(art.codarticulo) ?? 0;
+                if (stockDisponible <= 0) {
+                    console.log(`[Ecommerce] ${orderIdGrupo}: artículo ${art.codarticulo} sin stock — descartado`);
+                    continue;
+                }
                 const precioUsdBruto = art.precioUnitario;
-                const cantidad       = Number(l.CANTIDAD);
+                const cantidad       = Math.min(Number(l.CANTIDAD), stockDisponible);
                 const desc1 = art.nodto ? 0 : descuentoGlobal;
                 const desc2 = art.nodto ? 0 : (promoDescMap.get(art.codarticulo) ?? 0);
                 const precioFinal = precioUsdBruto * (1 - desc1 / 100) * (1 - desc2 / 100);
                 total += precioFinal * cantidad;
                 tabla.rows.add(orderIdGrupo, art.codarticulo, art.ref, 'ZAV', VED,
                     cantidad, precioFinal, desc1, desc2, 0, 0, precioUsdBruto);
+            }
+
+            if (tabla.rows.length === 0) {
+                console.log(`[Ecommerce] ${orderIdGrupo}: todas las líneas sin stock — grupo omitido`);
+                return null;
             }
 
             await new mssql.Request(tx)
@@ -479,8 +504,10 @@ export class EcommerceService {
         const tx = new mssql.Transaction(pool);
         await tx.begin();
         try {
-            for (const [sufijo, items] of gruposConLineas)
-                idsCreados.push(await insertarGrupo(sufijo, items, tx));
+            for (const [sufijo, items] of gruposConLineas) {
+                const id = await insertarGrupo(sufijo, items, tx);
+                if (id !== null) idsCreados.push(id);
+            }
             await tx.commit();
         } catch (err) {
             await tx.rollback();

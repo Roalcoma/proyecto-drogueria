@@ -150,9 +150,7 @@ const applyBrandingTheme = () => {
 
 watch([() => brandingStore.primary, () => brandingStore.secondary], applyBrandingTheme);
 
-const totalArticulos = computed(() =>
-  carritoStore.articulos.reduce((t, i) => t + i.cantidad, 0)
-);
+const totalArticulos = computed(() => carritoStore.articulos.length);
 
 const obtenerTasa = async () => {
   try {

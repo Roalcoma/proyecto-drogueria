@@ -37,6 +37,17 @@
         >
           Refrescar
         </v-btn>
+        <v-btn
+          v-if="pedidosSeleccionados.length > 0"
+          prepend-icon="mdi-file-pdf-box"
+          variant="elevated"
+          color="red-darken-2"
+          class="rounded-pill px-6"
+          :loading="pdfMultipleCargando"
+          @click="imprimirPDFMultiple"
+        >
+          PDF ({{ pedidosSeleccionados.length }})
+        </v-btn>
       </v-col>
     </v-row>
 
@@ -49,6 +60,10 @@
       <v-col cols="12" sm="6" md="2">
         <v-text-field v-model="filtros.clienteId" label="Código Cliente" density="compact" variant="outlined"
           clearable hide-details prepend-inner-icon="mdi-account" type="number" @update:model-value="aplicarFiltros" />
+      </v-col>
+      <v-col cols="12" sm="6" md="2">
+        <v-text-field v-model="filtros.nombreCliente" label="Nombre Cliente" density="compact" variant="outlined"
+          clearable hide-details prepend-inner-icon="mdi-account-search" @update:model-value="aplicarFiltros" />
       </v-col>
       <v-col cols="12" sm="6" md="2">
         <v-text-field v-model="filtros.codVendedor" label="Código Vendedor" density="compact" variant="outlined"
@@ -114,10 +129,13 @@
         <v-card elevation="2" class="rounded-xl border-0 overflow-hidden">
           <v-data-table-server
             v-model:items-per-page="itemsPerPage"
+            v-model:selected="pedidosSeleccionados"
             :headers="headers"
             :items="pedidos"
             :items-length="totalPedidos"
             :loading="loading"
+            show-select
+            item-value="ORDERID"
             class="custom-table"
             @update:options="cargarPagina"
           >
@@ -252,6 +270,15 @@
                   color="teal-darken-2"
                   :loading="conteoModal.loadingId === item.ORDERID"
                   @click="verConteo(item)"
+                ></v-btn>
+                <v-btn
+                  icon="mdi-text-box-search-outline"
+                  variant="text"
+                  size="small"
+                  color="blue-darken-2"
+                  title="Vista previa"
+                  :loading="previewCargando === item.ORDERID"
+                  @click="verPreview(item)"
                 ></v-btn>
                 <v-btn
                   icon="mdi-file-pdf-box"
@@ -409,6 +436,89 @@
       </v-card>
     </v-dialog>
 
+    <!-- Vista previa del pedido -->
+    <v-dialog v-model="previewModal.show" max-width="900" scrollable>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 bg-blue-darken-2 text-white d-flex align-center">
+          <v-icon start>mdi-text-box-search-outline</v-icon>
+          Vista previa — Pedido #{{ previewModal.orderId }}
+          <v-chip v-if="previewModal.estatus" size="small" variant="flat" color="white" class="text-blue-darken-2 font-weight-bold ml-2">
+            {{ previewModal.estatus }}
+          </v-chip>
+          <v-spacer />
+          <v-btn icon="mdi-file-pdf-box" variant="text" size="small" color="white" title="Descargar PDF"
+            :loading="pdfCargando === previewModal.orderId"
+            @click="previewModal.pedidoItem && imprimirPDF(previewModal.pedidoItem)"
+          />
+          <v-btn icon="mdi-close" variant="text" size="small" color="white" @click="previewModal.show = false" />
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-4">
+          <div v-if="!previewModal.lineas" class="text-center text-grey pa-8">
+            <v-progress-circular indeterminate />
+          </div>
+          <template v-else>
+            <!-- Datos del cliente -->
+            <v-row dense class="mb-3">
+              <v-col cols="12" sm="6">
+                <div class="text-caption text-grey">CLIENTE</div>
+                <div class="font-weight-bold">{{ previewModal.cliente }}</div>
+              </v-col>
+              <v-col cols="12" sm="3">
+                <div class="text-caption text-grey">FECHA</div>
+                <div>{{ previewModal.fecha }}</div>
+              </v-col>
+              <v-col cols="12" sm="3">
+                <div class="text-caption text-grey">TOTAL USD</div>
+                <div class="font-weight-black text-secondary">$ {{ previewModal.totalUSD.toFixed(2) }}</div>
+              </v-col>
+            </v-row>
+            <v-divider class="mb-3" />
+            <!-- Tabla de líneas -->
+            <v-table density="compact" hover>
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Descripción</th>
+                  <th class="text-center">Cant.</th>
+                  <th class="text-right">Precio Unit.</th>
+                  <th class="text-right">Desc.</th>
+                  <th class="text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="l in previewModal.lineas" :key="l.CODARTICULO">
+                  <td class="text-caption">{{ l.CODARTICULO }}</td>
+                  <td>
+                    {{ l.DESCRIPCION }}
+                    <v-chip v-if="l.NODTOAPLICABLE" size="x-small" color="orange" variant="tonal" class="ml-1">Sin dto</v-chip>
+                  </td>
+                  <td class="text-center font-weight-bold">{{ l.PRODUCTCOUNT }}</td>
+                  <td class="text-right text-caption">$ {{ Number(l.PRECIOUNITARIO).toFixed(4) }}</td>
+                  <td class="text-right text-caption">
+                    <span v-if="[l.DESCUENTO1,l.DESCUENTO2,l.DESCUENTO3,l.DESCUENTO4].some(d=>Number(d)>0)">
+                      {{ [l.DESCUENTO1,l.DESCUENTO2,l.DESCUENTO3,l.DESCUENTO4].filter(d=>Number(d)>0).map(d=>`${d}%`).join('+') }}
+                    </span>
+                    <span v-else class="text-grey">—</span>
+                  </td>
+                  <td class="text-right font-weight-bold">$ {{ (Number(l.PRECIOUNITARIO) * Number(l.PRODUCTCOUNT)).toFixed(2) }}</td>
+                </tr>
+              </tbody>
+            </v-table>
+            <v-divider class="mt-3 mb-2" />
+            <div class="d-flex justify-end gap-6 text-body-2">
+              <span>Líneas: <strong>{{ previewModal.lineas.length }}</strong></span>
+              <span class="ml-4">Total: <strong class="text-secondary">$ {{ previewModal.totalUSD.toFixed(2) }}</strong></span>
+            </div>
+          </template>
+        </v-card-text>
+        <v-card-actions class="pa-4">
+          <v-spacer />
+          <v-btn variant="text" @click="previewModal.show = false">Cerrar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-snackbar v-model="snackbar.show" :color="snackbar.color" rounded="pill">
       {{ snackbar.text }}
     </v-snackbar>
@@ -437,6 +547,13 @@ const puedeEditar    = computed(() => (vis.value & BIT_EDICION)     !== 0 || (vi
 const pedidos     = ref<any[]>([]);
 const pdfCargando = ref<string | null>(null);
 const totalPedidos = ref(0);
+const pedidosSeleccionados = ref<any[]>([]);
+const pdfMultipleCargando  = ref(false);
+const previewCargando      = ref<string | null>(null);
+const previewModal = ref<{
+  show: boolean; orderId: string; estatus: string; cliente: string;
+  fecha: string; totalUSD: number; lineas: any[] | null; pedidoItem: any | null;
+}>({ show: false, orderId: '', estatus: '', cliente: '', fecha: '', totalUSD: 0, lineas: null, pedidoItem: null });
 const totalUSD = ref(0);
 const loading = ref(false);
 const itemsPerPage = ref(10);
@@ -502,7 +619,7 @@ const estatusOpciones = [
 ];
 
 const zonas  = ref<{ zona: string; display: string }[]>([]);
-const filtros = ref({ buscarId: '', clienteId: '', codVendedor: '', estatus: null as string | null, riesgo: null as string | null, codruta: null as string | null, fechaDesde: null as string | null, fechaHasta: null as string | null, esPsicotropico: false, soloIcompras: false });
+const filtros = ref({ buscarId: '', clienteId: '', codVendedor: '', estatus: null as string | null, riesgo: null as string | null, codruta: null as string | null, fechaDesde: null as string | null, fechaHasta: null as string | null, esPsicotropico: false, soloIcompras: false, nombreCliente: '' });
 
 let filtroTimer: ReturnType<typeof setTimeout> | null = null;
 const aplicarFiltros = () => {
@@ -524,6 +641,7 @@ const obtenerPedidos = async (page = 1, limit = 10) => {
     if (filtros.value.fechaDesde)     params.fechaDesde     = filtros.value.fechaDesde;
     if (filtros.value.fechaHasta)     params.fechaHasta     = filtros.value.fechaHasta;
     if (filtros.value.esPsicotropico) params.esPsicotropico = '1';
+    if (filtros.value.nombreCliente)  params.nombreCliente  = filtros.value.nombreCliente;
     const response = await axios.get(`${import.meta.env.VITE_API_URL}/pedidos`, { params });
     if (response.data.success) {
       pedidos.value = response.data.data;
@@ -709,6 +827,74 @@ const imprimirPDF = async (item: any) => {
     lanzarNotificacion('Error al generar el PDF', 'error');
   } finally {
     pdfCargando.value = null;
+  }
+};
+
+const imprimirPDFMultiple = async () => {
+  if (pedidosSeleccionados.value.length === 0) return;
+  pdfMultipleCargando.value = true;
+  try {
+    const resultados = await Promise.all(
+      pedidosSeleccionados.value.map(item =>
+        Promise.all([
+          axios.get(`${import.meta.env.VITE_API_URL}/pedidos?orderId=${item.ORDERID}`),
+          item.ESTATUS === 'OK'
+            ? axios.get(`${import.meta.env.VITE_API_URL}/pedidos/conteo`, { params: { orderId: item.ORDERID } })
+            : Promise.resolve(null),
+        ])
+      )
+    );
+    // Generar PDF para cada pedido encadenado (uno por uno para no abrir N ventanas)
+    for (let i = 0; i < pedidosSeleccionados.value.length; i++) {
+      const item = pedidosSeleccionados.value[i];
+      const [pedidoRes, conteoRes] = resultados[i];
+      if (!pedidoRes.data.success) continue;
+      const pedido = pedidoRes.data.data;
+      const lineas = pedido.lineas || [];
+      const cliente = riesgosMap.value[item.CLIENTEID];
+      let conteo: ConteoPDFData | undefined;
+      if (conteoRes?.data?.success && conteoRes.data.data) {
+        conteo = { fechaConteo: conteoRes.data.data.fechaConteo, estadoConteo: conteoRes.data.data.estadoConteo, lineas: conteoRes.data.data.lineas };
+      }
+      await generarPedidoPDF({
+        numeroOrden: item.ORDERID, fecha: item.FECHA, estatus: item.ESTATUS,
+        esPsicotropico: String(item.ORDERID ?? '').endsWith('P'),
+        cliente: { codcliente: item.CLIENTEID, nombrecliente: cliente?.NOMBRECLIENTE || `Cliente ${item.CLIENTEID}`, nombrecomercial: item.NOMBRECOMERCIAL || '', nit: item.NIF20 || item.CIF || '', direccionFiscal: item.DIRECCION1 || '', direccionEnvio: item.RUTA || '' },
+        lineas: lineas.map((l: any) => ({ codigo: l.CODARTICULO, descripcion: l.DESCRIPCION || '', cantidad: Number(l.PRODUCTCOUNT), precioUnitario: Number(l.PRECIOUNITARIO), descuentos: [l.DESCUENTO1, l.DESCUENTO2, l.DESCUENTO3, l.DESCUENTO4].map(Number).filter(d => d > 0), sinDescuento: !!l.NODTOAPLICABLE, diasProteccion: Number(l.DIASPROTECCION ?? 0), porcentajeIva: Number(l.PORCENTAJEIVA ?? 0), lote: l.LOTE || '', fechaVencimiento: l.FECHA_VENCIMIENTO || '' })),
+        totalUSD: lineas.reduce((s: number, l: any) => s + Number(l.PRECIOUNITARIO) * Number(l.PRODUCTCOUNT), 0),
+        totalIVA: lineas.reduce((s: number, l: any) => s + Number(l.MONTOIVA ?? 0), 0),
+        conteo,
+      });
+    }
+    pedidosSeleccionados.value = [];
+  } catch {
+    lanzarNotificacion('Error al generar PDFs', 'error');
+  } finally {
+    pdfMultipleCargando.value = false;
+  }
+};
+
+const verPreview = async (item: any) => {
+  previewCargando.value = item.ORDERID;
+  previewModal.value = { show: true, orderId: item.ORDERID, estatus: item.ESTATUS, cliente: '', fecha: formatearFecha(item.FECHA), totalUSD: 0, lineas: null, pedidoItem: item };
+  try {
+    const res = await axios.get(`${import.meta.env.VITE_API_URL}/pedidos?orderId=${item.ORDERID}`);
+    if (res.data.success) {
+      const pedido = res.data.data;
+      const lineas = pedido.lineas || [];
+      const cliente = riesgosMap.value[item.CLIENTEID];
+      previewModal.value.cliente  = cliente?.NOMBRECLIENTE || `Cliente ${item.CLIENTEID}`;
+      previewModal.value.totalUSD = lineas.reduce((s: number, l: any) => s + Number(l.PRECIOUNITARIO) * Number(l.PRODUCTCOUNT), 0);
+      previewModal.value.lineas   = lineas;
+    } else {
+      lanzarNotificacion('No se pudo cargar el pedido', 'error');
+      previewModal.value.show = false;
+    }
+  } catch {
+    lanzarNotificacion('Error al cargar vista previa', 'error');
+    previewModal.value.show = false;
+  } finally {
+    previewCargando.value = null;
   }
 };
 
