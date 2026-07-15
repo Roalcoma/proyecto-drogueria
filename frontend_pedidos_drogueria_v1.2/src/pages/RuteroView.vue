@@ -1370,8 +1370,8 @@ const generarPDF = (numero: string, zonaDisplay: string, lista: any[]) => {
 
       // Fila cabecera de cliente
       body.push([
-        { content: `(${cod}) ${nombre}`, colSpan: 4, styles: { fontStyle: 'bold', fillColor: [208, 228, 248] } },
-        { content: `BULTOS: ${subtotalBultos}`, styles: { fontStyle: 'bold', halign: 'right', fillColor: [208, 228, 248] } },
+        { content: `(${cod}) ${nombre}`, colSpan: 4, styles: { fontStyle: 'bold', fontSize: 9.5, fillColor: [208, 228, 248] } },
+        { content: `BULTOS: ${subtotalBultos}`, styles: { fontStyle: 'bold', fontSize: 12, halign: 'right', fillColor: [208, 228, 248] } },
       ]);
 
       // Filas de facturas
@@ -1393,7 +1393,7 @@ const generarPDF = (numero: string, zonaDisplay: string, lista: any[]) => {
       {
         content: `Recibí Conforme: _______________________     Nro. Documentos: ${totalDocs}     Nro. Renglones: ${totalClientes}     Cant. Bultos/Cestas: ${totalBultos}     Encomiendas: 0`,
         colSpan: 5,
-        styles: { fontStyle: 'bold', fontSize: 7.5, halign: 'left', fillColor: [240, 240, 240] },
+        styles: { fontStyle: 'bold', fontSize: 10, halign: 'left', fillColor: [240, 240, 240] },
       },
     ]);
 
@@ -1402,8 +1402,8 @@ const generarPDF = (numero: string, zonaDisplay: string, lista: any[]) => {
       head: [['FACTURA', 'B/C', 'DOCS.', 'CESTAS', 'FIRMA / RECIBIDO']],
       body,
       theme: 'grid',
-      styles: { fontSize: 7.5, cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 }, valign: 'middle' },
-      headStyles: { fillColor: [31, 78, 121], textColor: 255, fontStyle: 'bold', fontSize: 7.5, halign: 'center' },
+      styles: { fontSize: 8.5, cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 }, valign: 'middle' },
+      headStyles: { fillColor: [31, 78, 121], textColor: 255, fontStyle: 'bold', fontSize: 8.5, halign: 'center' },
       columnStyles: {
         0: { cellWidth: 48 },
         1: { cellWidth: 16, halign: 'center' },
