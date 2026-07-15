@@ -239,7 +239,7 @@ export class PedidosServices {
     static async getPedidos(page: any = 1, limit: any = 10, estatus?: string, buscarId?: string,
                              clienteId?: string, codVendedor?: string, riesgo?: string, codruta?: string,
                              fechaDesde?: string, fechaHasta?: string, esPsicotropico?: boolean,
-                             nombreCliente?: string) {
+                             nombreCliente?: string, soloFacturado?: boolean) {
         try {
             let validPage = Math.max(1, Number(page) || 1);
             let validLimit = Math.max(1, Number(limit) || 10);
@@ -258,12 +258,16 @@ export class PedidosServices {
                 .input('FECHA_DESDE',    mssql.Date,        fechaDesde || null)
                 .input('FECHA_HASTA',    mssql.Date,        fechaHasta || null)
                 .input('PSICO',          mssql.Bit,         esPsicotropico ? 1 : null)
-                .input('NOMBRE_CLIENTE', mssql.NVarChar(200), nombreCliente ? `%${nombreCliente}%` : null);
+                .input('NOMBRE_CLIENTE', mssql.NVarChar(200), nombreCliente ? `%${nombreCliente}%` : null)
+                .input('SOLO_FACTURADO', mssql.Bit,         soloFacturado  ? 1 : null);
 
             const result = await req.query(`
                 SELECT
                     CP.ORDERID, CP.CLIENTEID, CP.FECHA, CP.ESTATUS, CP.CODVENDEDOR, CP.TOTALPRECIO,
                     CP.OBSERVACIONES,
+                    (SELECT TOP 1 AVC.FACTURADO FROM PEDVENTACAB PVC WITH(NOLOCK)
+                     LEFT JOIN ALBVENTACAB AVC WITH(NOLOCK) ON AVC.NUMSERIE = PVC.SERIEALBARAN AND AVC.NUMALBARAN = PVC.NUMEROALBARAN AND AVC.N = PVC.NALBARAN
+                     WHERE PVC.SUPEDIDO COLLATE DATABASE_DEFAULT = CP.ORDERID COLLATE DATABASE_DEFAULT) AS FACTURADO,
                     CL.NOMBRECLIENTE, ISNULL(CL.NOMBRECOMERCIAL, '') AS NOMBRECOMERCIAL, CL.CIF, ISNULL(CL.NIF20, '') AS NIF20, CL.DIRECCION1, CL.ENVIODIRECION AS DIRECCION_ENVIO,
                     ISNULL(RUT.DESCRIPCION, '') AS RUTA,
                     V.NOMVENDEDOR,
@@ -300,6 +304,11 @@ export class PedidosServices {
                     AND (@FECHA_HASTA  IS NULL OR CAST(CP.FECHA AS DATE) <= @FECHA_HASTA)
                     AND (@PSICO        IS NULL OR (@PSICO = 1 AND CP.OBSERVACIONES IS NOT NULL AND CP.OBSERVACIONES <> ''))
                     AND (@NOMBRE_CLIENTE IS NULL OR CL.NOMBRECLIENTE LIKE @NOMBRE_CLIENTE)
+                    AND (@SOLO_FACTURADO IS NULL OR EXISTS (
+                        SELECT 1 FROM PEDVENTACAB PVC2 WITH(NOLOCK)
+                        INNER JOIN ALBVENTACAB AVC2 WITH(NOLOCK) ON AVC2.NUMSERIE = PVC2.SERIEALBARAN AND AVC2.NUMALBARAN = PVC2.NUMEROALBARAN AND AVC2.N = PVC2.NALBARAN
+                        WHERE PVC2.SUPEDIDO COLLATE DATABASE_DEFAULT = CP.ORDERID COLLATE DATABASE_DEFAULT AND AVC2.FACTURADO = 'T'
+                    ))
                 ORDER BY
                     CP.FECHA DESC
                 OFFSET @OFFSET ROWS
@@ -316,7 +325,8 @@ export class PedidosServices {
                 .input('FECHA_DESDE2',     mssql.Date,          fechaDesde || null)
                 .input('FECHA_HASTA2',     mssql.Date,          fechaHasta || null)
                 .input('PSICO2',           mssql.Bit,           esPsicotropico ? 1 : null)
-                .input('NOMBRE_CLIENTE2',  mssql.NVarChar(200), nombreCliente ? `%${nombreCliente}%` : null);
+                .input('NOMBRE_CLIENTE2',  mssql.NVarChar(200), nombreCliente ? `%${nombreCliente}%` : null)
+                .input('SOLO_FACTURADO2',  mssql.Bit,           soloFacturado  ? 1 : null);
 
             const countResult = await countReq.query(`
                 SELECT COUNT(*) AS TOTAL, ISNULL(SUM(CP.TOTALPRECIO), 0) AS TOTAL_USD
@@ -347,6 +357,11 @@ export class PedidosServices {
                     AND (@FECHA_HASTA2  IS NULL OR CAST(CP.FECHA AS DATE) <= @FECHA_HASTA2)
                     AND (@PSICO2        IS NULL OR (@PSICO2 = 1 AND CP.OBSERVACIONES IS NOT NULL AND CP.OBSERVACIONES <> ''))
                     AND (@NOMBRE_CLIENTE2 IS NULL OR CL2.NOMBRECLIENTE LIKE @NOMBRE_CLIENTE2)
+                    AND (@SOLO_FACTURADO2 IS NULL OR EXISTS (
+                        SELECT 1 FROM PEDVENTACAB PVC2 WITH(NOLOCK)
+                        INNER JOIN ALBVENTACAB AVC2 WITH(NOLOCK) ON AVC2.NUMSERIE = PVC2.SERIEALBARAN AND AVC2.NUMALBARAN = PVC2.NUMEROALBARAN AND AVC2.N = PVC2.NALBARAN
+                        WHERE PVC2.SUPEDIDO COLLATE DATABASE_DEFAULT = CP.ORDERID COLLATE DATABASE_DEFAULT AND AVC2.FACTURADO = 'T'
+                    ))
             `);
 
             return {

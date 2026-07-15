@@ -122,6 +122,16 @@
           @update:model-value="aplicarFiltros"
         />
       </v-col>
+      <v-col cols="12" sm="6" md="2" class="d-flex align-center">
+        <v-switch
+          v-model="filtros.soloFacturado"
+          label="Solo Facturados"
+          color="green-darken-2"
+          density="compact"
+          hide-details
+          @update:model-value="aplicarFiltros"
+        />
+      </v-col>
     </v-row>
 
     <v-row>
@@ -157,6 +167,10 @@
                     Cód. aprobación: <strong>{{ item.OBSERVACIONES }}</strong>
                   </div>
                 </v-tooltip>
+                <v-chip v-if="item.FACTURADO === 'T'" size="x-small" color="green-darken-2"
+                  variant="flat" prepend-icon="mdi-receipt-text-check" class="font-weight-bold">
+                  Facturado
+                </v-chip>
               </div>
             </template>
 
@@ -619,7 +633,7 @@ const estatusOpciones = [
 ];
 
 const zonas  = ref<{ zona: string; display: string }[]>([]);
-const filtros = ref({ buscarId: '', clienteId: '', codVendedor: '', estatus: null as string | null, riesgo: null as string | null, codruta: null as string | null, fechaDesde: null as string | null, fechaHasta: null as string | null, esPsicotropico: false, soloIcompras: false, nombreCliente: '' });
+const filtros = ref({ buscarId: '', clienteId: '', codVendedor: '', estatus: null as string | null, riesgo: null as string | null, codruta: null as string | null, fechaDesde: null as string | null, fechaHasta: null as string | null, esPsicotropico: false, soloIcompras: false, soloFacturado: false, nombreCliente: '' });
 
 let filtroTimer: ReturnType<typeof setTimeout> | null = null;
 const aplicarFiltros = () => {
@@ -641,6 +655,7 @@ const obtenerPedidos = async (page = 1, limit = 10) => {
     if (filtros.value.fechaDesde)     params.fechaDesde     = filtros.value.fechaDesde;
     if (filtros.value.fechaHasta)     params.fechaHasta     = filtros.value.fechaHasta;
     if (filtros.value.esPsicotropico) params.esPsicotropico = '1';
+    if (filtros.value.soloFacturado)  params.soloFacturado  = '1';
     if (filtros.value.nombreCliente)  params.nombreCliente  = filtros.value.nombreCliente;
     const response = await axios.get(`${import.meta.env.VITE_API_URL}/pedidos`, { params });
     if (response.data.success) {
