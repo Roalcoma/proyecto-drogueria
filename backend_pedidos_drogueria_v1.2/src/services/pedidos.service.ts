@@ -9,9 +9,9 @@ const esquema = process.env.DB_ESQUEMA || 'dbo';
 const TRANSICIONES_PERMITIDAS: Record<string, string[]> = {
     'PENDIENTE':                  ['PENDIENTE POR AUTORIZACION', 'AUTORIZADO', 'CANCELADO'],
     'PENDIENTE POR AUTORIZACION': ['AUTORIZADO', 'CANCELADO'],
-    'AUTORIZADO':                 ['EMPACADO', 'CANCELADO'],
+    'AUTORIZADO':                 ['CANCELADO'],
     'OK':                         ['CANCELADO'],
-    'EMPACADO':                   ['FINALIZADO'],
+    'EMPACADO':                   ['AUTORIZADO', 'CANCELADO'],
     'ICG':                        ['CANCELADO'],
     // 'APROBACION PSICOTROPICOS' deliberadamente sin entrada: no debe poder cambiarse
     // desde el dropdown normal de estatus, solo vía aprobarPsicotropico().

@@ -586,9 +586,9 @@ const verConteo = async (item: any) => {
 const TRANSICIONES_BASE: Record<string, string[]> = {
   'PENDIENTE':                  ['PENDIENTE POR AUTORIZACION', 'AUTORIZADO', 'CANCELADO'],
   'PENDIENTE POR AUTORIZACION': ['AUTORIZADO', 'CANCELADO'],
-  'AUTORIZADO':                 ['EMPACADO', 'CANCELADO'],
+  'AUTORIZADO':                 ['CANCELADO'],
   'OK':                         ['CANCELADO'],
-  'EMPACADO':                   ['FINALIZADO'],
+  'EMPACADO':                   ['AUTORIZADO', 'CANCELADO'],
   'ICG':                        ['CANCELADO'],
 };
 
