@@ -266,12 +266,12 @@
             <template v-slot:item.acciones="{ item }">
               <div class="d-flex align-center" style="gap: 2px;">
                 <v-btn
-                  v-if="puedeEditar"
+                  v-if="puedeEditar || (authStore.puedeDescuentoLinea && item.ESTATUS === 'APROBACION PSICOTROPICOS')"
                   icon="mdi-pencil-outline"
                   variant="text"
                   size="small"
-                  :disabled="item.ESTATUS !== 'PENDIENTE'"
-                  :color="item.ESTATUS === 'PENDIENTE' ? 'blue-grey-darken-2' : 'grey-lighten-2'"
+                  :disabled="item.ESTATUS !== 'PENDIENTE' && !(authStore.puedeDescuentoLinea && item.ESTATUS === 'APROBACION PSICOTROPICOS')"
+                  :color="(item.ESTATUS === 'PENDIENTE' || (authStore.puedeDescuentoLinea && item.ESTATUS === 'APROBACION PSICOTROPICOS')) ? 'blue-grey-darken-2' : 'grey-lighten-2'"
                   @click="irAEdicion(item)"
                 ></v-btn>
                 <v-btn

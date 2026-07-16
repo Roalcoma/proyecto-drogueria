@@ -87,7 +87,7 @@
               variant="flat"
               rounded="pill"
               prepend-icon="mdi-pencil"
-              :disabled="item.ESTATUS !== 'PENDIENTE'"
+              :disabled="!puedeEditarEstatus(item.ESTATUS)"
               @click="seleccionarPedido(item.ORDERID)"
             >
               Editar
@@ -150,8 +150,9 @@
                     <div class="font-weight-bold text-on-surface">{{ linea.DESCRIPCION || 'Sin descripción' }}</div>
                     <div class="text-caption text-grey">Código: {{ linea.CODARTICULO }}</div>
                     <div v-if="descuentosDeLinea(linea).length" class="mt-1">
-                      <v-chip size="x-small" color="orange-darken-2" variant="flat" class="font-weight-bold cursor-pointer"
-                        @click="abrirDescuento(linea)">
+                      <v-chip size="x-small" color="orange-darken-2" variant="flat" class="font-weight-bold"
+                        :class="puedeDescuentoLinea ? 'cursor-pointer' : ''"
+                        @click="puedeDescuentoLinea && abrirDescuento(linea)">
                         {{ descuentosDeLinea(linea).join('%+') }}% descuento
                       </v-chip>
                     </div>
@@ -171,7 +172,7 @@
                   </td>
                   <td class="text-right font-weight-bold">$ {{ (linea.PRECIOUNITARIO * linea.PRODUCTCOUNT).toFixed(2) }}</td>
                   <td class="text-center">
-                    <v-btn icon="mdi-sale" size="small" color="orange-darken-2" variant="text" @click="abrirDescuento(linea)" />
+                    <v-btn v-if="puedeDescuentoLinea" icon="mdi-sale" size="small" color="orange-darken-2" variant="text" @click="abrirDescuento(linea)" />
                     <v-btn icon="mdi-delete-outline" size="small" color="error" variant="text" @click="confirmarEliminarLinea(index)" />
                   </td>
                 </tr>
@@ -311,10 +312,16 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
+import { useAuthStore } from '../stores/useAuthStore';
 
-const route  = useRoute();
-const router = useRouter();
-const API    = import.meta.env.VITE_API_URL;
+const route      = useRoute();
+const router     = useRouter();
+const API        = import.meta.env.VITE_API_URL;
+const authStore  = useAuthStore();
+const puedeDescuentoLinea = computed(() => authStore.puedeDescuentoLinea);
+
+const puedeEditarEstatus = (est: string) =>
+  est === 'PENDIENTE' || (est === 'APROBACION PSICOTROPICOS' && puedeDescuentoLinea.value);
 
 // ----------------------------------------------------------------
 // Estado del SELECTOR
