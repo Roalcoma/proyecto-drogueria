@@ -57,8 +57,9 @@ export class RuteroController {
         const buscarPedido  = req.query.buscarPedido  ? String(req.query.buscarPedido).trim()  : undefined;
         const page          = req.query.page          ? Number(req.query.page)                 : 1;
         const limit         = req.query.limit         ? Number(req.query.limit)                : 15;
+        const historial     = req.query.historial === 'true';
         try {
-            const { data, total } = await RuteroService.getRuteros(codruta, buscarNumero, buscarFactura, buscarPedido, page, limit);
+            const { data, total } = await RuteroService.getRuteros(codruta, buscarNumero, buscarFactura, buscarPedido, page, limit, historial);
             res.json({ success: true, data, total });
         } catch (error) {
             res.status(500).json({ success: false, message: 'Error al obtener ruteros', error: error instanceof Error ? error.message : String(error) });

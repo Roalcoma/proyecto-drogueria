@@ -81,6 +81,10 @@
           Mi Picking
           <v-badge v-if="sesionPicking.length" :content="sesionPicking.length" color="deep-purple" inline class="ml-2" />
         </v-tab>
+        <v-tab value="historial" @click="cargarHistorial">
+          <v-icon start>mdi-history</v-icon>
+          Historial
+        </v-tab>
       </v-tabs>
 
       <v-tabs-window v-model="tab">
@@ -499,6 +503,122 @@
           </div>
         </v-tabs-window-item>
 
+        <!-- TAB HISTORIAL -->
+        <v-tabs-window-item value="historial">
+          <div class="pa-3 d-flex flex-wrap gap-3 align-center border-b">
+            <v-text-field
+              v-model="filtroHist.numero"
+              label="N° Rutero"
+              prepend-inner-icon="mdi-clipboard-list"
+              variant="outlined" density="compact" hide-details clearable
+              style="min-width:140px;max-width:180px"
+              @keyup.enter="buscarHistorial"
+              @click:clear="buscarHistorial"
+            />
+            <v-text-field
+              v-model="filtroHist.factura"
+              label="N° Factura"
+              prepend-inner-icon="mdi-file-document"
+              variant="outlined" density="compact" hide-details clearable
+              style="min-width:140px;max-width:180px"
+              @keyup.enter="buscarHistorial"
+              @click:clear="buscarHistorial"
+            />
+            <v-text-field
+              v-model="filtroHist.pedido"
+              label="N° Pedido"
+              prepend-inner-icon="mdi-package-variant"
+              variant="outlined" density="compact" hide-details clearable
+              style="min-width:140px;max-width:180px"
+              @keyup.enter="buscarHistorial"
+              @click:clear="buscarHistorial"
+            />
+            <v-btn color="primary" variant="tonal" prepend-icon="mdi-magnify" @click="buscarHistorial">Buscar</v-btn>
+            <v-btn variant="text" color="grey" prepend-icon="mdi-close" @click="limpiarFiltrosHist">Limpiar</v-btn>
+          </div>
+          <div class="pa-4">
+            <div v-if="cargandoHist" class="text-center pa-8">
+              <v-progress-circular indeterminate color="primary" />
+            </div>
+            <div v-else-if="!ruterosHist.length" class="text-center pa-8 text-grey-darken-1">
+              <v-icon size="48" class="mb-2">mdi-history</v-icon>
+              <div>No hay ruteros entregados</div>
+            </div>
+            <v-expansion-panels v-else variant="accordion">
+              <v-expansion-panel
+                v-for="r in ruterosHist"
+                :key="r.ID"
+                @group:selected="(ev) => { if (ev.value) cargarFacturasRutero(r.ID); }"
+              >
+                <v-expansion-panel-title>
+                  <div class="d-flex align-center gap-3 w-100 flex-wrap">
+                    <v-chip color="grey-darken-1" size="small" variant="tonal" class="font-weight-bold">{{ r.NUMERO }}</v-chip>
+                    <v-chip color="success" size="x-small" variant="elevated" prepend-icon="mdi-check-all">Entregado</v-chip>
+                    <span class="font-weight-medium">{{ r.CODRUTA }} - {{ r.NOMBRE_RUTA }}</span>
+                    <v-spacer />
+                    <v-chip size="x-small" color="success" variant="tonal">
+                      {{ r.ENTREGADAS }}/{{ r.TOTAL_FACTURAS }} entregadas
+                    </v-chip>
+                    <span class="text-caption text-grey-darken-1">{{ r.FECHA }}</span>
+                  </div>
+                </v-expansion-panel-title>
+                <v-expansion-panel-text>
+                  <div class="d-flex gap-2 mb-3">
+                    <v-btn
+                      size="small" variant="tonal" color="primary"
+                      prepend-icon="mdi-file-pdf-box"
+                      @click.stop="imprimirRutero(r)"
+                    >Reimprimir PDF</v-btn>
+                  </div>
+
+                  <div v-if="!facturasRutero[r.ID]" class="text-center pa-4">
+                    <v-progress-circular indeterminate size="24" color="primary" />
+                  </div>
+                  <v-data-table
+                    v-if="facturasRutero[r.ID]"
+                    :headers="headersRutero"
+                    :items="facturasRutero[r.ID]"
+                    density="compact"
+                    hide-default-footer
+                    :items-per-page="-1"
+                  >
+                    <template #item.estado="{ item }">
+                      <v-icon :color="item.FECHARECIBIDO ? 'success' : 'grey-lighten-2'" size="18">
+                        {{ item.FECHARECIBIDO ? 'mdi-check-circle' : 'mdi-circle-outline' }}
+                      </v-icon>
+                    </template>
+                    <template #item.PEDIDO="{ item }">
+                      <span v-if="item.PEDIDO" class="text-caption font-weight-medium text-blue-darken-2">{{ item.PEDIDO }}</span>
+                      <span v-else class="text-caption text-grey-lighten-1">—</span>
+                    </template>
+                    <template #item.BULTOS="{ item }">
+                      <v-chip size="x-small" color="blue-darken-1" variant="tonal">{{ item.BULTOS ?? 0 }}</v-chip>
+                    </template>
+                    <template #item.TOTAL="{ item }">
+                      <span>${{ Number(item.TOTAL).toFixed(2) }}</span>
+                    </template>
+                    <template #item.actions="{ item }">
+                      <span v-if="item.FECHARECIBIDO" class="text-caption text-grey-darken-1">
+                        {{ item.FECHARECIBIDO?.toString().substring(0, 10) }}
+                      </span>
+                    </template>
+                  </v-data-table>
+                </v-expansion-panel-text>
+              </v-expansion-panel>
+            </v-expansion-panels>
+
+            <div v-if="totalRuterosHist > limitHist" class="d-flex justify-center pt-4">
+              <v-pagination
+                v-model="paginaHist"
+                :length="Math.ceil(totalRuterosHist / limitHist)"
+                :total-visible="7"
+                density="compact"
+                @update:model-value="cargarHistorial"
+              />
+            </div>
+          </div>
+        </v-tabs-window-item>
+
       </v-tabs-window>
     </v-card>
 
@@ -756,6 +876,16 @@ const limitRuteros      = 15;
 const filtroPickingEstado = ref<string>('todos');
 const buscarRuteros = () => { paginaRuteros.value = 1; cargarRuteros(); };
 const limpiarFiltrosRuteros = () => { filtroRuteros.value = { numero: '', factura: '', pedido: '' }; paginaRuteros.value = 1; cargarRuteros(); };
+
+// Historial
+const ruterosHist     = ref<any[]>([]);
+const cargandoHist    = ref(false);
+const filtroHist      = ref({ numero: '', factura: '', pedido: '' });
+const paginaHist      = ref(1);
+const totalRuterosHist = ref(0);
+const limitHist        = 15;
+const buscarHistorial = () => { paginaHist.value = 1; cargarHistorial(); };
+const limpiarFiltrosHist = () => { filtroHist.value = { numero: '', factura: '', pedido: '' }; paginaHist.value = 1; cargarHistorial(); };
 const hoyISO = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Caracas' });
 
 const filtrarFacturasRutero = (id: number) => {
@@ -1231,6 +1361,25 @@ const cargarRuteros = async () => {
     notify(e.response?.data?.error || e.message || 'Error al cargar ruteros', 'error');
   } finally {
     cargandoRuteros.value = false;
+  }
+};
+
+const cargarHistorial = async () => {
+  cargandoHist.value = true;
+  try {
+    const codruta = zonaSeleccionada.value?.zona ? parseInt(zonaSeleccionada.value.zona) : undefined;
+    const params: any = { page: paginaHist.value, limit: limitHist, historial: true };
+    if (codruta)                     params.codruta       = codruta;
+    if (filtroHist.value.numero)     params.buscarNumero  = filtroHist.value.numero;
+    if (filtroHist.value.factura)    params.buscarFactura = filtroHist.value.factura;
+    if (filtroHist.value.pedido)     params.buscarPedido  = filtroHist.value.pedido;
+    const res = await axios.get(`${API}/rutero/ruteros`, { params });
+    ruterosHist.value      = res.data.data  ?? [];
+    totalRuterosHist.value = res.data.total ?? 0;
+  } catch (e: any) {
+    notify(e.response?.data?.error || e.message || 'Error al cargar historial', 'error');
+  } finally {
+    cargandoHist.value = false;
   }
 };
 

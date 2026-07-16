@@ -289,13 +289,15 @@ export class RuteroService {
 
     static async getRuteros(
         codruta?: number, buscarNumero?: string, buscarFactura?: string, buscarPedido?: string,
-        page = 1, limit = 15
+        page = 1, limit = 15, historial = false
     ): Promise<{ data: any[]; total: number }> {
         const pool   = await connectRuteroDB();
         const req    = pool.request();
         const reqCnt = pool.request();
         const dbMain = getDbConfig().dbName;
-        let where  = `WHERE AR.ESTADO IN ('PENDIENTE', 'EN_RUTA')`;
+        let where  = historial
+            ? `WHERE AR.ESTADO = 'ENTREGADO'`
+            : `WHERE AR.ESTADO IN ('PENDIENTE', 'EN_RUTA')`;
         if (codruta) {
             req.input('CODRUTA', mssql.Int, codruta);
             reqCnt.input('CODRUTA', mssql.Int, codruta);
