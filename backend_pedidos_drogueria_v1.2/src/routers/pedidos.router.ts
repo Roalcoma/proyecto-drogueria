@@ -18,6 +18,8 @@ pedidosRouter.put('/status', authMiddleware, PedidosControllers.updatePedidoStat
 
 pedidosRouter.put('/aprobar-psicotropico', authMiddleware, PedidosControllers.aprobarPsicotropico)
 
+pedidosRouter.put('/codigo-aprobacion', authMiddleware, PedidosControllers.actualizarCodigoAprobacion)
+
 pedidosRouter.get('/conteo', PedidosControllers.getConteo)
 
 pedidosRouter.get('/auditoria', authMiddleware, PedidosControllers.getAuditoria)

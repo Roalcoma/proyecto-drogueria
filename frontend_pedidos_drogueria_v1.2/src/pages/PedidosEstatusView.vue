@@ -159,14 +159,20 @@
                 <v-tooltip v-if="item.OBSERVACIONES" location="top">
                   <template #activator="{ props }">
                     <v-chip v-bind="props" size="x-small" color="purple-darken-2" variant="flat"
-                      prepend-icon="mdi-shield-alert" class="font-weight-bold cursor-pointer">
-                      PSI
+                      prepend-icon="mdi-shield-alert" class="font-weight-bold cursor-pointer"
+                      @click.stop="abrirEditarCodigo(item)">
+                      PSI <v-icon end size="12">mdi-pencil</v-icon>
                     </v-chip>
                   </template>
                   <div style="background:#000;color:#fff;padding:6px 10px;border-radius:4px;font-size:13px">
-                    Cód. aprobación: <strong>{{ item.OBSERVACIONES }}</strong>
+                    Cód. aprobación: <strong>{{ item.OBSERVACIONES }}</strong> — clic para editar
                   </div>
                 </v-tooltip>
+                <v-chip v-else-if="item.ORDERID?.endsWith('P')" size="x-small" color="purple-darken-2" variant="outlined"
+                  prepend-icon="mdi-shield-alert" class="font-weight-bold cursor-pointer"
+                  @click.stop="abrirEditarCodigo(item)">
+                  PSI <v-icon end size="12">mdi-pencil</v-icon>
+                </v-chip>
                 <v-chip v-if="item.FACTURADO === 'T'" size="x-small" color="green-darken-2"
                   variant="flat" prepend-icon="mdi-receipt-text-check" class="font-weight-bold">
                   Facturado
@@ -533,6 +539,26 @@
       </v-card>
     </v-dialog>
 
+    <!-- Editar código de aprobación PSI -->
+    <v-dialog v-model="dialogCodigo.show" max-width="420">
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 bg-purple-darken-2 text-white d-flex align-center gap-2">
+          <v-icon>mdi-shield-alert</v-icon>Código de aprobación — #{{ dialogCodigo.orderId }}
+        </v-card-title>
+        <v-card-text class="pa-4">
+          <v-text-field v-model="dialogCodigo.codigo" label="Código gubernamental" variant="outlined"
+            density="comfortable" autofocus @keyup.enter="guardarCodigo" />
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" :disabled="dialogCodigo.guardando" @click="dialogCodigo.show = false">Cancelar</v-btn>
+          <v-btn color="purple-darken-1" variant="elevated" :loading="dialogCodigo.guardando" @click="guardarCodigo">
+            <v-icon start>mdi-content-save</v-icon>Guardar
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-snackbar v-model="snackbar.show" :color="snackbar.color" rounded="pill">
       {{ snackbar.text }}
     </v-snackbar>
@@ -578,6 +604,32 @@ const eliminando      = ref(false);
 
 const riesgosMap = ref<Record<number, any>>({});
 const modalRiesgo = ref({ show: false, data: null as any });
+
+const dialogCodigo = ref({ show: false, orderId: '', codigo: '', guardando: false });
+const abrirEditarCodigo = (item: any) => {
+  dialogCodigo.value = { show: true, orderId: item.ORDERID, codigo: item.OBSERVACIONES || '', guardando: false };
+};
+const guardarCodigo = async () => {
+  dialogCodigo.value.guardando = true;
+  try {
+    const res = await axios.put(`${import.meta.env.VITE_API_URL}/pedidos/codigo-aprobacion`, {
+      orderId: dialogCodigo.value.orderId,
+      codigo: dialogCodigo.value.codigo,
+    });
+    if (res.data.success) {
+      const p = pedidos.value.find((x: any) => x.ORDERID === dialogCodigo.value.orderId);
+      if (p) p.OBSERVACIONES = dialogCodigo.value.codigo;
+      dialogCodigo.value.show = false;
+      lanzarNotificacion('Código actualizado', 'success');
+    } else {
+      lanzarNotificacion(res.data.message || 'Error al guardar', 'error');
+    }
+  } catch (e: any) {
+    lanzarNotificacion(e.response?.data?.message || 'Error al guardar', 'error');
+  } finally {
+    dialogCodigo.value.guardando = false;
+  }
+};
 
 const conteoModal = ref<{ show: boolean; loadingId: string | null; orderId: string; data: any }>({
     show: false, loadingId: null, orderId: '', data: null

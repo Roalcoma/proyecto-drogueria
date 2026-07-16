@@ -208,6 +208,17 @@ export class PedidosControllers {
         }
     }
 
+    static async actualizarCodigoAprobacion(req: Request, res: Response) {
+        try {
+            const { orderId, codigo } = req.body;
+            if (!orderId) return res.status(400).json({ success: false, message: 'Falta orderId' });
+            const result = await PedidosServices.actualizarCodigoAprobacion(orderId, codigo ?? '');
+            return res.status(result.success ? 200 : 400).json(result);
+        } catch (error) {
+            return res.status(500).json({ success: false, message: String(error) });
+        }
+    }
+
     static async aprobarPsicotropico(req: RequestConUsuario, res: Response) {
         try {
             const { orderId, codigoAprobacion } = req.body;

@@ -127,22 +127,24 @@ export class ClientesServices {
 
     static async getRiesgo(codcliente: number): Promise<any> {
         try {
+            const usdCode = Number(process.env.USD) || 2;
             const pool = await connectDb()
             const result = await pool.request()
                 .input('CODCLIENTE', codcliente)
-                .query(`SELECT 
+                .input('USD_CODE', usdCode)
+                .query(`SELECT
                             CL.CODCLIENTE
                             , CL.NOMBRECLIENTE
                             , CL.RIESGOCONCEDIDO
-                            , ISNULL(SUM(T.IMPORTE), 0) CX                          
-                            , CASE WHEN CL.RIESGOCONCEDIDO <> 0 THEN (ISNULL(SUM(T.IMPORTE), 0) * 100) / CL.RIESGOCONCEDIDO ELSE 0 END PORCENTAJE_RIESGO
+                            , ISNULL(SUM(CASE WHEN ISNULL(T.CODMONEDA,1) = @USD_CODE THEN T.IMPORTE ELSE T.IMPORTE / NULLIF(DBO.F_GET_COTIZACION(GETDATE(), @USD_CODE), 0) END), 0) CX
+                            , CASE WHEN CL.RIESGOCONCEDIDO <> 0 THEN (ISNULL(SUM(CASE WHEN ISNULL(T.CODMONEDA,1) = @USD_CODE THEN T.IMPORTE ELSE T.IMPORTE / NULLIF(DBO.F_GET_COTIZACION(GETDATE(), @USD_CODE), 0) END), 0) * 100) / CL.RIESGOCONCEDIDO ELSE 0 END PORCENTAJE_RIESGO
                             , CASE
-                                WHEN (CASE WHEN CL.RIESGOCONCEDIDO <> 0 THEN (ISNULL(SUM(T.IMPORTE), 0) * 100) / CL.RIESGOCONCEDIDO ELSE 0 END) BETWEEN 80 AND 99 THEN 'ALTO'
-                                WHEN (CASE WHEN CL.RIESGOCONCEDIDO <> 0 THEN (ISNULL(SUM(T.IMPORTE), 0) * 100) / CL.RIESGOCONCEDIDO ELSE 0 END) >= 100 THEN 'SUPERADO'
-                                WHEN (CASE WHEN CL.RIESGOCONCEDIDO <> 0 THEN (ISNULL(SUM(T.IMPORTE), 0) * 100) / CL.RIESGOCONCEDIDO ELSE 0 END) BETWEEN 30 AND 79 THEN 'MEDIO'
+                                WHEN (CASE WHEN CL.RIESGOCONCEDIDO <> 0 THEN (ISNULL(SUM(CASE WHEN ISNULL(T.CODMONEDA,1) = @USD_CODE THEN T.IMPORTE ELSE T.IMPORTE / NULLIF(DBO.F_GET_COTIZACION(GETDATE(), @USD_CODE), 0) END), 0) * 100) / CL.RIESGOCONCEDIDO ELSE 0 END) BETWEEN 80 AND 99 THEN 'ALTO'
+                                WHEN (CASE WHEN CL.RIESGOCONCEDIDO <> 0 THEN (ISNULL(SUM(CASE WHEN ISNULL(T.CODMONEDA,1) = @USD_CODE THEN T.IMPORTE ELSE T.IMPORTE / NULLIF(DBO.F_GET_COTIZACION(GETDATE(), @USD_CODE), 0) END), 0) * 100) / CL.RIESGOCONCEDIDO ELSE 0 END) >= 100 THEN 'SUPERADO'
+                                WHEN (CASE WHEN CL.RIESGOCONCEDIDO <> 0 THEN (ISNULL(SUM(CASE WHEN ISNULL(T.CODMONEDA,1) = @USD_CODE THEN T.IMPORTE ELSE T.IMPORTE / NULLIF(DBO.F_GET_COTIZACION(GETDATE(), @USD_CODE), 0) END), 0) * 100) / CL.RIESGOCONCEDIDO ELSE 0 END) BETWEEN 30 AND 79 THEN 'MEDIO'
                                 ELSE 'BAJO'
                               END ESTATUS
-                        FROM 
+                        FROM
                             CLIENTES CL
                             LEFT JOIN TESORERIA T ON T.CODIGOINTERNO = CL.CODCLIENTE
                         WHERE
@@ -185,16 +187,18 @@ export class ClientesServices {
                 return `@id${i}`
             }).join(',')
 
+            const usdCode = Number(process.env.USD) || 2;
+            request.input('USD_CODE', usdCode);
             const result = await request.query(`SELECT
                             CL.CODCLIENTE
                             , CL.NOMBRECLIENTE
                             , CL.RIESGOCONCEDIDO
-                            , ISNULL(SUM(T.IMPORTE), 0) CX
-                            , CASE WHEN CL.RIESGOCONCEDIDO <> 0 THEN (ISNULL(SUM(T.IMPORTE), 0) * 100) / CL.RIESGOCONCEDIDO ELSE 0 END PORCENTAJE_RIESGO
+                            , ISNULL(SUM(CASE WHEN ISNULL(T.CODMONEDA,1) = @USD_CODE THEN T.IMPORTE ELSE T.IMPORTE / NULLIF(DBO.F_GET_COTIZACION(GETDATE(), @USD_CODE), 0) END), 0) CX
+                            , CASE WHEN CL.RIESGOCONCEDIDO <> 0 THEN (ISNULL(SUM(CASE WHEN ISNULL(T.CODMONEDA,1) = @USD_CODE THEN T.IMPORTE ELSE T.IMPORTE / NULLIF(DBO.F_GET_COTIZACION(GETDATE(), @USD_CODE), 0) END), 0) * 100) / CL.RIESGOCONCEDIDO ELSE 0 END PORCENTAJE_RIESGO
                             , CASE
-                                WHEN (CASE WHEN CL.RIESGOCONCEDIDO <> 0 THEN (ISNULL(SUM(T.IMPORTE), 0) * 100) / CL.RIESGOCONCEDIDO ELSE 0 END) BETWEEN 80 AND 99 THEN 'ALTO'
-                                WHEN (CASE WHEN CL.RIESGOCONCEDIDO <> 0 THEN (ISNULL(SUM(T.IMPORTE), 0) * 100) / CL.RIESGOCONCEDIDO ELSE 0 END) >= 100 THEN 'SUPERADO'
-                                WHEN (CASE WHEN CL.RIESGOCONCEDIDO <> 0 THEN (ISNULL(SUM(T.IMPORTE), 0) * 100) / CL.RIESGOCONCEDIDO ELSE 0 END) BETWEEN 30 AND 79 THEN 'MEDIO'
+                                WHEN (CASE WHEN CL.RIESGOCONCEDIDO <> 0 THEN (ISNULL(SUM(CASE WHEN ISNULL(T.CODMONEDA,1) = @USD_CODE THEN T.IMPORTE ELSE T.IMPORTE / NULLIF(DBO.F_GET_COTIZACION(GETDATE(), @USD_CODE), 0) END), 0) * 100) / CL.RIESGOCONCEDIDO ELSE 0 END) BETWEEN 80 AND 99 THEN 'ALTO'
+                                WHEN (CASE WHEN CL.RIESGOCONCEDIDO <> 0 THEN (ISNULL(SUM(CASE WHEN ISNULL(T.CODMONEDA,1) = @USD_CODE THEN T.IMPORTE ELSE T.IMPORTE / NULLIF(DBO.F_GET_COTIZACION(GETDATE(), @USD_CODE), 0) END), 0) * 100) / CL.RIESGOCONCEDIDO ELSE 0 END) >= 100 THEN 'SUPERADO'
+                                WHEN (CASE WHEN CL.RIESGOCONCEDIDO <> 0 THEN (ISNULL(SUM(CASE WHEN ISNULL(T.CODMONEDA,1) = @USD_CODE THEN T.IMPORTE ELSE T.IMPORTE / NULLIF(DBO.F_GET_COTIZACION(GETDATE(), @USD_CODE), 0) END), 0) * 100) / CL.RIESGOCONCEDIDO ELSE 0 END) BETWEEN 30 AND 79 THEN 'MEDIO'
                                 ELSE 'BAJO'
                               END ESTATUS
                         FROM

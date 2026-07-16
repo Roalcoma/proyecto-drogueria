@@ -512,12 +512,22 @@ const getColorEstatus = (status: string) => {
 const formatearFecha = (f: string) => f ? new Date(f).toLocaleDateString('es-PY') : '-';
 const lanzarNotificacion = (text: string, color: string) => notificacion.value = { show: true, text, color };
 
+const condicionPedido = computed(() => {
+  const id = pedidoOriginal.value?.ORDERID ?? '';
+  if (id.endsWith('P'))  return 'P';
+  if (id.endsWith('SD')) return 'SD';
+  if (id.endsWith('NI')) return 'NI';
+  return '';
+});
+
 const buscarProductos = async () => {
   if (!busquedaProducto.value?.trim()) return;
   buscandoProducto.value = true;
   resultadosBusqueda.value = [];
   try {
-    const res = await axios.get(`${API}/products/get-products`, { params: { articulo: busquedaProducto.value.trim() } });
+    const params: any = { articulo: busquedaProducto.value.trim() };
+    if (condicionPedido.value) params.condicion = condicionPedido.value;
+    const res = await axios.get(`${API}/products/get-products`, { params });
     const tarifa = lineasEditadas.value[0]?.IDTARIFAV || 1;
     resultadosBusqueda.value = (res.data.data ?? res.data ?? []).map((p: any) => ({
       ...p,

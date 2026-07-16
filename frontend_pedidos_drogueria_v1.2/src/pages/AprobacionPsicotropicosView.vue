@@ -127,8 +127,14 @@
           <v-divider class="my-4" />
 
           <div class="text-subtitle-2 font-weight-bold mb-2">Código de aprobación gubernamental</div>
-          <v-text-field v-model="codigoAprobacion" label="Código" variant="outlined" density="comfortable"
-            hint="Requerido para aprobar el pedido" persistent-hint autofocus />
+          <div class="d-flex gap-2 align-start">
+            <v-text-field v-model="codigoAprobacion" label="Código" variant="outlined" density="comfortable"
+              hint="Requerido para aprobar el pedido" persistent-hint autofocus style="flex:1" />
+            <v-btn color="blue-grey" variant="tonal" class="mt-1" :loading="guardandoCodigo"
+              :disabled="aprobando || cancelando" @click="guardarCodigo">
+              <v-icon start>mdi-content-save</v-icon>Guardar código
+            </v-btn>
+          </div>
         </v-card-text>
 
         <v-card-actions class="pa-4 pt-0">
@@ -293,14 +299,36 @@ const eliminarLinea = (idx: number) => {
   lineasModificadas.value = true;
 };
 
+const guardandoCodigo = ref(false);
+
 const abrirDetalle = async (item: any) => {
-  codigoAprobacion.value = '';
   lineasModificadas.value = false;
   const res = await axios.get(`${API}/pedidos`, { params: { orderId: item.ORDERID } });
   if (res.data.success) {
     pedidoOriginal.value = res.data.data;
+    codigoAprobacion.value = res.data.data.OBSERVACIONES || '';
     lineasLocales.value = (res.data.data.lineas || []).map((l: any) => ({ ...l }));
     modalDetalle.value = { mostrar: true, pedido: res.data.data };
+  }
+};
+
+const guardarCodigo = async () => {
+  if (!pedidoOriginal.value) return;
+  guardandoCodigo.value = true;
+  try {
+    const res = await axios.put(`${API}/pedidos/codigo-aprobacion`, {
+      orderId: pedidoOriginal.value.ORDERID,
+      codigo: codigoAprobacion.value,
+    });
+    if (res.data.success) {
+      lanzarAviso('Código guardado');
+    } else {
+      lanzarAviso(res.data.message || 'Error al guardar', 'error');
+    }
+  } catch (e: any) {
+    lanzarAviso(e.response?.data?.message || 'Error al guardar', 'error');
+  } finally {
+    guardandoCodigo.value = false;
   }
 };
 

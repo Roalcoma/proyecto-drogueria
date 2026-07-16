@@ -23,7 +23,7 @@ const STOCK_DISPONIBLE_SQL = `(
 
 export class ProductsService {
     // 1. FUNCIÓN PARA CONTAR EL TOTAL DE REGISTROS
-    static async getTotalProductsCount(articulo: string, stockStatus: string = 'todos', soloControlados = false): Promise<number> {
+    static async getTotalProductsCount(articulo: string, stockStatus: string = 'todos', soloControlados = false, condicion = ''): Promise<number> {
         try {
             const pool = await connectDb();
             const result = await pool.request()
@@ -32,6 +32,7 @@ export class ProductsService {
                 .input('ALMACEN', mssql.VarChar(10), getDbConfig().codAlmacen)
                 .input('dptoPsico', mssql.Int, getDbConfig().dptoPsicotropicos)
                 .input('SOLO_CTRL', mssql.Int, soloControlados ? 1 : 0)
+                .input('CONDICION', mssql.VarChar(5), condicion)
                 .query(`
                     DECLARE @FILTRO AS NVARCHAR(50)='%'+UPPER(REPLACE(LTRIM(RTRIM(@ARTICULO)),' ','%'))+'%'
 
@@ -39,6 +40,7 @@ export class ProductsService {
                     FROM ARTICULOS A WITH(NOLOCK)
                         INNER JOIN ARTICULOSLIN AL WITH(NOLOCK) ON A.CODARTICULO=AL.CODARTICULO
                         INNER JOIN ARTICULOSCAMPOSLIBRES ACL WITH(NOLOCK) ON A.CODARTICULO=ACL.CODARTICULO
+                        LEFT JOIN PROVEEDORESCAMPOSLIBRES PCL WITH(NOLOCK) ON PCL.CODPROVEEDOR = ACL.CODPROVEEDORICG
                     WHERE A.TIPOARTICULO='A'
                         AND A.DESCATALOGADO='F'
                         AND ( A.REFPROVEEDOR LIKE @FILTRO
@@ -52,6 +54,10 @@ export class ProductsService {
                             OR (@STOCK_STATUS = 'sin_stock' AND ${STOCK_DISPONIBLE_SQL} <= 0)
                         )
                         AND (@SOLO_CTRL = 0 OR A.SECCION = @dptoPsico)
+                        AND (@CONDICION = ''
+                            OR (@CONDICION = 'P'  AND A.SECCION = @dptoPsico)
+                            OR (@CONDICION = 'SD' AND ISNULL(A.NODTOAPLICABLE,0) = 1)
+                            OR (@CONDICION = 'NI' AND ISNULL(PCL.DIASPROTECCION,0) > 0))
                 `);
 
             return result.recordset[0].TOTAL;
@@ -62,7 +68,7 @@ export class ProductsService {
     }
 
     // 2. FUNCIÓN PARA TRAER LOS PRODUCTOS PAGINADOS
-    static async getProducts(articulo: string, page: number, limit: number, stockStatus: string = 'todos', soloControlados = false): Promise<any[]> {
+    static async getProducts(articulo: string, page: number, limit: number, stockStatus: string = 'todos', soloControlados = false, condicion = ''): Promise<any[]> {
         try {
             const safeLimit = limit === -1 ? 10000 : Math.max(1, limit);
             const offset = limit === -1 ? 0 : (Math.max(1, page) - 1) * safeLimit;
@@ -76,6 +82,7 @@ export class ProductsService {
                 .input('dptoPsico', mssql.Int, getDbConfig().dptoPsicotropicos)
                 .input('ALMACEN', mssql.VarChar(10), getDbConfig().codAlmacen)
                 .input('SOLO_CTRL', mssql.Int, soloControlados ? 1 : 0)
+                .input('CONDICION', mssql.VarChar(5), condicion)
                 .query(`
                     DECLARE @FILTRO AS NVARCHAR(50)='%'+UPPER(REPLACE(LTRIM(RTRIM(@ARTICULO)),' ','%'))+'%'
 
@@ -115,6 +122,10 @@ export class ProductsService {
                             OR (@STOCK_STATUS = 'sin_stock' AND ${STOCK_DISPONIBLE_SQL} <= 0)
                         )
                         AND (@SOLO_CTRL = 0 OR A.SECCION = @dptoPsico)
+                        AND (@CONDICION = ''
+                            OR (@CONDICION = 'P'  AND A.SECCION = @dptoPsico)
+                            OR (@CONDICION = 'SD' AND ISNULL(A.NODTOAPLICABLE,0) = 1)
+                            OR (@CONDICION = 'NI' AND ISNULL(PCL.DIASPROTECCION,0) > 0))
                     ORDER BY STOCKTOTAL DESC, ACL.DESCRIPCIONLARGA
                     OFFSET @OFFSET ROWS
                     FETCH NEXT @LIMIT ROWS ONLY

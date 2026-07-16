@@ -283,9 +283,9 @@ export class PedidosServices {
                         SELECT CL.CODCLIENTE,
                             CASE
                                 WHEN CL.RIESGOCONCEDIDO = 0 THEN 'SIN LIMITE'
-                                WHEN (ISNULL(SUM(T.IMPORTE),0) * 100.0 / CL.RIESGOCONCEDIDO) >= 100 THEN 'SUPERADO'
-                                WHEN (ISNULL(SUM(T.IMPORTE),0) * 100.0 / CL.RIESGOCONCEDIDO) >= 80  THEN 'ALTO'
-                                WHEN (ISNULL(SUM(T.IMPORTE),0) * 100.0 / CL.RIESGOCONCEDIDO) >= 30  THEN 'MEDIO'
+                                WHEN (ISNULL(SUM(CASE WHEN ISNULL(T.CODMONEDA,1)=2 THEN T.IMPORTE ELSE T.IMPORTE/NULLIF(DBO.F_GET_COTIZACION(GETDATE(),2),0) END),0) * 100.0 / CL.RIESGOCONCEDIDO) >= 100 THEN 'SUPERADO'
+                                WHEN (ISNULL(SUM(CASE WHEN ISNULL(T.CODMONEDA,1)=2 THEN T.IMPORTE ELSE T.IMPORTE/NULLIF(DBO.F_GET_COTIZACION(GETDATE(),2),0) END),0) * 100.0 / CL.RIESGOCONCEDIDO) >= 80  THEN 'ALTO'
+                                WHEN (ISNULL(SUM(CASE WHEN ISNULL(T.CODMONEDA,1)=2 THEN T.IMPORTE ELSE T.IMPORTE/NULLIF(DBO.F_GET_COTIZACION(GETDATE(),2),0) END),0) * 100.0 / CL.RIESGOCONCEDIDO) >= 30  THEN 'MEDIO'
                                 ELSE 'BAJO'
                             END AS ESTATUS
                         FROM CLIENTES CL WITH (NOLOCK)
@@ -862,6 +862,23 @@ export class PedidosServices {
             return { success: true, data: result.recordset, total: countRes.recordset[0].TOTAL };
         } catch (error) {
             return { success: false, data: [], total: 0, message: String(error) };
+        }
+    }
+
+    static async actualizarCodigoAprobacion(orderId: string, codigo: string): Promise<{ success: boolean; message?: string }> {
+        try {
+            const pool = await connectDb();
+            const check = await pool.request()
+                .input('ORDERID_CHK', mssql.VarChar(50), orderId)
+                .query(`SELECT 1 FROM ${esquema}.CABECERA_PED WHERE ORDERID = @ORDERID_CHK`);
+            if (check.recordset.length === 0) return { success: false, message: 'Pedido no encontrado' };
+            await pool.request()
+                .input('ORDERID', mssql.VarChar(50), orderId)
+                .input('CODIGO', mssql.NVarChar(255), codigo.trim())
+                .query(`UPDATE ${esquema}.CABECERA_PED SET OBSERVACIONES = @CODIGO WHERE ORDERID = @ORDERID`);
+            return { success: true };
+        } catch (error) {
+            return { success: false, message: String(error) };
         }
     }
 

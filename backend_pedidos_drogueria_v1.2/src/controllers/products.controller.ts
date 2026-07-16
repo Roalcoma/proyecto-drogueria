@@ -5,18 +5,19 @@ export class ProductsController {
     static async getProducts(req: Request, res: Response): Promise<void> {
         try {
             // Atrapamos el nuevo parámetro 'stock_status' del frontend
-            let { articulo, page, limit, stock_status, solo_controlados } = req.query;
+            let { articulo, page, limit, stock_status, solo_controlados, condicion } = req.query;
 
             const paginaActual = Number(page) || 1;
             const limiteItems = Number(limit) || 10;
             const status = (stock_status as string) || 'todos';
             const soloCtrl = solo_controlados === 'true';
+            const cond = (condicion as string) || '';
 
             // 1. Contamos el Gran Total aplicando el filtro de stock
-            const totalRegistros = await ProductsService.getTotalProductsCount(articulo as string, status, soloCtrl);
+            const totalRegistros = await ProductsService.getTotalProductsCount(articulo as string, status, soloCtrl, cond);
 
             // 2. Traemos solo los 10 de la página aplicando el filtro de stock
-            const products = await ProductsService.getProducts(articulo as string, paginaActual, limiteItems, status, soloCtrl);
+            const products = await ProductsService.getProducts(articulo as string, paginaActual, limiteItems, status, soloCtrl, cond);
 
             // 3. Llenamos el arreglo con sus stocks y precios (tu código original)
             for (const product of products) {
