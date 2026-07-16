@@ -461,10 +461,11 @@
               <p class="text-overline text-grey-darken-2 mb-2 px-1">Ruteros en esta sesión</p>
               <v-row class="mb-3" dense>
                 <v-col v-for="r in sesionPicking" :key="r.ID" cols="6" sm="4" md="3">
-                  <v-card rounded="xl" variant="tonal" color="deep-purple" class="pa-3" style="cursor:pointer" @click="abrirPendientesRutero(r)">
+                  <v-card rounded="xl" variant="tonal" :color="ruteroPickingCompleto(r) ? 'success' : 'deep-purple'" class="pa-3" style="cursor:pointer" @click="abrirPendientesRutero(r)">
                     <div class="d-flex align-center gap-2 mb-2">
-                      <v-chip size="x-small" color="deep-purple" variant="elevated" class="font-weight-bold">{{ r.NUMERO }}</v-chip>
+                      <v-chip size="x-small" :color="ruteroPickingCompleto(r) ? 'success' : 'deep-purple'" variant="elevated" class="font-weight-bold">{{ r.NUMERO }}</v-chip>
                       <span class="text-caption font-weight-medium flex-grow-1">{{ r.NOMBRE_RUTA }}</span>
+                      <v-icon v-if="ruteroPickingCompleto(r)" color="success" size="18">mdi-check-circle</v-icon>
                       <v-btn
                         icon="mdi-close" size="x-small" variant="text" color="error"
                         :loading="liberandoPicking === r.ID"
@@ -954,13 +955,15 @@ const cargandoSesion            = ref(false);
 const agregandoPicking          = ref<number | null>(null);
 const liberandoPicking          = ref<number | null>(null);
 const pickingCompletoAnunciado  = ref(false);
+const ruteroCompletoAnunciado   = ref(new Set<number>());
+
+const ruteroPickingCompleto = (r: any) =>
+  Number(r.TOTAL_CAJAS) > 0 && Number(r.CAJAS_ESCANEADAS) >= Number(r.TOTAL_CAJAS);
 
 const verificarPickingCompleto = () => {
   if (pickingCompletoAnunciado.value) return;
   if (!sesionPicking.value.length) return;
-  const completo = sesionPicking.value.every(
-    r => Number(r.TOTAL_CAJAS) > 0 && Number(r.CAJAS_ESCANEADAS) >= Number(r.TOTAL_CAJAS)
-  );
+  const completo = sesionPicking.value.every(ruteroPickingCompleto);
   if (completo) {
     pickingCompletoAnunciado.value = true;
     hablar('Picking completado, quedó bello');
@@ -976,6 +979,7 @@ const cargarSesionPicking = async () => {
     ]);
     sesionPicking.value = sesRes.data.data ?? [];
     pickingCompletoAnunciado.value = false;
+    ruteroCompletoAnunciado.value  = new Set();
   } catch (e: any) {
     notify(e.response?.data?.message || 'Error al cargar sesión', 'error');
   } finally {
@@ -1109,7 +1113,13 @@ const escanearCajaGlobal = async () => {
         FECHAESCAN: new Date().toLocaleString('es-VE', { timeZone: 'America/Caracas' }),
       });
       const r = sesionPicking.value.find(x => x.ID === res.data.ruteroId);
-      if (r) r.CAJAS_ESCANEADAS = (r.CAJAS_ESCANEADAS ?? 0) + 1;
+      if (r) {
+        r.CAJAS_ESCANEADAS = (r.CAJAS_ESCANEADAS ?? 0) + 1;
+        if (ruteroPickingCompleto(r) && !ruteroCompletoAnunciado.value.has(r.ID)) {
+          ruteroCompletoAnunciado.value = new Set([...ruteroCompletoAnunciado.value, r.ID]);
+          hablar(`Rutero ${r.NUMERO} completado`);
+        }
+      }
       verificarPickingCompleto();
     } else if (res.data.duplicado) {
       hablarRapido('Bulto Cargado Anteriormente');
