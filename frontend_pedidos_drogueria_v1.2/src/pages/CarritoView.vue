@@ -82,7 +82,7 @@
                 </td>
 
                 <td class="text-center">
-                  <v-btn v-if="authStore.esAdmin" icon="mdi-sale" variant="text" color="orange-darken-2" @click="abrirGestorDescuentos(item)"></v-btn>
+                  <v-btn v-if="authStore.puedeDescuentoLinea" icon="mdi-sale" variant="text" color="orange-darken-2" @click="abrirGestorDescuentos(item)"></v-btn>
                   <v-btn icon="mdi-delete-outline" variant="text" color="error" @click="eliminarDelCarrito(item.CODARTICULO)"></v-btn>
                 </td>
               </tr>

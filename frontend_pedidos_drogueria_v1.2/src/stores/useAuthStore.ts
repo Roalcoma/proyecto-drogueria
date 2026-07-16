@@ -83,7 +83,8 @@ export const useAuthStore = defineStore('auth', () => {
     };
 
     const isAuthenticated = computed(() => !!token.value && !!usuario.value);
-    const esAdmin         = computed(() => usuario.value?.es_admin ?? false);
+    const esAdmin              = computed(() => usuario.value?.es_admin ?? false);
+    const puedeDescuentoLinea  = computed(() => (Number(usuario.value?.visibilidad ?? 0) & 512) !== 0);
 
     const modulosVisibles = computed<ModuloPermiso[]>(() =>
         (usuario.value?.modulos ?? [])
@@ -119,5 +120,5 @@ export const useAuthStore = defineStore('auth', () => {
         stopActivityWatcher();
     };
 
-    return { token, usuario, isAuthenticated, esAdmin, modulosVisibles, tienePermiso, login, logout, modoPruebas, toggleModoPruebas, resetInactivityTimer };
+    return { token, usuario, isAuthenticated, esAdmin, puedeDescuentoLinea, modulosVisibles, tienePermiso, login, logout, modoPruebas, toggleModoPruebas, resetInactivityTimer };
 });

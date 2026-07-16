@@ -21,7 +21,7 @@
           <strong>{{ m.bit }}</strong> — {{ m.nombre }}
         </v-chip>
         <v-chip size="small" color="success" variant="tonal" prepend-icon="mdi-star">
-          <strong>15871</strong> — Acceso total (todos los módulos)
+          <strong>16383</strong> — Acceso total (todos los módulos)
         </v-chip>
       </div>
     </v-card>
@@ -608,7 +608,8 @@ const MODULOS = [
   { bit: 32, codigo: 'PROMOCIONES', nombre: 'Promociones',     icono: 'mdi-sale' },
   { bit: 64, codigo: 'CLIENTES',   nombre: 'Gestión Clientes', icono: 'mdi-account-group' },
   { bit: 128, codigo: 'APROBACION_PSICO', nombre: 'Aprobación Psicotrópicos', icono: 'mdi-shield-alert' },
-  { bit: 256, codigo: 'RECLAMOS',   nombre: 'Reclamos',           icono: 'mdi-comment-alert' },
+  { bit: 256, codigo: 'RECLAMOS',        nombre: 'Reclamos',             icono: 'mdi-comment-alert' },
+  { bit: 512, codigo: 'DESCUENTO_LINEA', nombre: 'Descuentos en línea',  icono: 'mdi-percent'       },
   { bit: 1024, codigo: 'AUDITORIA',   nombre: 'Auditoría',                icono: 'mdi-clipboard-text-clock' },
   { bit: 2048, codigo: 'AUTORIZADOR', nombre: 'Puede autorizar pedidos',  icono: 'mdi-check-decagram'       },
   { bit: 4096, codigo: 'RUTERO',              nombre: 'Rutero de Entrega',        icono: 'mdi-truck-delivery' },
