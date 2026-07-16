@@ -13,8 +13,7 @@ const TRANSICIONES_PERMITIDAS: Record<string, string[]> = {
     'OK':                         ['CANCELADO'],
     'EMPACADO':                   ['AUTORIZADO', 'CANCELADO'],
     'ICG':                        ['CANCELADO'],
-    // 'APROBACION PSICOTROPICOS' deliberadamente sin entrada: no debe poder cambiarse
-    // desde el dropdown normal de estatus, solo vía aprobarPsicotropico().
+    'APROBACION PSICOTROPICOS':   ['CANCELADO'],
 };
 
 export const ESTATUS_APROBACION_PSICOTROPICOS = 'APROBACION PSICOTROPICOS';
@@ -540,9 +539,9 @@ export class PedidosServices {
                 return { success: false, message: 'El pedido no existe' };
             }
 
-            if (checkRes.recordset[0].ESTATUS !== 'PENDIENTE') {
+            if (!['PENDIENTE', ESTATUS_APROBACION_PSICOTROPICOS].includes(checkRes.recordset[0].ESTATUS)) {
                 await transaction.rollback();
-                return { success: false, message: 'Solo se pueden editar pedidos en estatus PENDIENTE' };
+                return { success: false, message: 'Solo se pueden editar pedidos en estatus PENDIENTE o APROBACION PSICOTROPICOS' };
             }
 
             // 2. Actualizar la Cabecera (Totales, Vendedor o Cliente si cambió)
@@ -731,7 +730,7 @@ export class PedidosServices {
             }
 
             // CANCELADO desde PENDIENTE o ICG no requiere rol Autorizador
-            const cancelacionLibre = estatusLimpio === 'CANCELADO' && ['PENDIENTE', 'ICG'].includes(estadoActual);
+            const cancelacionLibre = estatusLimpio === 'CANCELADO' && ['PENDIENTE', 'ICG', ESTATUS_APROBACION_PSICOTROPICOS].includes(estadoActual);
             const requiereAutorizador = estatusLimpio === 'AUTORIZADO' ||
                 (estatusLimpio === 'CANCELADO' && !cancelacionLibre);
             if (requiereAutorizador && !puedeAutorizar) {
