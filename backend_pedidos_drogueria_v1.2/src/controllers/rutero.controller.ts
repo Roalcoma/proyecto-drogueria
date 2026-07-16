@@ -179,8 +179,9 @@ export class RuteroController {
 
     static async confirmarRutero(req: Request, res: Response): Promise<void> {
         const id = Number(req.params.id);
+        const fechaEntrega = req.body?.fechaEntrega ? String(req.body.fechaEntrega) : undefined;
         try {
-            await RuteroService.confirmarRutero(id);
+            await RuteroService.confirmarRutero(id, fechaEntrega);
             res.json({ success: true, message: 'Rutero confirmado como entregado' });
         } catch (error) {
             res.status(500).json({ success: false, message: 'Error al confirmar rutero', error: error instanceof Error ? error.message : String(error) });

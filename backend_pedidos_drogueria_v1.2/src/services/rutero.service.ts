@@ -882,14 +882,15 @@ export class RuteroService {
         return { ok: true, message: `${ids.length} rutero(s) marcados como En Ruta`, marcados: ids.length };
     }
 
-    static async confirmarRutero(idrutero: number): Promise<void> {
+    static async confirmarRutero(idrutero: number, fechaEntrega?: string): Promise<void> {
         const ruteroDB = await connectRuteroDB();
+        const fechaVal = fechaEntrega ? `'${fechaEntrega.substring(0, 10)}'` : 'GETDATE()';
 
         await ruteroDB.request()
             .input('IDRUTERO', mssql.Int, idrutero)
             .query(`
                 UPDATE APP_RUTEROS_DETALLE
-                SET FECHARECIBIDO = GETDATE()
+                SET FECHARECIBIDO = ${fechaVal}
                 WHERE IDRUTERO = @IDRUTERO AND FECHARECIBIDO IS NULL
             `);
 
@@ -904,7 +905,7 @@ export class RuteroService {
                 .input('NUMFACTURA', mssql.Int,         d.NUMFACTURA)
                 .query(`
                     UPDATE FACTURASVENTACAMPOSLIBRES
-                    SET FECHARECIBIDO = GETDATE()
+                    SET FECHARECIBIDO = ${fechaVal}
                     WHERE NUMSERIE   COLLATE DATABASE_DEFAULT = @NUMSERIE COLLATE DATABASE_DEFAULT
                       AND NUMFACTURA = @NUMFACTURA
                       AND FECHARECIBIDO IS NULL

@@ -288,11 +288,20 @@
                       </template>
                     </template>
                     <v-btn
+                      v-if="selCount(r.ID) > 0"
+                      size="small" color="teal" variant="elevated"
+                      prepend-icon="mdi-check-bold"
+                      :loading="confirmandoRutero === r.ID"
+                      @click.stop="abrirDialogFechaSeleccion(r)"
+                    >
+                      Confirmar selec. ({{ selCount(r.ID) }})
+                    </v-btn>
+                    <v-btn
                       size="small" color="success" variant="elevated"
                       prepend-icon="mdi-check-all"
                       :loading="confirmandoRutero === r.ID"
                       :disabled="r.ENTREGADAS >= r.TOTAL_FACTURAS"
-                      @click.stop="confirmarRuteroCompleto(r.ID)"
+                      @click.stop="abrirDialogFechaTodo(r)"
                     >
                       Confirmar todo
                     </v-btn>
@@ -320,6 +329,17 @@
                     hide-default-footer
                     :items-per-page="-1"
                   >
+                    <template #item.sel="{ item }">
+                      <v-checkbox
+                        v-if="!item.FECHARECIBIDO"
+                        :model-value="isSelFactura(r.ID, item)"
+                        hide-details
+                        density="compact"
+                        class="ma-0 pa-0"
+                        @update:model-value="toggleSelFactura(r.ID, item)"
+                        @click.stop
+                      />
+                    </template>
                     <template #item.estado="{ item }">
                       <div class="d-flex gap-1 align-center">
                         <v-icon :color="item.CHECKEADO ? 'deep-purple' : (item.TOTAL_CAJAS ? 'orange' : 'grey-lighten-2')" size="18" :title="item.CHECKEADO ? 'Picking listo' : 'Picking pendiente'">
@@ -742,7 +762,9 @@
         <v-card-title class="pa-4">Confirmar entrega</v-card-title>
         <v-card-text class="pa-4 pt-0">
           <p class="text-body-2 mb-3 text-grey-darken-2">
-            {{ dialogFecha.item?.FACTURA_VISUAL }} · {{ dialogFecha.item?.CLIENTE }}
+            <template v-if="dialogFecha.modo === 'todo'">Confirmar entrega de todas las facturas pendientes</template>
+            <template v-else-if="dialogFecha.modo === 'seleccion'">Confirmar {{ selCount(dialogFecha.idrutero) }} factura(s) seleccionada(s)</template>
+            <template v-else>{{ dialogFecha.item?.FACTURA_VISUAL }} · {{ dialogFecha.item?.CLIENTE }}</template>
           </p>
           <v-text-field
             v-model="dialogFecha.fecha"
@@ -899,16 +921,31 @@ const filtrarFacturasRutero = (id: number) => {
   }
 };
 
-const dialogFecha = ref({ show: false, idrutero: 0, item: null as any, fecha: hoyISO, minFecha: '' });
+const dialogFecha = ref({ show: false, idrutero: 0, item: null as any, fecha: hoyISO, minFecha: '', modo: 'factura' as 'factura' | 'todo' | 'seleccion' });
 
 const abrirDialogFecha = (r: any, item: any) => {
-  dialogFecha.value = {
-    show: true,
-    idrutero: r.ID,
-    item,
-    fecha: hoyISO,
-    minFecha: (r.FECHA ?? '').substring(0, 10),
-  };
+  dialogFecha.value = { show: true, idrutero: r.ID, item, fecha: hoyISO, minFecha: (r.FECHA ?? '').substring(0, 10), modo: 'factura' };
+};
+
+const abrirDialogFechaTodo = (r: any) => {
+  dialogFecha.value = { show: true, idrutero: r.ID, item: null, fecha: hoyISO, minFecha: (r.FECHA ?? '').substring(0, 10), modo: 'todo' };
+};
+
+const abrirDialogFechaSeleccion = (r: any) => {
+  dialogFecha.value = { show: true, idrutero: r.ID, item: null, fecha: hoyISO, minFecha: (r.FECHA ?? '').substring(0, 10), modo: 'seleccion' };
+};
+
+// Per-rutero invoice selection for bulk confirm
+const selectedFacturas = reactive<Record<number, string[]>>({});
+const isSelFactura  = (ruteroId: number, item: any) => (selectedFacturas[ruteroId] ?? []).includes(clave(item));
+const selCount      = (ruteroId: number) => (selectedFacturas[ruteroId] ?? []).length;
+const clearSelFacturas = (ruteroId: number) => { selectedFacturas[ruteroId] = []; };
+const toggleSelFactura = (ruteroId: number, item: any) => {
+  const k = clave(item);
+  if (!selectedFacturas[ruteroId]) selectedFacturas[ruteroId] = [];
+  const idx = selectedFacturas[ruteroId].indexOf(k);
+  if (idx >= 0) selectedFacturas[ruteroId].splice(idx, 1);
+  else selectedFacturas[ruteroId].push(k);
 };
 
 // Sesión de picking
@@ -1190,6 +1227,7 @@ const headersOficina = [
 ];
 
 const headersRutero = [
+  { title: '',        key: 'sel',           sortable: false, width: '40px' },
   { title: '',        key: 'estado',        sortable: false, width: '48px' },
   { title: 'Factura', key: 'FACTURA_VISUAL', sortable: false },
   { title: 'Pedido',  key: 'PEDIDO',        sortable: false },
@@ -1414,9 +1452,19 @@ const confirmarFactura = async (idrutero: number, item: any, fechaEntrega?: stri
 };
 
 const confirmarFacturaConFecha = async () => {
-  const { idrutero, item, fecha } = dialogFecha.value;
+  const { idrutero, item, fecha, modo } = dialogFecha.value;
   dialogFecha.value.show = false;
-  await confirmarFactura(idrutero, item, fecha);
+  if (modo === 'todo') {
+    await confirmarRuteroCompleto(idrutero, fecha);
+  } else if (modo === 'seleccion') {
+    const selKeys = [...(selectedFacturas[idrutero] ?? [])];
+    const lista = (facturasRutero[idrutero] ?? []).filter((f: any) => selKeys.includes(clave(f)));
+    for (const f of lista) await confirmarFactura(idrutero, f, fecha);
+    clearSelFacturas(idrutero);
+    notify(`${lista.length} factura(s) confirmadas`, 'success');
+  } else {
+    await confirmarFactura(idrutero, item, fecha);
+  }
 };
 
 const quitarFacturaDeRutero = async (r: any, item: any) => {
@@ -1435,12 +1483,11 @@ const quitarFacturaDeRutero = async (r: any, item: any) => {
   }
 };
 
-const confirmarRuteroCompleto = async (id: number) => {
+const confirmarRuteroCompleto = async (id: number, fechaEntrega?: string) => {
   confirmandoRutero.value = id;
   try {
-    await axios.put(`${API}/rutero/ruteros/${id}/confirmar`);
+    await axios.put(`${API}/rutero/ruteros/${id}/confirmar`, { fechaEntrega });
     notify('Rutero marcado como entregado', 'success');
-    // Remove from list
     ruteros.value = ruteros.value.filter(r => r.ID !== id);
     delete facturasRutero[id];
   } catch (e: any) {
