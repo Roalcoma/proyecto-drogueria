@@ -81,9 +81,14 @@ export async function generarPedidoPDF(data: PedidoPDFData): Promise<void> {
     doc.text(`N°: ${data.numeroOrden}`, 150, 38);
 
     // --- Datos del cliente ---
-    doc.setFillColor(248, 248, 248);
-    doc.rect(14, 41, 182, data.estatus ? 42 : 36, 'F');
     doc.setFontSize(8.5);
+    const addrLineH = 5;
+    const linesFiscal = doc.splitTextToSize(`Dir. Fiscal:  ${data.cliente.direccionFiscal || 'N/A'}`, 175);
+    const linesEnvio  = doc.splitTextToSize(`Dir. Envío:   ${data.cliente.direccionEnvio  || 'N/A'}`, 175);
+    const extraAddrH  = ((linesFiscal.length - 1) + (linesEnvio.length - 1)) * addrLineH;
+
+    doc.setFillColor(248, 248, 248);
+    doc.rect(14, 41, 182, (data.estatus ? 42 : 36) + extraAddrH, 'F');
     doc.setFont('helvetica', 'normal');
 
     const tz = { timeZone: 'America/Caracas' };
@@ -107,15 +112,20 @@ export async function generarPedidoPDF(data: PedidoPDFData): Promise<void> {
         doc.setFont('helvetica', 'normal');
     }
 
-    doc.text(`Dir. Fiscal:  ${data.cliente.direccionFiscal || 'N/A'}`, 16, 63);
-    doc.text(`Dir. Envío:   ${data.cliente.direccionEnvio  || 'N/A'}`, 16, 68);
+    doc.text(linesFiscal, 16, 63);
+    const yEnvio = 63 + linesFiscal.length * addrLineH;
+    doc.text(linesEnvio, 16, yEnvio);
+    const yAfterEnvio = yEnvio + (linesEnvio.length - 1) * addrLineH;
 
-    let datosFin = 79;
+    let datosFin: number;
     if (data.estatus) {
+        const yEstado = yAfterEnvio + 6;
         doc.setFont('helvetica', 'bold');
-        doc.text(`Estado: ${data.estatus}`, 16, 74);
+        doc.text(`Estado: ${data.estatus}`, 16, yEstado);
         doc.setFont('helvetica', 'normal');
-        datosFin = 84;
+        datosFin = yEstado + 10;
+    } else {
+        datosFin = yAfterEnvio + 11;
     }
 
     const maxDiasProteccion = Math.max(...data.lineas.map(l => l.diasProteccion ?? 0));

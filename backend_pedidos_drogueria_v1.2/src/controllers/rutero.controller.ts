@@ -37,13 +37,14 @@ export class RuteroController {
         }
     }
 
-    static async crearRutero(req: Request, res: Response): Promise<void> {
+    static async crearRutero(req: RequestConUsuario, res: Response): Promise<void> {
         const { codruta, nombreRuta, facturas } = req.body;
         if (!codruta || !Array.isArray(facturas) || !facturas.length) {
             res.status(400).json({ success: false, message: 'codruta y facturas requeridos' }); return;
         }
         try {
-            const result = await RuteroService.crearRutero(Number(codruta), String(nombreRuta ?? ''), facturas);
+            const usuario = req.usuario?.usuario ?? '';
+            const result = await RuteroService.crearRutero(Number(codruta), String(nombreRuta ?? ''), facturas, usuario);
             res.json({ success: true, data: result });
         } catch (error) {
             res.status(500).json({ success: false, message: 'Error al crear rutero', error: error instanceof Error ? error.message : String(error) });
@@ -76,13 +77,14 @@ export class RuteroController {
         }
     }
 
-    static async confirmarFacturaRutero(req: Request, res: Response): Promise<void> {
+    static async confirmarFacturaRutero(req: RequestConUsuario, res: Response): Promise<void> {
         const { idrutero, numserie, numfactura, fechaEntrega } = req.body;
         if (!idrutero || !numserie || !numfactura) {
             res.status(400).json({ success: false, message: 'idrutero, numserie y numfactura requeridos' }); return;
         }
         try {
-            await RuteroService.confirmarFacturaRutero(Number(idrutero), String(numserie), Number(numfactura), fechaEntrega ? String(fechaEntrega) : undefined);
+            const usuario = req.usuario?.usuario ?? '';
+            await RuteroService.confirmarFacturaRutero(Number(idrutero), String(numserie), Number(numfactura), fechaEntrega ? String(fechaEntrega) : undefined, usuario);
             res.json({ success: true, message: 'Factura confirmada' });
         } catch (error) {
             res.status(500).json({ success: false, message: 'Error al confirmar factura', error: error instanceof Error ? error.message : String(error) });
@@ -177,18 +179,19 @@ export class RuteroController {
         }
     }
 
-    static async confirmarRutero(req: Request, res: Response): Promise<void> {
+    static async confirmarRutero(req: RequestConUsuario, res: Response): Promise<void> {
         const id = Number(req.params.id);
         const fechaEntrega = req.body?.fechaEntrega ? String(req.body.fechaEntrega) : undefined;
         try {
-            await RuteroService.confirmarRutero(id, fechaEntrega);
+            const usuario = req.usuario?.usuario ?? '';
+            await RuteroService.confirmarRutero(id, fechaEntrega, usuario);
             res.json({ success: true, message: 'Rutero confirmado como entregado' });
         } catch (error) {
             res.status(500).json({ success: false, message: 'Error al confirmar rutero', error: error instanceof Error ? error.message : String(error) });
         }
     }
 
-    static async quitarFactura(req: Request, res: Response): Promise<void> {
+    static async quitarFactura(req: RequestConUsuario, res: Response): Promise<void> {
         const id         = Number(req.params.id);
         const numserie   = String(req.body.numserie   ?? '').trim().toUpperCase();
         const numfactura = Number(req.body.numfactura);
@@ -196,12 +199,25 @@ export class RuteroController {
             res.status(400).json({ success: false, message: 'numserie y numfactura requeridos' }); return;
         }
         try {
-            await RuteroService.quitarFacturaDeRutero(id, numserie, numfactura);
+            const usuario = req.usuario?.usuario ?? '';
+            await RuteroService.quitarFacturaDeRutero(id, numserie, numfactura, usuario);
             res.json({ success: true, message: 'Factura quitada del rutero' });
         } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
             res.status(msg.includes('PENDIENTE') || msg.includes('no encontrado') ? 400 : 500)
                .json({ success: false, message: msg });
+        }
+    }
+
+    static async getAuditoriaRutero(req: Request, res: Response): Promise<void> {
+        const page   = req.query.page   ? Number(req.query.page)          : 1;
+        const limit  = req.query.limit  ? Number(req.query.limit)         : 50;
+        const buscar = req.query.buscar ? String(req.query.buscar).trim() : undefined;
+        try {
+            const { data, total } = await RuteroService.getAuditoriaRutero(page, limit, buscar);
+            res.json({ success: true, data, total });
+        } catch (error) {
+            res.status(500).json({ success: false, message: 'Error al obtener auditoría', error: error instanceof Error ? error.message : String(error) });
         }
     }
 }

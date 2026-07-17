@@ -1,0 +1,19 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "backend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 9000,
+      "cwd": "C:\Users\rodri\ProyectosRodrigo\Pedidos_Drogueria\backend_pedidos_drogueria_v1.2"
+    },
+    {
+      "name": "frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 9010,
+      "cwd": "C:\Users\rodri\ProyectosRodrigo\Pedidos_Drogueria\frontend_pedidos_drogueria_v1.2"
+    }
+  ]
+}

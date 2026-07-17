@@ -105,6 +105,17 @@ export class RuteroService {
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('APP_RUTEROS_CAJAS') AND name='NCAJAS')
                     ALTER TABLE APP_RUTEROS_CAJAS ADD NCAJAS INT NULL
             `);
+            await pool.request().query(`
+                IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='APP_RUTERO_LOG' AND xtype='U')
+                CREATE TABLE APP_RUTERO_LOG (
+                    ID        INT IDENTITY(1,1) PRIMARY KEY,
+                    ACCION    VARCHAR(50)   NOT NULL,
+                    IDRUTERO  INT           NULL,
+                    USUARIO   VARCHAR(100)  NOT NULL DEFAULT '',
+                    FECHA     DATETIME      NOT NULL DEFAULT GETDATE(),
+                    DETALLES  NVARCHAR(500) NOT NULL DEFAULT ''
+                )
+            `);
             console.log('Tablas de rutero verificadas (BD rutero).');
         } catch (err) {
             console.error('Advertencia en RuteroService.initTablas (BD rutero):', err);
@@ -124,6 +135,57 @@ export class RuteroService {
         } catch (err) {
             console.error('Advertencia en RuteroService.initTablas (FECHARECIBIDO):', err);
         }
+    }
+
+    // ── Auditoría ─────────────────────────────────────────────────────────────
+
+    private static async registrarLog(accion: string, usuario: string, idrutero: number | null = null, detalles = ''): Promise<void> {
+        try {
+            const pool = await connectRuteroDB();
+            await pool.request()
+                .input('ACCION',   mssql.VarChar(50),   accion)
+                .input('IDRUTERO', mssql.Int,           idrutero)
+                .input('USUARIO',  mssql.VarChar(100),  usuario)
+                .input('DETALLES', mssql.NVarChar(500), detalles)
+                .query(`INSERT INTO APP_RUTERO_LOG (ACCION, IDRUTERO, USUARIO, DETALLES) VALUES (@ACCION, @IDRUTERO, @USUARIO, @DETALLES)`);
+        } catch { /* non-critical */ }
+    }
+
+    static async getAuditoriaRutero(page = 1, limit = 50, buscar?: string): Promise<{ data: any[]; total: number }> {
+        const pool   = await connectRuteroDB();
+        const req    = pool.request();
+        const reqCnt = pool.request();
+        let where = '';
+        if (buscar) {
+            req.input('BUSCAR',    mssql.NVarChar(100), `%${buscar}%`);
+            reqCnt.input('BUSCAR', mssql.NVarChar(100), `%${buscar}%`);
+            where = `WHERE L.USUARIO LIKE @BUSCAR OR ISNULL(AR.NUMERO,'') LIKE @BUSCAR OR L.ACCION LIKE @BUSCAR OR L.DETALLES LIKE @BUSCAR`;
+        }
+        const safeLimit = Math.max(1, limit);
+        const offset    = (Math.max(1, page) - 1) * safeLimit;
+        req.input('OFFSET', mssql.Int, offset);
+        req.input('LIMIT',  mssql.Int, safeLimit);
+        const [dataRes, cntRes] = await Promise.all([
+            req.query(`
+                SELECT L.ID, L.ACCION, L.IDRUTERO,
+                       ISNULL(AR.NUMERO, '') AS NUMERO_RUTERO,
+                       L.USUARIO,
+                       CONVERT(VARCHAR(19), L.FECHA, 120) AS FECHA,
+                       L.DETALLES
+                FROM APP_RUTERO_LOG L
+                LEFT JOIN APP_RUTEROS AR WITH(NOLOCK) ON AR.ID = L.IDRUTERO
+                ${where}
+                ORDER BY L.FECHA DESC
+                OFFSET @OFFSET ROWS FETCH NEXT @LIMIT ROWS ONLY
+            `),
+            reqCnt.query(`
+                SELECT COUNT(*) AS TOTAL
+                FROM APP_RUTERO_LOG L
+                LEFT JOIN APP_RUTEROS AR WITH(NOLOCK) ON AR.ID = L.IDRUTERO
+                ${where}
+            `),
+        ]);
+        return { data: dataRes.recordset, total: cntRes.recordset[0].TOTAL };
     }
 
     // ── Lectura de DROGUERIA ─────────────────────────────────────────────────
@@ -252,7 +314,8 @@ export class RuteroService {
     static async crearRutero(
         codruta: number,
         nombreRuta: string,
-        facturas: { numserie: string; numfactura: number }[]
+        facturas: { numserie: string; numfactura: number }[],
+        usuario: string
     ): Promise<{ id: number; numero: string }> {
         const pool = await connectRuteroDB();
 
@@ -284,6 +347,7 @@ export class RuteroService {
                 `);
         }
 
+        await RuteroService.registrarLog('CREAR', usuario, id, `Ruta: ${nombreRuta}, ${facturas.length} facturas`);
         return { id, numero };
     }
 
@@ -381,7 +445,10 @@ export class RuteroService {
                     OR PICKING_USUARIO = @USUARIO
                     OR DATEDIFF(HOUR, PICKING_FECHA, GETDATE()) >= 8)
             `);
-        if (upd.rowsAffected[0] > 0) return { ok: true };
+        if (upd.rowsAffected[0] > 0) {
+            await RuteroService.registrarLog('INICIAR_PICKING', usuario, idrutero);
+            return { ok: true };
+        }
         const row = await pool.request()
             .input('ID', mssql.Int, idrutero)
             .query(`SELECT PICKING_USUARIO FROM APP_RUTEROS WHERE ID = @ID`);
@@ -398,6 +465,7 @@ export class RuteroService {
                 SET PICKING_USUARIO = NULL, PICKING_FECHA = NULL
                 WHERE ID = @ID AND PICKING_USUARIO = @USUARIO
             `);
+        await RuteroService.registrarLog('LIBERAR_PICKING', usuario, idrutero);
     }
 
     static async getMiSesionPicking(usuario: string): Promise<any[]> {
@@ -534,7 +602,7 @@ export class RuteroService {
         });
     }
 
-    static async confirmarFacturaRutero(idrutero: number, numserie: string, numfactura: number, fechaEntrega?: string): Promise<void> {
+    static async confirmarFacturaRutero(idrutero: number, numserie: string, numfactura: number, fechaEntrega?: string, usuario = ''): Promise<void> {
         const ruteroDB = await connectRuteroDB();
         const fechaVal = fechaEntrega ? `'${fechaEntrega.substring(0, 10)}'` : 'GETDATE()';
 
@@ -574,6 +642,7 @@ export class RuteroService {
                     WHERE IDRUTERO = @IDRUTERO AND FECHARECIBIDO IS NULL
                   )
             `);
+        await RuteroService.registrarLog('CONFIRMAR_FACTURA', usuario, idrutero, `${numserie}-${numfactura}`);
     }
 
     static async getEstadoPicking(idrutero: number): Promise<{
@@ -879,10 +948,13 @@ export class RuteroService {
                 WHERE PICKING_USUARIO = @USUARIO AND ESTADO = 'PENDIENTE'
             `);
 
+        for (const id of ids)
+            await RuteroService.registrarLog('INICIAR_VIAJE', usuario, id);
+
         return { ok: true, message: `${ids.length} rutero(s) marcados como En Ruta`, marcados: ids.length };
     }
 
-    static async confirmarRutero(idrutero: number, fechaEntrega?: string): Promise<void> {
+    static async confirmarRutero(idrutero: number, fechaEntrega?: string, usuario = ''): Promise<void> {
         const ruteroDB = await connectRuteroDB();
         const fechaVal = fechaEntrega ? `'${fechaEntrega.substring(0, 10)}'` : 'GETDATE()';
 
@@ -915,9 +987,10 @@ export class RuteroService {
         await ruteroDB.request()
             .input('IDRUTERO', mssql.Int, idrutero)
             .query(`UPDATE APP_RUTEROS SET ESTADO = 'ENTREGADO' WHERE ID = @IDRUTERO`);
+        await RuteroService.registrarLog('CONFIRMAR_RUTERO', usuario, idrutero);
     }
 
-    static async quitarFacturaDeRutero(idrutero: number, numserie: string, numfactura: number): Promise<void> {
+    static async quitarFacturaDeRutero(idrutero: number, numserie: string, numfactura: number, usuario = ''): Promise<void> {
         const ruteroDB = await connectRuteroDB();
 
         // Solo se puede quitar de ruteros PENDIENTE (no confirmados ni entregados)
@@ -939,5 +1012,6 @@ export class RuteroService {
                   AND NUMFACTURA = @NUMFACTURA
                   AND FECHARECIBIDO IS NULL
             `);
+        await RuteroService.registrarLog('QUITAR_FACTURA', usuario, idrutero, `${numserie}-${numfactura}`);
     }
 }

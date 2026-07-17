@@ -99,13 +99,12 @@ export async function generarFacturaPDF(data: FacturaPDFData): Promise<Blob> {
     const dirLabelW = doc.getTextWidth(dirLabel);
     doc.text(dirLabel, M, yDatos + lh * 2);
     doc.setFont('helvetica', 'normal');
-    let dirStr = data.header.DireccionEnvio || '';
     const dirMaxW = maxClienteW - dirLabelW;
-    if (doc.getTextWidth(dirStr) > dirMaxW) {
-        while (dirStr.length && doc.getTextWidth(dirStr) > dirMaxW)
-            dirStr = dirStr.slice(0, -1);
-    }
-    doc.text(dirStr, M + dirLabelW, yDatos + lh * 2);
+    const dirLines = doc.splitTextToSize(data.header.DireccionEnvio || '', dirMaxW);
+    doc.text(dirLines[0] ?? '', M + dirLabelW, yDatos + lh * 2);
+    for (let i = 1; i < dirLines.length; i++)
+        doc.text(dirLines[i], M, yDatos + lh * 2 + i * lh);
+    const extraDirH = Math.max(0, dirLines.length - 1) * lh;
 
     // Vendedor / Pedido / SICM / Ruta
     doc.setFont('helvetica', 'normal');
@@ -114,12 +113,12 @@ export async function generarFacturaPDF(data: FacturaPDFData): Promise<Blob> {
     let infoStr = infoLine;
     while (doc.getTextWidth(infoStr) > W - M * 2 && infoStr.length > 10)
         infoStr = infoStr.slice(0, -1);
-    doc.text(infoStr, M, yDatos + lh * 4);
+    doc.text(infoStr, M, yDatos + lh * 4 + extraDirH);
 
-    doc.line(M, yDatos + lh * 4 + 3, W - M, yDatos + lh * 4 + 3);
+    doc.line(M, yDatos + lh * 4 + 3 + extraDirH, W - M, yDatos + lh * 4 + 3 + extraDirH);
 
     // ── Tabla de artículos ───────────────────────────────────────────────────
-    const tableStart = yDatos + lh * 4 + 6;
+    const tableStart = yDatos + lh * 4 + 6 + extraDirH;
 
     const cols = [
         { header: 'Descripción', dataKey: 'Desc' },
