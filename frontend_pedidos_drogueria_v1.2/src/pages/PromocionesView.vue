@@ -27,7 +27,8 @@
           <v-divider />
           <v-data-table-server
             :headers="headersPromos" :items="promos" :items-length="totalPromos" :loading="cargandoPromos"
-            v-model:items-per-page="itemsPerPagePromos" @update:options="cargarPaginaPromos">
+            v-model:items-per-page="itemsPerPagePromos" @update:options="cargarPaginaPromos"
+            :items-per-page-options="[10, 25, 50, 100, 200]">
             <template v-slot:item.escalas="{ item }">
               <v-chip v-for="(e, i) in item.escalas" :key="i" size="x-small" color="orange-darken-2" variant="flat" class="mr-1 mb-1">
                 {{ e.MINIMO }}{{ e.MAXIMO ? '-' + e.MAXIMO : '+' }} = {{ e.PORCENTAJE }}%
@@ -57,7 +58,8 @@
           <v-divider />
           <v-data-table-server
             :headers="headersGrupos" :items="grupos" :items-length="totalGrupos" :loading="cargandoGrupos"
-            v-model:items-per-page="itemsPerPageGrupos" @update:options="cargarPaginaGrupos">
+            v-model:items-per-page="itemsPerPageGrupos" @update:options="cargarPaginaGrupos"
+            :items-per-page-options="[10, 25, 50, 100, 200]">
             <template v-slot:item.TIPO="{ item }">
               <v-chip size="x-small" :color="item.TIPO === 'CONDICION' ? 'purple-darken-1' : 'blue-grey'" variant="flat">
                 {{ item.TIPO === 'CONDICION' ? 'Por condición' : 'Manual' }}
@@ -143,7 +145,8 @@
           <v-data-table-server
             :headers="modalMiembros.grupo?.TIPO === 'CONDICION' ? headersMiembrosCondicion : headersMiembros"
             :items="miembros" :items-length="totalMiembros" :loading="cargandoMiembros"
-            v-model:items-per-page="itemsPerPageMiembros" @update:options="cargarPaginaMiembros" density="compact">
+            v-model:items-per-page="itemsPerPageMiembros" @update:options="cargarPaginaMiembros" density="compact"
+            :items-per-page-options="[10, 25, 50, 100, 200]">
             <template v-slot:item.acciones="{ item }">
               <v-btn icon="mdi-delete-outline" color="error" variant="text" size="small" @click="quitarMiembro(item.CODARTICULO)" />
             </template>
@@ -487,8 +490,6 @@ const quitarMiembro = async (codArticulo: number) => {
 };
 
 onMounted(() => {
-  cargarPromociones();
-  cargarGrupos();
   cargarSelectsGrupos();
   cargarCamposDisponibles();
 });

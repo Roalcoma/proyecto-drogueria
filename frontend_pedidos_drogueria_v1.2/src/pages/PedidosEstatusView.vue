@@ -155,6 +155,7 @@
             item-value="ORDERID"
             class="custom-table"
             @update:options="cargarPagina"
+            :items-per-page-options="[10, 25, 50, 100, 200]"
           >
             <template v-slot:item.ORDERID="{ item }">
               <div class="d-flex align-center" style="gap:4px">

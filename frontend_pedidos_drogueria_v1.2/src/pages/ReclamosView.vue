@@ -76,7 +76,8 @@
           <v-divider />
           <v-data-table-server
             :headers="headers" :items="reclamos" :items-length="totalReclamos" :loading="cargando"
-            v-model:items-per-page="itemsPerPage" @update:options="cargarPagina">
+            v-model:items-per-page="itemsPerPage" @update:options="cargarPagina"
+            :items-per-page-options="[10, 25, 50, 100, 200]">
             <template v-slot:item.FECHACREACION="{ item }">
               {{ new Date(item.FECHACREACION).toLocaleDateString('es-VE') }}
             </template>
@@ -123,7 +124,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref } from 'vue';
 import axios from 'axios';
 
 const API = import.meta.env.VITE_API_URL;
@@ -230,5 +231,4 @@ const cargarReclamos = async () => {
 };
 const cargarPagina = (opt: any) => { pagina.value = opt.page; itemsPerPage.value = opt.itemsPerPage; cargarReclamos(); };
 
-onMounted(cargarReclamos);
 </script>

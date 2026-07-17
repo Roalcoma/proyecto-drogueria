@@ -24,7 +24,8 @@
           <v-divider />
           <v-data-table-server
             :headers="headersClientes" :items="clientes" :items-length="totalClientes" :loading="cargandoClientes"
-            v-model:items-per-page="itemsPerPageClientes" @update:options="cargarPaginaClientes">
+            v-model:items-per-page="itemsPerPageClientes" @update:options="cargarPaginaClientes"
+            :items-per-page-options="[10, 25, 50, 100, 200]">
             <template v-slot:item.cliente_concat="{ item }">
               <span class="font-weight-medium">{{ item.CODCLIENTE }}</span>
               <span class="text-grey ml-1">— {{ item.NOMBRECLIENTE }}</span>
@@ -54,7 +55,8 @@
           <v-divider />
           <v-data-table-server
             :headers="headersGrupos" :items="grupos" :items-length="totalGrupos" :loading="cargandoGrupos"
-            v-model:items-per-page="itemsPerPageGrupos" @update:options="cargarPaginaGrupos">
+            v-model:items-per-page="itemsPerPageGrupos" @update:options="cargarPaginaGrupos"
+            :items-per-page-options="[10, 25, 50, 100, 200]">
             <template v-slot:item.TIPO="{ item }">
               <v-chip size="x-small" :color="item.TIPO === 'CONDICION' ? 'purple-darken-1' : 'blue-grey'" variant="flat">
                 {{ item.TIPO === 'CONDICION' ? 'Por condición' : 'Manual' }}
@@ -140,7 +142,8 @@
           <v-data-table-server
             :headers="modalMiembros.grupo?.TIPO === 'CONDICION' ? headersMiembrosCondicion : headersMiembros"
             :items="miembros" :items-length="totalMiembros" :loading="cargandoMiembros"
-            v-model:items-per-page="itemsPerPageMiembros" @update:options="cargarPaginaMiembros" density="compact">
+            v-model:items-per-page="itemsPerPageMiembros" @update:options="cargarPaginaMiembros" density="compact"
+            :items-per-page-options="[10, 25, 50, 100, 200]">
             <template v-slot:item.cliente_concat="{ item }">
               <span class="font-weight-medium">{{ item.CODCLIENTE }}</span>
               <span class="text-grey ml-1">— {{ item.NOMBRECLIENTE }}</span>
@@ -344,8 +347,6 @@ const quitarMiembro = async (codCliente: number) => {
 };
 
 onMounted(() => {
-  cargarClientes();
-  cargarGrupos();
   cargarCamposDisponibles();
 });
 </script>

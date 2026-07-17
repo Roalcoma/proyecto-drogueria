@@ -61,6 +61,7 @@
           :items-length="totalPedidos"
           :loading="loadingLista"
           @update:options="onTableOptions"
+          :items-per-page-options="[10, 25, 50, 100, 200]"
         >
           <template v-slot:item.ORDERID="{ item }">
             <span class="font-weight-black text-primary">#{{ item.ORDERID }}</span>
@@ -594,11 +595,7 @@ const seleccionarProducto = async (producto: any) => {
 // ----------------------------------------------------------------
 onMounted(() => {
   const idQuery = route.query.id as string | undefined;
-  if (idQuery) {
-    cargarPedido(idQuery);
-  } else {
-    cargarLista();
-  }
+  if (idQuery) cargarPedido(idQuery);
 });
 </script>
 

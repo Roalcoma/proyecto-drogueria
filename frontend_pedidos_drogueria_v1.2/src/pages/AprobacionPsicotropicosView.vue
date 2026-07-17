@@ -30,7 +30,8 @@
 
       <v-data-table-server
         :headers="headers" :items="pedidos" :items-length="totalPedidos" :loading="cargando"
-        v-model:items-per-page="itemsPerPage" @update:options="cargarPagina">
+        v-model:items-per-page="itemsPerPage" @update:options="cargarPagina"
+        :items-per-page-options="[10, 25, 50, 100, 200]">
         <template v-slot:item.FECHA="{ item }">
           {{ new Date(item.FECHA).toLocaleString('es-VE', { timeZone: 'America/Caracas' }) }}
         </template>
@@ -508,6 +509,6 @@ const imprimirPDF = async (item: any, sinPrecios: boolean) => {
 };
 
 let refreshInterval: ReturnType<typeof setInterval> | null = null;
-onMounted(() => { cargarPedidos(); refreshInterval = setInterval(cargarPedidos, 60_000); });
+onMounted(() => { refreshInterval = setInterval(cargarPedidos, 60_000); });
 onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval); });
 </script>

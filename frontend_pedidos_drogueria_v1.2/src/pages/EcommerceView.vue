@@ -31,6 +31,7 @@
         :items-length="total"
         :loading="cargando"
         @update:options="cargarPagina"
+        :items-per-page-options="[10, 25, 50, 100, 200]"
         hover
         class="bg-white"
       >
@@ -133,7 +134,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref } from 'vue';
 import axios from 'axios';
 import { useCarritoStore } from '../stores/useCarritoStore';
 import MontoDisplay from '../components/MontoDisplay.vue';
@@ -216,5 +217,4 @@ const aprobar = async (item: any) => {
 
 const mostrarSnack = (text: string, color = 'success') => { snack.value = { show: true, text, color }; };
 
-onMounted(cargar);
 </script>

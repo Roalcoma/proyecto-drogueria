@@ -34,6 +34,7 @@
         :loading="cargando"
         v-model:items-per-page="itemsPerPage"
         @update:options="onOptions"
+        :items-per-page-options="[10, 25, 50, 100, 200]"
       >
         <template v-slot:item.FECHA="{ item }">
           <span class="text-caption">{{ new Date(item.FECHA).toLocaleString('es-VE', { timeZone: 'America/Caracas' }) }}</span>
