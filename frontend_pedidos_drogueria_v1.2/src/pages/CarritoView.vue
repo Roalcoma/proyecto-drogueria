@@ -159,19 +159,41 @@
         <v-card-title class="bg-orange-darken-2 text-white px-6 py-4">
           <v-icon start>mdi-sale</v-icon> Descuentos Comerciales
         </v-card-title>
-        <v-card-text class="pt-6 px-6">
+        <v-card-text class="pt-4 px-6">
           <p class="text-subtitle-1 font-weight-bold mb-4">{{ modalDescuento.item?.DESCRIPCION }}</p>
-          <v-list v-if="modalDescuento.item?.descuentos?.length" border class="rounded-lg mb-4">
-            <v-list-item v-for="(d, i) in modalDescuento.item.descuentos" :key="i">
-              <v-list-item-title class="font-weight-bold text-orange-darken-3">Descuento: {{ d }}%</v-list-item-title>
-              <template v-slot:append>
-                <v-btn icon="mdi-close-circle" variant="text" color="error" @click="eliminarDescuento(modalDescuento.item, Number(i))"></v-btn>
-              </template>
+
+          <div class="text-caption text-grey mb-1 font-weight-medium">Descuentos automáticos</div>
+          <v-list border class="rounded-lg mb-4" density="compact">
+            <v-list-item>
+              <v-list-item-title class="text-body-2">
+                <span class="font-weight-bold">D1 — Cabecera:</span>
+                {{ modalDescuento.item?.descuentos?.[0] || 0 }}%
+              </v-list-item-title>
+            </v-list-item>
+            <v-list-item>
+              <v-list-item-title class="text-body-2">
+                <span class="font-weight-bold">D2 — Promoción:</span>
+                {{ modalDescuento.item?.descuentos?.[1] || 0 }}%
+              </v-list-item-title>
+            </v-list-item>
+            <v-list-item>
+              <v-list-item-title class="text-body-2">
+                <span class="font-weight-bold">D3 — Campo cliente / Promoción:</span>
+                {{ modalDescuento.item?.descuentos?.[2] || 0 }}%
+              </v-list-item-title>
             </v-list-item>
           </v-list>
+
+          <div class="text-caption text-grey mb-2 font-weight-medium">D4 — Descuento manual</div>
           <div class="d-flex align-center">
-            <v-text-field v-model.number="modalDescuento.nuevoValor" label="Nuevo %" variant="outlined" type="number" hide-details></v-text-field>
-            <v-btn color="orange-darken-2" height="56" class="ml-2 font-weight-bold px-6" @click="agregarDescuento">AÑADIR</v-btn>
+            <v-text-field v-model.number="modalDescuento.nuevoValor" label="%" variant="outlined" type="number" hide-details density="comfortable"></v-text-field>
+            <v-btn color="orange-darken-2" height="44" class="ml-2 font-weight-bold px-5" @click="agregarDescuento">APLICAR</v-btn>
+            <v-btn v-if="(modalDescuento.item?.descuentos?.[3] ?? 0) > 0"
+              icon="mdi-close-circle" variant="text" color="error" class="ml-1"
+              @click="eliminarDescuento(modalDescuento.item)" />
+          </div>
+          <div v-if="(modalDescuento.item?.descuentos?.[3] ?? 0) > 0" class="text-caption text-orange-darken-2 mt-1">
+            D4 actual: {{ modalDescuento.item.descuentos[3] }}%
           </div>
         </v-card-text>
         <v-card-actions class="pa-4"><v-spacer></v-spacer><v-btn color="grey" variant="text" @click="modalDescuento.mostrar = false">Cerrar</v-btn></v-card-actions>
@@ -280,12 +302,16 @@ const agregarDescuento = () => {
   const val = modalDescuento.value.nuevoValor;
   if (val > 0 && val < 100) {
     if (!item.descuentos) item.descuentos = [];
-    item.descuentos.push(val);
+    while (item.descuentos.length < 4) item.descuentos.push(0);
+    item.descuentos[3] = val; // D4 siempre en posición 3
     modalDescuento.value.nuevoValor = 0;
   }
 };
 
-const eliminarDescuento = (item: any, index: number) => item.descuentos.splice(index, 1);
+const eliminarDescuento = (item: any) => {
+  if (item.descuentos?.length >= 4) item.descuentos[3] = 0;
+  while (item.descuentos?.length > 0 && !item.descuentos[item.descuentos.length - 1]) item.descuentos.pop();
+};
 
 const totalNetoUSD = computed(() => carritoStore.articulos.reduce((acc, item) => acc + calcularPrecioConDescuento(item) * item.cantidad, 0));
 const totalIVAUSD  = computed(() => carritoStore.articulos.reduce((acc, item) => acc + montoIVALinea(item), 0));

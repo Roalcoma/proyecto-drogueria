@@ -7,10 +7,11 @@ import { usePromocionesStore, type PromocionAplicada } from './usePromocionesSto
 export interface Cliente {
     CODCLIENTE: string | number;
     NOMBRECLIENTE?: string;
-    ID?: string; // Para el CIF/RUT
-    DESCUENTO?: number;  // Corresponde a CCL.D3
-    DESCUENTO2?: number; // Corresponde a CCL.D4
-    DESCUENTO3?: number; // Corresponde a CCL.D5
+    ID?: string;
+    DESCUENTO?: number;   // CCL.D1 — descuento de cabecera
+    DESCUENTO_D3?: number; // CCL.D3 — si > 0 bloquea promos de slot 3
+    DESCUENTO2?: number;
+    DESCUENTO3?: number;
     [key: string]: any;
 }
 
@@ -46,43 +47,28 @@ export const useCarritoStore = defineStore('carrito', () => {
         }));
     }, { deep: true });
 
-    // Solo descuento global del cliente. Artículos con NODTOAPLICABLE='T' no reciben ningún descuento.
-    const recalcularDescuentosArticulo = (producto: Producto): number[] => {
-        if (producto.NODTOAPLICABLE === 'T') return [];
-        const lista: number[] = [];
-        const cli = clienteSeleccionado.value;
-        if (Number(cli?.DESCUENTO) > 0) lista.push(Number(cli?.DESCUENTO));
-        return lista;
-    };
-
     const recalcularPromociones = () => {
         const promoStore = usePromocionesStore();
-        const { slotsPorArticulo, aplicadas } = promoStore.calcularDescuentosPromocion(articulos.value, clienteSeleccionado.value);
+        const cli = clienteSeleccionado.value;
+        const { slotsPorArticulo, aplicadas } = promoStore.calcularDescuentosPromocion(articulos.value, cli);
         promocionesAplicadas.value = aplicadas;
 
         articulos.value.forEach(art => {
-            const clientDesc = recalcularDescuentosArticulo(art); // [descGlobal] or []
-            const slots = slotsPorArticulo.get(art.CODARTICULO) ?? new Map<number, number>();
+            const d4Manual = Number(art.descuentos?.[3] ?? 0); // preservar D4 manual
 
-            if (slots.size === 0) {
-                art.descuentos = clientDesc;
+            if (art.NODTOAPLICABLE === 'T') {
+                art.descuentos = d4Manual > 0 ? [0, 0, 0, d4Manual] : [];
                 return;
             }
 
-            // Build descuentos[] where index i = slot (i+1)
-            // Client discount wins at D1 (index 0) if present
-            const maxSlot = Math.max(...slots.keys());
-            const len = Math.max(clientDesc.length, maxSlot);
-            const result: number[] = [];
-            for (let i = 0; i < len; i++) {
-                const slot = i + 1;
-                if (i < clientDesc.length && clientDesc[i] > 0) {
-                    result.push(clientDesc[i]);
-                } else {
-                    result.push(slots.get(slot) ?? 0);
-                }
-            }
-            // Trim trailing zeros
+            const slots = slotsPorArticulo.get(art.CODARTICULO) ?? new Map<number, number>();
+            const d1 = Number(cli?.DESCUENTO ?? 0);
+            const d2 = slots.get(2) ?? 0;
+            // D3: CCL.D3 del cliente tiene prioridad; si está vacío se aplica la promo de slot 3
+            const cclD3 = Number(cli?.DESCUENTO_D3 ?? 0);
+            const d3 = cclD3 > 0 ? cclD3 : (slots.get(3) ?? 0);
+
+            const result = [d1, d2, d3, d4Manual];
             while (result.length > 0 && !result[result.length - 1]) result.pop();
             art.descuentos = result;
         });
@@ -96,11 +82,7 @@ export const useCarritoStore = defineStore('carrito', () => {
             const nueva = existe.cantidad + cantidad;
             existe.cantidad = stockMax > 0 ? Math.min(nueva, stockMax) : nueva;
         } else {
-            articulos.value.push({
-                ...producto,
-                cantidad,
-                descuentos: recalcularDescuentosArticulo(producto)
-            });
+            articulos.value.push({ ...producto, cantidad, descuentos: [] });
         }
         recalcularPromociones();
     };

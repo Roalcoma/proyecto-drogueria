@@ -251,8 +251,7 @@ const opcionesAlcance = [
 ];
 const opcionesSlot = [
   { texto: 'D2 — segundo descuento', valor: 2 },
-  { texto: 'D3 — tercer descuento', valor: 3 },
-  { texto: 'D4 — cuarto descuento', valor: 4 },
+  { texto: 'D3 — tercer descuento (si el cliente no tiene D3 fijo)', valor: 3 },
 ];
 
 const cargarPromociones = async () => {

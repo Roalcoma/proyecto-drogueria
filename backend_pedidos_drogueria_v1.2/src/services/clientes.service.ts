@@ -99,6 +99,7 @@ export class ClientesServices {
                             ISNULL(CL.DIRECCION1, '') DIRECCION_FISCAL,
                             ISNULL(CE.DIRECCION1, CL.DIRECCION1) DIRECCION_ENVIO,
                             ISNULL(TRY_CAST(CCL.D1 AS FLOAT), 0) DESCUENTO,
+                            ISNULL(TRY_CAST(CCL.D3 AS FLOAT), 0) DESCUENTO_D3,
                             ISNULL((SELECT TOP 1 CG.PORCENTAJE_DESCUENTO FROM CTE_GRUPOCLIENTES CG WHERE CL.CODCLIENTE = CG.CODCLIENTE AND Regla_Aplicada = 'D3'), 0) DESCUENTO2,
                             ISNULL((SELECT TOP 1 CG.PORCENTAJE_DESCUENTO FROM CTE_GRUPOCLIENTES CG WHERE CL.CODCLIENTE = CG.CODCLIENTE AND Regla_Aplicada = 'D4'), 0) DESCUENTO3
                         FROM

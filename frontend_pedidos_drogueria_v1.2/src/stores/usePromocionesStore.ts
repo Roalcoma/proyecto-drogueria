@@ -61,6 +61,7 @@ export const usePromocionesStore = defineStore('promociones', () => {
         for (const promo of vigentes.value) {
             if (!clienteCalifica(promo, cliente)) continue;
             const slot = promo.slotDescuento ?? 2;
+            if (slot !== 2 && slot !== 3) continue; // solo D2 y D3 son válidos para promociones
 
             const itemsDelGrupo = articulos.filter(a => promo.codigosArticulo.includes(Number(a.CODARTICULO)));
             if (itemsDelGrupo.length === 0) continue;
