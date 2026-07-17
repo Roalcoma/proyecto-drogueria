@@ -14,6 +14,7 @@ export interface PromocionVigente {
     codigosCliente: number[];
     codigosClienteExcluir: number[];
     escalas: { minimo: number; maximo: number | null; porcentaje: number }[];
+    slotDescuento: number; // 1=D1, 2=D2, 3=D3
 }
 
 export interface PromocionAplicada {
@@ -46,22 +47,24 @@ export const usePromocionesStore = defineStore('promociones', () => {
     const precioBase = (item: ArticuloCarrito): number =>
         (item.prices && item.prices.length > 0) ? parseFloat(item.prices[0].PNETO) : 0;
 
-    /** Devuelve, por CODARTICULO, el % de descuento de promoción que corresponde según el carrito actual. */
+    /**
+     * Devuelve, por CODARTICULO, los porcentajes de descuento indexados por slot (1=D1, 2=D2, 3=D3).
+     * Si dos promos compiten por el mismo slot en el mismo artículo, gana la primera.
+     */
     const calcularDescuentosPromocion = (
         articulos: ArticuloCarrito[],
         cliente: Cliente | null
-    ): { porcentajesPorArticulo: Map<string | number, number>; aplicadas: PromocionAplicada[] } => {
-        const porcentajesPorArticulo = new Map<string | number, number>();
+    ): { slotsPorArticulo: Map<string | number, Map<number, number>>; aplicadas: PromocionAplicada[] } => {
+        const slotsPorArticulo = new Map<string | number, Map<number, number>>();
         const aplicadas: PromocionAplicada[] = [];
 
         for (const promo of vigentes.value) {
             if (!clienteCalifica(promo, cliente)) continue;
+            const slot = promo.slotDescuento ?? 2;
 
             const itemsDelGrupo = articulos.filter(a => promo.codigosArticulo.includes(Number(a.CODARTICULO)));
             if (itemsDelGrupo.length === 0) continue;
 
-            // Evalúa la escala línea por línea: cada artículo se evalúa
-            // con su propia cantidad/monto, no con el total del grupo.
             let promoRegistrada = false;
             for (const item of itemsDelGrupo) {
                 const base = promo.base === 'UNIDADES'
@@ -71,7 +74,12 @@ export const usePromocionesStore = defineStore('promociones', () => {
                 const tramo = promo.escalas.find(e => base >= e.minimo && (e.maximo === null || base <= e.maximo));
                 if (!tramo || tramo.porcentaje <= 0) continue;
 
-                porcentajesPorArticulo.set(item.CODARTICULO, tramo.porcentaje);
+                const artSlots = slotsPorArticulo.get(item.CODARTICULO) ?? new Map<number, number>();
+                // First promo targeting this slot wins
+                if (!artSlots.has(slot)) {
+                    artSlots.set(slot, tramo.porcentaje);
+                    slotsPorArticulo.set(item.CODARTICULO, artSlots);
+                }
                 if (!promoRegistrada) {
                     aplicadas.push({ idPromocion: promo.id, nombre: promo.nombre, porcentaje: tramo.porcentaje, base });
                     promoRegistrada = true;
@@ -79,7 +87,7 @@ export const usePromocionesStore = defineStore('promociones', () => {
             }
         }
 
-        return { porcentajesPorArticulo, aplicadas };
+        return { slotsPorArticulo, aplicadas };
     };
 
     return { vigentes, cargarVigentes, calcularDescuentosPromocion };

@@ -41,9 +41,9 @@
                     <v-chip v-else-if="item.NODTOAPLICABLE === true || item.NODTOAPLICABLE === 1" color="red-darken-2" size="x-small" variant="flat" class="font-weight-black ml-2">SIN DTO</v-chip>
                     <v-chip v-else-if="Number(item.DIASPROTECCION ?? 0) > 0" color="teal-darken-2" size="x-small" variant="flat" class="font-weight-black ml-2">NI {{ item.DIASPROTECCION }}d</v-chip>
                   </div>
-                  <div v-if="item.descuentos?.length" class="mt-1">
+                  <div v-if="item.descuentos?.some((d: number) => d > 0)" class="mt-1">
                     <v-chip size="x-small" color="orange-darken-2" variant="flat" class="font-weight-bold">
-                      {{ item.descuentos.length }} Desc. Aplicados ({{ item.descuentos.join('%+') }}%)
+                      {{ item.descuentos.filter((d: number) => d > 0).length }} Desc. Aplicados ({{ item.descuentos.filter((d: number) => d > 0).join('%+') }}%)
                     </v-chip>
                   </div>
                 </td>

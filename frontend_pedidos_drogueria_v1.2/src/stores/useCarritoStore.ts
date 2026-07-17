@@ -57,13 +57,34 @@ export const useCarritoStore = defineStore('carrito', () => {
 
     const recalcularPromociones = () => {
         const promoStore = usePromocionesStore();
-        const { porcentajesPorArticulo, aplicadas } = promoStore.calcularDescuentosPromocion(articulos.value, clienteSeleccionado.value);
+        const { slotsPorArticulo, aplicadas } = promoStore.calcularDescuentosPromocion(articulos.value, clienteSeleccionado.value);
         promocionesAplicadas.value = aplicadas;
 
         articulos.value.forEach(art => {
-            const base = recalcularDescuentosArticulo(art);
-            const pctPromo = porcentajesPorArticulo.get(art.CODARTICULO);
-            art.descuentos = pctPromo ? [...base, pctPromo] : base;
+            const clientDesc = recalcularDescuentosArticulo(art); // [descGlobal] or []
+            const slots = slotsPorArticulo.get(art.CODARTICULO) ?? new Map<number, number>();
+
+            if (slots.size === 0) {
+                art.descuentos = clientDesc;
+                return;
+            }
+
+            // Build descuentos[] where index i = slot (i+1)
+            // Client discount wins at D1 (index 0) if present
+            const maxSlot = Math.max(...slots.keys());
+            const len = Math.max(clientDesc.length, maxSlot);
+            const result: number[] = [];
+            for (let i = 0; i < len; i++) {
+                const slot = i + 1;
+                if (i < clientDesc.length && clientDesc[i] > 0) {
+                    result.push(clientDesc[i]);
+                } else {
+                    result.push(slots.get(slot) ?? 0);
+                }
+            }
+            // Trim trailing zeros
+            while (result.length > 0 && !result[result.length - 1]) result.pop();
+            art.descuentos = result;
         });
     };
 

@@ -189,6 +189,9 @@ export class PromocionesService {
 
                 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_GRPCLIICOND_IDGRUPO' AND object_id=OBJECT_ID('APP_GRUPOS_CLIENTES_CONDICIONES'))
                     CREATE INDEX IX_GRPCLIICOND_IDGRUPO ON APP_GRUPOS_CLIENTES_CONDICIONES (IDGRUPO);
+
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='APP_PROMOCIONES' AND COLUMN_NAME='SLOT_DESCUENTO')
+                    ALTER TABLE APP_PROMOCIONES ADD SLOT_DESCUENTO TINYINT NOT NULL DEFAULT 2;
             `);
 
             // Hacer nullable la columna IDGRUPOARTICULOS (antes NOT NULL con FK)
@@ -802,7 +805,7 @@ export class PromocionesService {
             .input('OFFSET', mssql.Int, offset)
             .input('LIMIT', mssql.Int, safeLimit)
             .query(`
-                SELECT P.ID, P.NOMBRE, P.BASE, P.ALCANCE_CLIENTE, P.FECHAINICIO, P.FECHAFIN, P.ACTIVO
+                SELECT P.ID, P.NOMBRE, P.BASE, P.ALCANCE_CLIENTE, P.FECHAINICIO, P.FECHAFIN, P.ACTIVO, P.SLOT_DESCUENTO
                 FROM APP_PROMOCIONES P
                 WHERE P.NOMBRE LIKE @FILTRO
                 ORDER BY P.FECHACREACION DESC
@@ -845,6 +848,7 @@ export class PromocionesService {
         base: 'UNIDADES' | 'MONTO';
         alcanceCliente: 'TODOS' | 'INCLUIR_GRUPO' | 'EXCLUIR_GRUPO';
         fechaInicio: string; fechaFin: string; escalas: EscalaInput[];
+        slotDescuento?: number;
     }) {
         const pool = await connectDb();
         const transaction = new mssql.Transaction(pool);
@@ -857,7 +861,8 @@ export class PromocionesService {
                 .input('ALCANCE', mssql.VarChar, promo.alcanceCliente)
                 .input('FECHAINICIO', mssql.Date, promo.fechaInicio)
                 .input('FECHAFIN', mssql.Date, promo.fechaFin)
-                .query(`INSERT INTO APP_PROMOCIONES (NOMBRE, BASE, ALCANCE_CLIENTE, FECHAINICIO, FECHAFIN) OUTPUT INSERTED.ID VALUES (@NOMBRE, @BASE, @ALCANCE, @FECHAINICIO, @FECHAFIN)`);
+                .input('SLOT', mssql.TinyInt, promo.slotDescuento ?? 2)
+                .query(`INSERT INTO APP_PROMOCIONES (NOMBRE, BASE, ALCANCE_CLIENTE, FECHAINICIO, FECHAFIN, SLOT_DESCUENTO) OUTPUT INSERTED.ID VALUES (@NOMBRE, @BASE, @ALCANCE, @FECHAINICIO, @FECHAFIN, @SLOT)`);
             const idPromocion = result.recordset[0].ID;
 
             for (const g of promo.gruposArticulos) {
@@ -891,6 +896,7 @@ export class PromocionesService {
         base: 'UNIDADES' | 'MONTO';
         alcanceCliente: 'TODOS' | 'INCLUIR_GRUPO' | 'EXCLUIR_GRUPO';
         fechaInicio: string; fechaFin: string; escalas: EscalaInput[];
+        slotDescuento?: number;
     }) {
         const pool = await connectDb();
         const transaction = new mssql.Transaction(pool);
@@ -900,7 +906,8 @@ export class PromocionesService {
                 .input('ID', mssql.Int, id).input('NOMBRE', mssql.NVarChar, promo.nombre)
                 .input('BASE', mssql.VarChar, promo.base).input('ALCANCE', mssql.VarChar, promo.alcanceCliente)
                 .input('FECHAINICIO', mssql.Date, promo.fechaInicio).input('FECHAFIN', mssql.Date, promo.fechaFin)
-                .query(`UPDATE APP_PROMOCIONES SET NOMBRE=@NOMBRE, BASE=@BASE, ALCANCE_CLIENTE=@ALCANCE, FECHAINICIO=@FECHAINICIO, FECHAFIN=@FECHAFIN WHERE ID=@ID`);
+                .input('SLOT', mssql.TinyInt, promo.slotDescuento ?? 2)
+                .query(`UPDATE APP_PROMOCIONES SET NOMBRE=@NOMBRE, BASE=@BASE, ALCANCE_CLIENTE=@ALCANCE, FECHAINICIO=@FECHAINICIO, FECHAFIN=@FECHAFIN, SLOT_DESCUENTO=@SLOT WHERE ID=@ID`);
 
             await new mssql.Request(transaction).input('ID', mssql.Int, id)
                 .query(`DELETE FROM APP_PROMOCIONES_GRUPOS_ARTICULOS WHERE IDPROMO=@ID`);
@@ -943,7 +950,7 @@ export class PromocionesService {
     static async getVigentes() {
         const pool = await connectDb();
         const result = await pool.request().query(`
-            SELECT P.ID, P.NOMBRE, P.BASE, P.ALCANCE_CLIENTE
+            SELECT P.ID, P.NOMBRE, P.BASE, P.ALCANCE_CLIENTE, ISNULL(P.SLOT_DESCUENTO, 2) AS SLOT_DESCUENTO
             FROM APP_PROMOCIONES P
             WHERE P.ACTIVO = 1 AND CAST(GETDATE() AS DATE) BETWEEN P.FECHAINICIO AND P.FECHAFIN
         `);
@@ -1039,6 +1046,7 @@ export class PromocionesService {
                 nombre: p.NOMBRE,
                 base: p.BASE,
                 alcanceCliente: p.ALCANCE_CLIENTE,
+                slotDescuento: p.SLOT_DESCUENTO ?? 2,
                 codigosArticulo,
                 codigosCliente,
                 codigosClienteExcluir,

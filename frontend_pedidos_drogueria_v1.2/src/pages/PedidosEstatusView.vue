@@ -37,6 +37,13 @@
         >
           Refrescar
         </v-btn>
+        <v-checkbox
+          v-model="sinDescPDF"
+          label="PDF sin DESC"
+          hide-details
+          density="compact"
+          class="mr-2"
+        />
         <v-btn
           v-if="pedidosSeleccionados.length > 0"
           prepend-icon="mdi-file-pdf-box"
@@ -584,8 +591,9 @@ const BIT_EDICION     = 8;
 const vis = computed(() => Number(authStore.usuario?.visibilidad ?? 0));
 const puedeAutorizar = computed(() => (vis.value & BIT_AUTORIZADOR) !== 0 || (vis.value & BIT_BACKOFFICE) !== 0);
 const puedeEditar    = computed(() => (vis.value & BIT_EDICION)     !== 0 || (vis.value & BIT_BACKOFFICE) !== 0);
-const pedidos     = ref<any[]>([]);
-const pdfCargando = ref<string | null>(null);
+const pedidos      = ref<any[]>([]);
+const pdfCargando  = ref<string | null>(null);
+const sinDescPDF   = ref(false);
 const totalPedidos = ref(0);
 const pedidosSeleccionados = ref<any[]>([]);
 const pdfMultipleCargando  = ref(false);
@@ -865,6 +873,7 @@ const imprimirPDF = async (item: any) => {
       fecha: item.FECHA,
       estatus: item.ESTATUS,
       esPsicotropico: String(item.ORDERID ?? '').endsWith('P'),
+      sinDesc: sinDescPDF.value,
       cliente: {
         codcliente: item.CLIENTEID,
         nombrecliente: cliente?.NOMBRECLIENTE || `Cliente ${item.CLIENTEID}`,
@@ -926,6 +935,7 @@ const imprimirPDFMultiple = async () => {
       await generarPedidoPDF({
         numeroOrden: item.ORDERID, fecha: item.FECHA, estatus: item.ESTATUS,
         esPsicotropico: String(item.ORDERID ?? '').endsWith('P'),
+        sinDesc: sinDescPDF.value,
         cliente: { codcliente: item.CLIENTEID, nombrecliente: cliente?.NOMBRECLIENTE || `Cliente ${item.CLIENTEID}`, nombrecomercial: item.NOMBRECOMERCIAL || '', nit: item.NIF20 || item.CIF || '', direccionFiscal: item.DIRECCION1 || '', direccionEnvio: item.RUTA || '' },
         lineas: lineas.map((l: any) => ({ codigo: l.CODARTICULO, descripcion: l.DESCRIPCION || '', cantidad: Number(l.PRODUCTCOUNT), precioUnitario: Number(l.PRECIOUNITARIO), descuentos: [l.DESCUENTO1, l.DESCUENTO2, l.DESCUENTO3, l.DESCUENTO4].map(Number).filter(d => d > 0), sinDescuento: !!l.NODTOAPLICABLE, diasProteccion: Number(l.DIASPROTECCION ?? 0), porcentajeIva: Number(l.PORCENTAJEIVA ?? 0), lote: l.LOTE || '', fechaVencimiento: l.FECHA_VENCIMIENTO || '' })),
         totalUSD: lineas.reduce((s: number, l: any) => s + Number(l.PRECIOUNITARIO) * Number(l.PRODUCTCOUNT), 0),

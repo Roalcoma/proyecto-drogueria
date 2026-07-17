@@ -185,6 +185,9 @@
             <v-col cols="6"><v-text-field v-model="modalPromo.fechaInicio" type="date" label="Fecha inicio" variant="outlined" density="comfortable" /></v-col>
             <v-col cols="6"><v-text-field v-model="modalPromo.fechaFin" type="date" label="Fecha fin" variant="outlined" density="comfortable" /></v-col>
           </v-row>
+          <v-select v-model="modalPromo.slotDescuento" :items="opcionesSlot" item-title="texto" item-value="valor"
+            label="Posición del descuento" variant="outlined" density="comfortable" class="mb-3"
+            hint="Columna de descuento que usará esta promoción en el pedido" persistent-hint />
 
           <v-divider class="mb-3" />
           <div class="d-flex align-center justify-space-between mb-2">
@@ -243,6 +246,11 @@ const opcionesAlcance = [
   { texto: 'Solo grupo (incluir)', valor: 'INCLUIR_GRUPO' },
   { texto: 'Todos menos grupo (excluir)', valor: 'EXCLUIR_GRUPO' },
 ];
+const opcionesSlot = [
+  { texto: 'D1 — primer descuento', valor: 1 },
+  { texto: 'D2 — segundo descuento', valor: 2 },
+  { texto: 'D3 — tercer descuento', valor: 3 },
+];
 
 const cargarPromociones = async () => {
   cargandoPromos.value = true;
@@ -262,7 +270,7 @@ const toggleActivo = async (item: any, activo: boolean) => {
   } catch { lanzarAviso('Error al actualizar estado', 'error'); }
 };
 
-const modalPromo = ref<any>({ mostrar: false, id: null, nombre: '', idsGruposArticulosIncluir: [], idsGruposArticulosExcluir: [], base: 'UNIDADES', alcanceCliente: 'TODOS', idsGruposClientesIncluir: [], idsGruposClientesExcluir: [], fechaInicio: '', fechaFin: '', escalas: [] });
+const modalPromo = ref<any>({ mostrar: false, id: null, nombre: '', idsGruposArticulosIncluir: [], idsGruposArticulosExcluir: [], base: 'UNIDADES', alcanceCliente: 'TODOS', idsGruposClientesIncluir: [], idsGruposClientesExcluir: [], fechaInicio: '', fechaFin: '', escalas: [], slotDescuento: 2 });
 const guardandoPromo = ref(false);
 const todosLosGrupos = ref<any[]>([]);
 const todosLosGruposClientes = ref<any[]>([]);
@@ -277,7 +285,7 @@ const cargarSelectsGrupos = async () => {
 };
 
 const abrirNuevaPromo = () => {
-  modalPromo.value = { mostrar: true, id: null, nombre: '', idsGruposArticulosIncluir: [], idsGruposArticulosExcluir: [], base: 'UNIDADES', alcanceCliente: 'TODOS', idsGruposClientesIncluir: [], idsGruposClientesExcluir: [], fechaInicio: '', fechaFin: '', escalas: [] };
+  modalPromo.value = { mostrar: true, id: null, nombre: '', idsGruposArticulosIncluir: [], idsGruposArticulosExcluir: [], base: 'UNIDADES', alcanceCliente: 'TODOS', idsGruposClientesIncluir: [], idsGruposClientesExcluir: [], fechaInicio: '', fechaFin: '', escalas: [], slotDescuento: 2 };
 };
 const abrirEditarPromo = (item: any) => {
   const grpArt = (item.gruposArticulos ?? []);
@@ -291,6 +299,7 @@ const abrirEditarPromo = (item: any) => {
     idsGruposClientesExcluir: grpCli.filter((g: any) => g.TIPO === 'EXCLUIR').map((g: any) => g.ID),
     fechaInicio: (item.FECHAINICIO || '').slice(0, 10), fechaFin: (item.FECHAFIN || '').slice(0, 10),
     escalas: (item.escalas || []).map((e: any) => ({ minimo: e.MINIMO, maximo: e.MAXIMO, porcentaje: e.PORCENTAJE })),
+    slotDescuento: item.SLOT_DESCUENTO ?? 2,
   };
 };
 const agregarEscala = () => modalPromo.value.escalas.push({ minimo: 0, maximo: null, porcentaje: 0 });
@@ -316,6 +325,7 @@ const guardarPromo = async () => {
       base: modalPromo.value.base,
       alcanceCliente: modalPromo.value.alcanceCliente,
       fechaInicio: modalPromo.value.fechaInicio, fechaFin: modalPromo.value.fechaFin, escalas: modalPromo.value.escalas,
+      slotDescuento: modalPromo.value.slotDescuento ?? 2,
     };
     if (modalPromo.value.id) await axios.put(`${API}/promociones/${modalPromo.value.id}`, payload);
     else await axios.post(`${API}/promociones`, payload);

@@ -48,6 +48,7 @@ export interface PedidoPDFData {
     totalIVA?: number;
     ocultarPrecios?: boolean;
     esPsicotropico?: boolean;
+    sinDesc?: boolean;
     firmante?: { usuario: string; fecha: string };
     conteo?: ConteoPDFData;
 }
@@ -170,6 +171,16 @@ export async function generarPedidoPDF(data: PedidoPDFData): Promise<void> {
             : ['Código', 'Descripción', 'Cant.', 'ESC PRD', 'ESC PRD', 'ESC PRV', 'DESC.', 'IVA', 'Precio', 'Importe', 'Lote', 'Venc.'];
     }
 
+    // Remove DESC column when requested (index 6 in all modes that have it)
+    const effectiveSinDesc = data.sinDesc === true && headCols.length > 6 && headCols[6] === 'DESC.';
+    if (effectiveSinDesc) {
+        headCols.splice(6, 1);
+        for (const row of filas) (row as any[]).splice(6, 1);
+    }
+
+    // IVA/Precio/Importe column indices shift by -1 when DESC is removed
+    const priceColOffset = (!sinPrecios && effectiveSinDesc) ? -1 : 0;
+
     autoTable(doc, {
         startY: datosFin + 5,
         head: [headCols],
@@ -184,17 +195,17 @@ export async function generarPedidoPDF(data: PedidoPDFData): Promise<void> {
                 3: { cellWidth: 30 },
                 4: { cellWidth: 22, halign: 'center' as const },
             } : {
-                7:  { cellWidth: 10, halign: 'center' as const },
-                8:  { halign: 'right' as const },
-                9:  { halign: 'right' as const },
+                [7 + priceColOffset]: { cellWidth: 10, halign: 'center' as const },
+                [8 + priceColOffset]: { halign: 'right' as const },
+                [9 + priceColOffset]: { halign: 'right' as const },
             }),
         } : {
             0: { cellWidth: 18 },
             1: { cellWidth: sinPrecios ? 80 : 48 },
             ...(sinPrecios ? {} : {
-                7:  { cellWidth: 10, halign: 'center' as const },
-                8:  { halign: 'right' as const },
-                9:  { halign: 'right' as const },
+                [7 + priceColOffset]: { cellWidth: 10, halign: 'center' as const },
+                [8 + priceColOffset]: { halign: 'right' as const },
+                [9 + priceColOffset]: { halign: 'right' as const },
             }),
         },
     });

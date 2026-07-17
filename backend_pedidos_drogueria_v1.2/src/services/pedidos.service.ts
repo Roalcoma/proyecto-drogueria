@@ -31,6 +31,13 @@ export class PedidosServices {
                 END
             `);
             await pool.request().query(`
+                IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='CABECERA_PED')
+                  AND NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='CABECERA_PED' AND COLUMN_NAME='PROMO_NOMBRE')
+                BEGIN
+                  ALTER TABLE ${esquema}.CABECERA_PED ADD PROMO_NOMBRE NVARCHAR(500) NULL
+                END
+            `);
+            await pool.request().query(`
                 IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='LINEA_PED')
                   AND NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='LINEA_PED' AND COLUMN_NAME='PORCENTAJEIVA')
                 BEGIN
@@ -123,6 +130,8 @@ export class PedidosServices {
             const requierePsicotropicos = await this.tieneArticulosPsicotropicos(lineas.map((l: any) => l.codarticulo));
             const estatusInicial = requierePsicotropicos ? ESTATUS_APROBACION_PSICOTROPICOS : 'PENDIENTE';
 
+            const promoNombre = (promocionesAplicadas || []).map((p: any) => p.nombre).filter(Boolean).join(', ');
+
             const pool = await connectDb()
             const result = await pool.request()
                 .input('ORDERID', mssql.NVarChar, orderId)
@@ -130,12 +139,13 @@ export class PedidosServices {
                 .input('CODVENDEDOR', mssql.Int, codVendedor)
                 .input('TOTALPRECIO', mssql.Float, totalPed)
                 .input('ESTATUS', mssql.VarChar, estatusInicial)
+                .input('PROMO_NOMBRE', mssql.NVarChar(500), promoNombre || null)
                 .query(`INSERT INTO ${esquema}.CABECERA_PED (
-                            ORDERID, CLIENTEID, FECHA, ESTATUS, CODVENDEDOR, TOTALPRECIO
+                            ORDERID, CLIENTEID, FECHA, ESTATUS, CODVENDEDOR, TOTALPRECIO, PROMO_NOMBRE
                         ) VALUES (
                             @ORDERID, @CLIENTEID, GETDATE(), @ESTATUS,
                             ISNULL(NULLIF((SELECT TOP 1 CAST(CCL.CODVENDEDOR AS INT) FROM CLIENTESCAMPOSLIBRES CCL WHERE CCL.CODCLIENTE = @CLIENTEID AND CCL.CODVENDEDOR IS NOT NULL AND LTRIM(RTRIM(CAST(CCL.CODVENDEDOR AS NVARCHAR)))!=''), 0), @CODVENDEDOR),
-                            @TOTALPRECIO
+                            @TOTALPRECIO, @PROMO_NOMBRE
                         );`)
 
 
@@ -264,7 +274,7 @@ export class PedidosServices {
             const result = await req.query(`
                 SELECT
                     CP.ORDERID, CP.CLIENTEID, CP.FECHA, CP.ESTATUS, CP.CODVENDEDOR, CP.TOTALPRECIO,
-                    CP.OBSERVACIONES,
+                    CP.OBSERVACIONES, CP.PROMO_NOMBRE,
                     (SELECT TOP 1 AVC.FACTURADO FROM PEDVENTACAB PVC WITH(NOLOCK)
                      LEFT JOIN ALBVENTACAB AVC WITH(NOLOCK) ON AVC.NUMSERIE = PVC.SERIEALBARAN AND AVC.NUMALBARAN = PVC.NUMEROALBARAN AND AVC.N = PVC.NALBARAN
                      WHERE PVC.SUPEDIDO COLLATE DATABASE_DEFAULT = CP.ORDERID COLLATE DATABASE_DEFAULT) AS FACTURADO,
