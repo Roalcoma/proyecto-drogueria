@@ -254,6 +254,7 @@ export class PedidosServices {
             let validPage = isAll ? 1 : Math.max(1, Number(page) || 1);
             let validLimit = isAll ? 10000 : Math.max(1, Number(limit) || 10);
             const offset = isAll ? 0 : (validPage - 1) * validLimit;
+            const usdCode = Number(process.env.USD) || 2;
 
             const pool = await connectDb();
             const req = pool.request()
@@ -269,7 +270,8 @@ export class PedidosServices {
                 .input('FECHA_HASTA',    mssql.Date,        fechaHasta || null)
                 .input('PSICO',          mssql.Bit,         esPsicotropico ? 1 : null)
                 .input('NOMBRE_CLIENTE', mssql.NVarChar(200), nombreCliente ? `%${nombreCliente}%` : null)
-                .input('SOLO_FACTURADO', mssql.Bit,         soloFacturado  ? 1 : null);
+                .input('SOLO_FACTURADO', mssql.Bit,         soloFacturado  ? 1 : null)
+                .input('USD_CODE',       mssql.Int,         usdCode);
 
             const result = await req.query(`
                 SELECT
@@ -294,9 +296,9 @@ export class PedidosServices {
                         SELECT CL.CODCLIENTE,
                             CASE
                                 WHEN CL.RIESGOCONCEDIDO = 0 THEN 'SIN LIMITE'
-                                WHEN (ISNULL(SUM(CASE WHEN ISNULL(T.CODMONEDA,1)=2 THEN T.IMPORTE ELSE T.IMPORTE/NULLIF(DBO.F_GET_COTIZACION(GETDATE(),2),0) END),0) * 100.0 / CL.RIESGOCONCEDIDO) >= 100 THEN 'SUPERADO'
-                                WHEN (ISNULL(SUM(CASE WHEN ISNULL(T.CODMONEDA,1)=2 THEN T.IMPORTE ELSE T.IMPORTE/NULLIF(DBO.F_GET_COTIZACION(GETDATE(),2),0) END),0) * 100.0 / CL.RIESGOCONCEDIDO) >= 80  THEN 'ALTO'
-                                WHEN (ISNULL(SUM(CASE WHEN ISNULL(T.CODMONEDA,1)=2 THEN T.IMPORTE ELSE T.IMPORTE/NULLIF(DBO.F_GET_COTIZACION(GETDATE(),2),0) END),0) * 100.0 / CL.RIESGOCONCEDIDO) >= 30  THEN 'MEDIO'
+                                WHEN (ISNULL(SUM(CASE WHEN ISNULL(T.CODMONEDA,1)=@USD_CODE THEN T.IMPORTE ELSE T.IMPORTE/NULLIF(DBO.F_GET_COTIZACION(GETDATE(),@USD_CODE),0) END),0) * 100.0 / CL.RIESGOCONCEDIDO) >= 100 THEN 'SUPERADO'
+                                WHEN (ISNULL(SUM(CASE WHEN ISNULL(T.CODMONEDA,1)=@USD_CODE THEN T.IMPORTE ELSE T.IMPORTE/NULLIF(DBO.F_GET_COTIZACION(GETDATE(),@USD_CODE),0) END),0) * 100.0 / CL.RIESGOCONCEDIDO) >= 80  THEN 'ALTO'
+                                WHEN (ISNULL(SUM(CASE WHEN ISNULL(T.CODMONEDA,1)=@USD_CODE THEN T.IMPORTE ELSE T.IMPORTE/NULLIF(DBO.F_GET_COTIZACION(GETDATE(),@USD_CODE),0) END),0) * 100.0 / CL.RIESGOCONCEDIDO) >= 30  THEN 'MEDIO'
                                 ELSE 'BAJO'
                             END AS ESTATUS
                         FROM CLIENTES CL WITH (NOLOCK)
