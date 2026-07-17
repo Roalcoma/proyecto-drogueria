@@ -480,7 +480,7 @@ const imprimirPDF = async (item: any, sinPrecios: boolean) => {
         nombrecomercial: item.NOMBRECOMERCIAL || '',
         nit:             item.NIF20 || '',
         direccionFiscal: item.DIRECCION1 || '',
-        direccionEnvio:  item.RUTA || '',
+        direccionEnvio:  item.DIRECCION_ENVIO || '',
       },
       lineas: (pedido.lineas || []).map((l: any) => ({
         codigo:           l.CODARTICULO,

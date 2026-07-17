@@ -881,7 +881,7 @@ const imprimirPDF = async (item: any) => {
         nombrecomercial: item.NOMBRECOMERCIAL || '',
         nit: item.NIF20 || item.CIF || '',
         direccionFiscal: item.DIRECCION1 || '',
-        direccionEnvio:  item.RUTA || '',
+        direccionEnvio:  item.DIRECCION_ENVIO || '',
       },
       lineas: lineas.map((l: any) => ({
         codigo: l.CODARTICULO,
@@ -937,7 +937,7 @@ const imprimirPDFMultiple = async () => {
         numeroOrden: item.ORDERID, fecha: item.FECHA, estatus: item.ESTATUS,
         esPsicotropico: String(item.ORDERID ?? '').endsWith('P'),
         sinDesc: sinDescPDF.value,
-        cliente: { codcliente: item.CLIENTEID, nombrecliente: cliente?.NOMBRECLIENTE || `Cliente ${item.CLIENTEID}`, nombrecomercial: item.NOMBRECOMERCIAL || '', nit: item.NIF20 || item.CIF || '', direccionFiscal: item.DIRECCION1 || '', direccionEnvio: item.RUTA || '' },
+        cliente: { codcliente: item.CLIENTEID, nombrecliente: cliente?.NOMBRECLIENTE || `Cliente ${item.CLIENTEID}`, nombrecomercial: item.NOMBRECOMERCIAL || '', nit: item.NIF20 || item.CIF || '', direccionFiscal: item.DIRECCION1 || '', direccionEnvio: item.DIRECCION_ENVIO || '' },
         lineas: lineas.map((l: any) => ({ codigo: l.CODARTICULO, descripcion: l.DESCRIPCION || '', cantidad: Number(l.PRODUCTCOUNT), precioUnitario: Number(l.PRECIOUNITARIO), descuentos: [l.DESCUENTO1, l.DESCUENTO2, l.DESCUENTO3, l.DESCUENTO4].map(Number).filter(d => d > 0), sinDescuento: !!l.NODTOAPLICABLE, diasProteccion: Number(l.DIASPROTECCION ?? 0), porcentajeIva: Number(l.PORCENTAJEIVA ?? 0), lote: l.LOTE || '', fechaVencimiento: l.FECHA_VENCIMIENTO || '' })),
         totalUSD: lineas.reduce((s: number, l: any) => s + Number(l.PRECIOUNITARIO) * Number(l.PRODUCTCOUNT), 0),
         totalIVA: lineas.reduce((s: number, l: any) => s + Number(l.MONTOIVA ?? 0), 0),

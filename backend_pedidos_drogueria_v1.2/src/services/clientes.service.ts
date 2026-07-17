@@ -97,7 +97,7 @@ export class ClientesServices {
                             ISNULL(CL.E_MAIL, '') EMAIL,
                             ISNULL(CL.DIRECCION1, '') DIRECCION,
                             ISNULL(CL.DIRECCION1, '') DIRECCION_FISCAL,
-                            ISNULL(RUT.DESCRIPCION, '') DIRECCION_ENVIO,
+                            ISNULL(CE.DIRECCION1, CL.DIRECCION1) DIRECCION_ENVIO,
                             ISNULL(TRY_CAST(CCL.D1 AS FLOAT), 0) DESCUENTO,
                             ISNULL((SELECT TOP 1 CG.PORCENTAJE_DESCUENTO FROM CTE_GRUPOCLIENTES CG WHERE CL.CODCLIENTE = CG.CODCLIENTE AND Regla_Aplicada = 'D3'), 0) DESCUENTO2,
                             ISNULL((SELECT TOP 1 CG.PORCENTAJE_DESCUENTO FROM CTE_GRUPOCLIENTES CG WHERE CL.CODCLIENTE = CG.CODCLIENTE AND Regla_Aplicada = 'D4'), 0) DESCUENTO3
@@ -105,6 +105,7 @@ export class ClientesServices {
                             CLIENTES CL
                             LEFT JOIN CLIENTESCAMPOSLIBRES CCL ON CL.CODCLIENTE = CCL.CODCLIENTE
                             LEFT JOIN RUTAS RUT ON RUT.CODRUTA = TRY_CAST(CCL.ZONA AS INT)
+                            LEFT JOIN CLIENTESENVIO CE ON CE.CODCLIENTE = CL.CODCLIENTE
                         WHERE
                             (UPPER(ISNULL(CL.NOMBRECLIENTE, '')) LIKE ('%'+UPPER(REPLACE(LTRIM(RTRIM(@CIF)),' ','%'))+'%')
                             OR UPPER(ISNULL(CL.NOMBRECOMERCIAL, '')) LIKE ('%'+UPPER(REPLACE(LTRIM(RTRIM(@CIF)),' ','%'))+'%')
