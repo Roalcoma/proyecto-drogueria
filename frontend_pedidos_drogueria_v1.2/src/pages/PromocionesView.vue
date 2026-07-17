@@ -247,9 +247,9 @@ const opcionesAlcance = [
   { texto: 'Todos menos grupo (excluir)', valor: 'EXCLUIR_GRUPO' },
 ];
 const opcionesSlot = [
-  { texto: 'D1 — primer descuento', valor: 1 },
   { texto: 'D2 — segundo descuento', valor: 2 },
   { texto: 'D3 — tercer descuento', valor: 3 },
+  { texto: 'D4 — cuarto descuento', valor: 4 },
 ];
 
 const cargarPromociones = async () => {
