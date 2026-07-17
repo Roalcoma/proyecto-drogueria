@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useBrandingStore } from '../stores/useBrandingStore';
+import { compressImageForPDF } from './pdfImageHelper';
 
 export interface FacturaPDFHeader {
     Pedido: string; FacturaNo: string; Fecha: string; FechaVencimiento: string;
@@ -38,14 +39,8 @@ export async function generarFacturaPDF(data: FacturaPDFData): Promise<Blob> {
 
     // ── Logo ────────────────────────────────────────────────────────────────
     try {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        await new Promise<void>((resolve) => {
-            img.onload = () => resolve();
-            img.onerror = () => resolve();
-            img.src = logoUrl;
-        });
-        doc.addImage(img, 'PNG', M, 4, 30, 14);
+        const logoData = await compressImageForPDF(logoUrl, 30, 14);
+        doc.addImage(logoData, 'JPEG', M, 4, 30, 14);
     } catch { /* skip */ }
 
     // ── Empresa ─────────────────────────────────────────────────────────────

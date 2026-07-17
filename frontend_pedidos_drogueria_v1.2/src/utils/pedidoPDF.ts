@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useBrandingStore } from '../stores/useBrandingStore';
+import { compressImageForPDF } from './pdfImageHelper';
 
 export interface LineaPDF {
     codigo: string | number;
@@ -58,14 +59,8 @@ export async function generarPedidoPDF(data: PedidoPDFData): Promise<void> {
 
     // --- Logo ---
     try {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        await new Promise<void>((resolve, reject) => {
-            img.onload = () => resolve();
-            img.onerror = reject;
-            img.src = useBrandingStore().logo;
-        });
-        doc.addImage(img, 'PNG', 14, 5, 42, 22);
+        const logoData = await compressImageForPDF(useBrandingStore().logo, 42, 22);
+        doc.addImage(logoData, 'JPEG', 14, 5, 42, 22);
     } catch { /* si falla, el PDF sigue sin logo */ }
 
     // --- Encabezado empresa ---
