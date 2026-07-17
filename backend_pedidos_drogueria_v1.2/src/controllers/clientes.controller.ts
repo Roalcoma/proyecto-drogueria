@@ -20,6 +20,17 @@ export class ClientesController {
         res.status(result.success ? 200 : 500).json(result)
     }
 
+    static async actualizarD3(req: Request, res: Response): Promise<void> {
+        const codCliente = parseInt(req.params['codCliente'] as string)
+        const { d3 } = req.body
+        if (d3 === undefined || isNaN(Number(d3))) {
+            res.status(400).json({ success: false, message: 'Valor D3 inválido' })
+            return
+        }
+        const result = await ClientesServices.actualizarD3(codCliente, Number(d3))
+        res.status(result.success ? 200 : 500).json(result)
+    }
+
     static async getClientes(req: Request, res: Response): Promise<void> {
         try {
             const { cif } = req.query

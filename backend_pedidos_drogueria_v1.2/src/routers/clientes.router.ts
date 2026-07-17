@@ -5,6 +5,7 @@ const clientesRouter = Router()
 
 clientesRouter.get('/paginado', ClientesController.getClientesPaginado)
 clientesRouter.patch('/:codCliente/descuento', ClientesController.actualizarDescuentoGlobal)
+clientesRouter.patch('/:codCliente/d3',        ClientesController.actualizarD3)
 clientesRouter.get('/', ClientesController.getClientes)
 clientesRouter.get('/riesgo', ClientesController.getRiesgo)
 clientesRouter.post('/riesgo-masivo', ClientesController.getRiesgoMasivo)

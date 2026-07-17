@@ -19,7 +19,8 @@ export class ClientesServices {
                     SELECT
                         CL.CODCLIENTE, CL.NOMBRECLIENTE, ISNULL(CL.NOMBRECOMERCIAL,'') AS NOMBRECOMERCIAL, CL.CIF,
                         ISNULL(CL.TELEFONO1, '') TELF, ISNULL(CL.E_MAIL, '') EMAIL,
-                        ISNULL((SELECT TOP 1 TRY_CAST(CCL.D1 AS FLOAT) FROM CLIENTESCAMPOSLIBRES CCL WHERE CCL.CODCLIENTE = CL.CODCLIENTE), 0) DESCUENTO
+                        ISNULL((SELECT TOP 1 TRY_CAST(CCL.D1 AS FLOAT) FROM CLIENTESCAMPOSLIBRES CCL WHERE CCL.CODCLIENTE = CL.CODCLIENTE), 0) DESCUENTO,
+                        ISNULL((SELECT TOP 1 TRY_CAST(CCL.D3 AS FLOAT) FROM CLIENTESCAMPOSLIBRES CCL WHERE CCL.CODCLIENTE = CL.CODCLIENTE), 0) DESCUENTO_D3
                     FROM CLIENTES CL
                     WHERE UPPER(ISNULL(CL.NOMBRECLIENTE,'')) LIKE @FILTRO OR UPPER(ISNULL(CL.NOMBRECOMERCIAL,'')) LIKE @FILTRO OR UPPER(ISNULL(CL.CIF,'')) LIKE @FILTRO
                     ORDER BY CL.NOMBRECLIENTE
@@ -53,6 +54,25 @@ export class ClientesServices {
         } catch (error) {
             console.error('Error al actualizar descuento global: ', error)
             return { success: false, message: 'Error al actualizar descuento', error: error instanceof Error ? error.message : 'Error desconocido' }
+        }
+    }
+
+    static async actualizarD3(codCliente: number, d3: number): Promise<any> {
+        try {
+            const pool = await connectDb()
+            await pool.request()
+                .input('CODCLIENTE', mssql.Int, codCliente)
+                .input('D3', mssql.NVarChar, String(d3))
+                .query(`
+                    IF EXISTS (SELECT 1 FROM CLIENTESCAMPOSLIBRES WHERE CODCLIENTE = @CODCLIENTE)
+                        UPDATE CLIENTESCAMPOSLIBRES SET D3 = @D3 WHERE CODCLIENTE = @CODCLIENTE
+                    ELSE
+                        INSERT INTO CLIENTESCAMPOSLIBRES (CODCLIENTE, D3) VALUES (@CODCLIENTE, @D3)
+                `)
+            return { success: true }
+        } catch (error) {
+            console.error('Error al actualizar D3: ', error)
+            return { success: false, message: 'Error al actualizar D3', error: error instanceof Error ? error.message : 'Error desconocido' }
         }
     }
 

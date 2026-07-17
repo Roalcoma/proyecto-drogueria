@@ -38,6 +38,14 @@
                   @click="guardarDescuento(item)" :loading="guardandoId === item.CODCLIENTE" />
               </div>
             </template>
+            <template v-slot:item.DESCUENTO_D3="{ item }">
+              <div class="d-flex align-center" style="max-width: 160px;">
+                <v-text-field v-model.number="item.DESCUENTO_D3" type="number" density="compact" variant="outlined" hide-details
+                  suffix="%" style="max-width: 100px;" min="0" max="99" />
+                <v-btn icon="mdi-content-save" size="small" color="teal" variant="text" class="ml-1"
+                  @click="guardarD3(item)" :loading="guardandoD3Id === item.CODCLIENTE" />
+              </div>
+            </template>
           </v-data-table-server>
         </v-card>
       </v-window-item>
@@ -177,12 +185,14 @@ const totalClientes = ref(0);
 const cargandoClientes = ref(false);
 const itemsPerPageClientes = ref(10);
 const paginaClientes = ref(1);
-const guardandoId = ref<number | null>(null);
+const guardandoId   = ref<number | null>(null);
+const guardandoD3Id = ref<number | null>(null);
 const headersClientes = [
   { title: 'Cliente', key: 'cliente_concat', sortable: false },
   { title: 'CIF', key: 'CIF' },
   { title: 'Teléfono', key: 'TELF' },
-  { title: 'Descuento Global', key: 'DESCUENTO', sortable: false },
+  { title: 'Descuento D1', key: 'DESCUENTO', sortable: false },
+  { title: 'Descuento D3 fijo', key: 'DESCUENTO_D3', sortable: false },
 ];
 
 const cargarClientes = async () => {
@@ -198,9 +208,18 @@ const guardarDescuento = async (item: any) => {
   guardandoId.value = item.CODCLIENTE;
   try {
     await axios.patch(`${API}/clientes/${item.CODCLIENTE}/descuento`, { descuento: Number(item.DESCUENTO) || 0 });
-    lanzarAviso('Descuento actualizado');
+    lanzarAviso('Descuento D1 actualizado');
   } catch { lanzarAviso('Error al actualizar descuento', 'error'); }
   finally { guardandoId.value = null; }
+};
+
+const guardarD3 = async (item: any) => {
+  guardandoD3Id.value = item.CODCLIENTE;
+  try {
+    await axios.patch(`${API}/clientes/${item.CODCLIENTE}/d3`, { d3: Number(item.DESCUENTO_D3) || 0 });
+    lanzarAviso('Descuento D3 actualizado');
+  } catch { lanzarAviso('Error al actualizar D3', 'error'); }
+  finally { guardandoD3Id.value = null; }
 };
 
 // ---------- GRUPOS DE CLIENTES ----------
