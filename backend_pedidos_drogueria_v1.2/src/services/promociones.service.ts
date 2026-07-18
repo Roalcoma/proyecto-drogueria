@@ -37,8 +37,10 @@ const CAMPOS_ARTICULOS: Record<string, CampoDef> = {
     MARCA:           { tabla: 'A',   columna: 'MARCA',           tipo: 'numero', label: 'Marca' },
     TIPOARTICULO:    { tabla: 'A',   columna: 'TIPOARTICULO',    tipo: 'texto',  label: 'Tipo de Artículo' },
     REFPROVEEDOR:    { tabla: 'A',   columna: 'REFPROVEEDOR',    tipo: 'texto',  label: 'Referencia Proveedor' },
-    PRINCIPIOACTIVO: { tabla: 'ACL', columna: 'PRINCIPIOACTIVO', tipo: 'texto',  label: 'Principio Activo' },
-    TIPOLIBRE:       { tabla: 'ACL', columna: 'TIPO',            tipo: 'texto',  label: 'Tipo (campo libre)' },
+    PRINCIPIOACTIVO:  { tabla: 'ACL', columna: 'PRINCIPIOACTIVO',  tipo: 'texto',  label: 'Principio Activo' },
+    TIPOLIBRE:        { tabla: 'ACL', columna: 'TIPO',             tipo: 'texto',  label: 'Tipo (campo libre)' },
+    CODPROVEEDORICG:  { tabla: 'ACL', columna: 'CODPROVEEDORICG',  tipo: 'numero', label: 'Cód. Proveedor ICG' },
+    CODPROVEEDOR:     { tabla: 'ACL', columna: 'CODPROVEEDOR',     tipo: 'numero', label: 'Cód. Proveedor' },
 };
 
 const CAMPOS_CLIENTES: Record<string, CampoDef> = {
