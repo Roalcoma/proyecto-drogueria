@@ -148,7 +148,8 @@ export async function generarPedidoPDF(data: PedidoPDFData): Promise<void> {
         ? data.lineas.map(l => {
             if (sinPrecios) return [l.codigo, (l.descripcion || '') + (l.esControlado ? ' (CONTROLADO)' : ''),
                 l.cantidad, l.lote || '', l.fechaVencimiento || ''];
-            const descPct = (!l.sinDescuento && l.descuentos?.length) ? `${l.descuentos.join('%+')}%` : '';
+            const descs = (l.descuentos ?? []).slice(data.sinDesc ? 1 : 0);
+            const descPct = (!l.sinDescuento && descs.length) ? `${descs.join('%+')}%` : '';
             const pct = l.porcentajeIva ?? 0;
             return [l.codigo, (l.descripcion || '') + (l.esControlado ? ' (CONTROLADO)' : ''),
                 l.cantidad, '', '', '', descPct, pct > 0 ? `+${pct}%` : '',
@@ -156,7 +157,8 @@ export async function generarPedidoPDF(data: PedidoPDFData): Promise<void> {
                 l.lote || '', l.fechaVencimiento || ''];
         })
         : data.lineas.map(l => {
-            const descPct = (!sinPrecios && !l.sinDescuento && l.descuentos?.length) ? `${l.descuentos.join('%+')}%` : '';
+            const descs = (l.descuentos ?? []).slice(data.sinDesc ? 1 : 0);
+            const descPct = (!sinPrecios && !l.sinDescuento && descs.length) ? `${descs.join('%+')}%` : '';
             const pct = l.porcentajeIva ?? 0;
             const ivaTag = (!sinPrecios && pct > 0) ? `+${pct}%` : '';
             const row: any[] = [l.codigo, (l.descripcion || '') + (l.esControlado ? ' (CONTROLADO)' : ''),
@@ -176,16 +178,6 @@ export async function generarPedidoPDF(data: PedidoPDFData): Promise<void> {
             : ['Código', 'Descripción', 'Cant.', 'ESC PRD', 'ESC PRD', 'ESC PRV', 'DESC.', 'IVA', 'Precio', 'Importe', 'Lote', 'Venc.'];
     }
 
-    // Remove DESC column when requested (index 6 in all modes that have it)
-    const effectiveSinDesc = data.sinDesc === true && headCols.length > 6 && headCols[6] === 'DESC.';
-    if (effectiveSinDesc) {
-        headCols.splice(6, 1);
-        for (const row of filas) (row as any[]).splice(6, 1);
-    }
-
-    // IVA/Precio/Importe column indices shift by -1 when DESC is removed
-    const priceColOffset = (!sinPrecios && effectiveSinDesc) ? -1 : 0;
-
     autoTable(doc, {
         startY: datosFin + 5,
         head: [headCols],
@@ -200,17 +192,17 @@ export async function generarPedidoPDF(data: PedidoPDFData): Promise<void> {
                 3: { cellWidth: 30 },
                 4: { cellWidth: 22, halign: 'center' as const },
             } : {
-                [7 + priceColOffset]: { cellWidth: 10, halign: 'center' as const },
-                [8 + priceColOffset]: { halign: 'right' as const },
-                [9 + priceColOffset]: { halign: 'right' as const },
+                7: { cellWidth: 10, halign: 'center' as const },
+                8: { halign: 'right' as const },
+                9: { halign: 'right' as const },
             }),
         } : {
             0: { cellWidth: 18 },
             1: { cellWidth: sinPrecios ? 80 : 48 },
             ...(sinPrecios ? {} : {
-                [7 + priceColOffset]: { cellWidth: 10, halign: 'center' as const },
-                [8 + priceColOffset]: { halign: 'right' as const },
-                [9 + priceColOffset]: { halign: 'right' as const },
+                7: { cellWidth: 10, halign: 'center' as const },
+                8: { halign: 'right' as const },
+                9: { halign: 'right' as const },
             }),
         },
     });
