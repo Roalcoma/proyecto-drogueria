@@ -328,7 +328,8 @@ export class EcommerceService {
         const codVendedor: number     = VED;
 
         // 5. Resolver código → CODARTICULO + atributos para separación
-        //    Busca por CODBARRAS primero; fallback a CODARTICULO directo
+        //    El archivo iCompras trae CODARTICULO interno (campo f[2]).
+        //    CODARTICULO directo tiene prioridad; CODBARRAS es fallback por compatibilidad.
         const barcodes = [...new Set(lineas.map((l: any) => String(l.COD_ARTICULO).trim()).filter(Boolean))];
         const barcodeToArt = new Map<string, {
             codarticulo: number; nodto: boolean; ref: string;
@@ -339,40 +340,47 @@ export class EcommerceService {
             artReq.input('TARIFA', mssql.Int, getDbConfig().tarifaBaseCatalogo);
             const artPH  = barcodes.map((b, i) => { artReq.input(`b${i}`, mssql.NVarChar(50), b); return `@b${i}`; }).join(',');
             const artRes = await artReq.query(`
-                SELECT AL.CODBARRAS AS LOOKUP_KEY, A.CODARTICULO,
-                       ISNULL(A.NODTOAPLICABLE, 0)   AS NODTOAPLICABLE,
-                       ISNULL(A.REFPROVEEDOR,'')      AS REFPROVEEDOR,
-                       ISNULL(A.SECCION, 0)           AS SECCION,
-                       ISNULL(PCL.DIASPROTECCION, 0)  AS DIASPROTECCION,
-                       ISNULL(PV.PNETO, 0)            AS PNETO
-                FROM ARTICULOSLIN AL WITH (NOLOCK)
-                JOIN ARTICULOS A WITH (NOLOCK) ON A.CODARTICULO = AL.CODARTICULO
-                LEFT JOIN ARTICULOSCAMPOSLIBRES ACL WITH (NOLOCK) ON ACL.CODARTICULO = A.CODARTICULO
-                LEFT JOIN PROVEEDORESCAMPOSLIBRES PCL WITH (NOLOCK) ON PCL.CODPROVEEDOR = ACL.CODPROVEEDORICG
-                LEFT JOIN PRECIOSVENTA PV WITH (NOLOCK) ON PV.CODARTICULO = A.CODARTICULO AND PV.IDTARIFAV = @TARIFA
-                WHERE AL.CODBARRAS IN (${artPH})
-                UNION
-                SELECT CAST(A.CODARTICULO AS NVARCHAR(50)) AS LOOKUP_KEY, A.CODARTICULO,
-                       ISNULL(A.NODTOAPLICABLE, 0)   AS NODTOAPLICABLE,
-                       ISNULL(A.REFPROVEEDOR,'')      AS REFPROVEEDOR,
-                       ISNULL(A.SECCION, 0)           AS SECCION,
-                       ISNULL(PCL.DIASPROTECCION, 0)  AS DIASPROTECCION,
-                       ISNULL(PV.PNETO, 0)            AS PNETO
-                FROM ARTICULOS A WITH (NOLOCK)
-                LEFT JOIN ARTICULOSCAMPOSLIBRES ACL WITH (NOLOCK) ON ACL.CODARTICULO = A.CODARTICULO
-                LEFT JOIN PROVEEDORESCAMPOSLIBRES PCL WITH (NOLOCK) ON PCL.CODPROVEEDOR = ACL.CODPROVEEDORICG
-                LEFT JOIN PRECIOSVENTA PV WITH (NOLOCK) ON PV.CODARTICULO = A.CODARTICULO AND PV.IDTARIFAV = @TARIFA
-                WHERE CAST(A.CODARTICULO AS NVARCHAR(50)) IN (${artPH})
+                SELECT * FROM (
+                    SELECT CAST(A.CODARTICULO AS NVARCHAR(50)) AS LOOKUP_KEY, A.CODARTICULO,
+                           ISNULL(A.NODTOAPLICABLE, 0)   AS NODTOAPLICABLE,
+                           ISNULL(A.REFPROVEEDOR,'')      AS REFPROVEEDOR,
+                           ISNULL(A.SECCION, 0)           AS SECCION,
+                           ISNULL(PCL.DIASPROTECCION, 0)  AS DIASPROTECCION,
+                           ISNULL(PV.PNETO, 0)            AS PNETO,
+                           1                              AS PRIOR
+                    FROM ARTICULOS A WITH (NOLOCK)
+                    LEFT JOIN ARTICULOSCAMPOSLIBRES ACL WITH (NOLOCK) ON ACL.CODARTICULO = A.CODARTICULO
+                    LEFT JOIN PROVEEDORESCAMPOSLIBRES PCL WITH (NOLOCK) ON PCL.CODPROVEEDOR = ACL.CODPROVEEDORICG
+                    LEFT JOIN PRECIOSVENTA PV WITH (NOLOCK) ON PV.CODARTICULO = A.CODARTICULO AND PV.IDTARIFAV = @TARIFA
+                    WHERE CAST(A.CODARTICULO AS NVARCHAR(50)) IN (${artPH})
+                    UNION ALL
+                    SELECT AL.CODBARRAS AS LOOKUP_KEY, A.CODARTICULO,
+                           ISNULL(A.NODTOAPLICABLE, 0)   AS NODTOAPLICABLE,
+                           ISNULL(A.REFPROVEEDOR,'')      AS REFPROVEEDOR,
+                           ISNULL(A.SECCION, 0)           AS SECCION,
+                           ISNULL(PCL.DIASPROTECCION, 0)  AS DIASPROTECCION,
+                           ISNULL(PV.PNETO, 0)            AS PNETO,
+                           2                              AS PRIOR
+                    FROM ARTICULOSLIN AL WITH (NOLOCK)
+                    JOIN ARTICULOS A WITH (NOLOCK) ON A.CODARTICULO = AL.CODARTICULO
+                    LEFT JOIN ARTICULOSCAMPOSLIBRES ACL WITH (NOLOCK) ON ACL.CODARTICULO = A.CODARTICULO
+                    LEFT JOIN PROVEEDORESCAMPOSLIBRES PCL WITH (NOLOCK) ON PCL.CODPROVEEDOR = ACL.CODPROVEEDORICG
+                    LEFT JOIN PRECIOSVENTA PV WITH (NOLOCK) ON PV.CODARTICULO = A.CODARTICULO AND PV.IDTARIFAV = @TARIFA
+                    WHERE AL.CODBARRAS IN (${artPH})
+                ) T ORDER BY PRIOR
             `);
             artRes.recordset.forEach((r: any) => {
-                barcodeToArt.set(String(r.LOOKUP_KEY), {
-                    codarticulo:    Number(r.CODARTICULO),
-                    nodto:          r.NODTOAPLICABLE === true || r.NODTOAPLICABLE === 1,
-                    ref:            r.REFPROVEEDOR,
-                    seccion:        Number(r.SECCION),
-                    diasProteccion: Number(r.DIASPROTECCION),
-                    precioUnitario: Number(r.PNETO),
-                });
+                const key = String(r.LOOKUP_KEY);
+                if (!barcodeToArt.has(key)) {   // primer match gana: CODARTICULO directo > barcode
+                    barcodeToArt.set(key, {
+                        codarticulo:    Number(r.CODARTICULO),
+                        nodto:          r.NODTOAPLICABLE === true || r.NODTOAPLICABLE === 1,
+                        ref:            r.REFPROVEEDOR,
+                        seccion:        Number(r.SECCION),
+                        diasProteccion: Number(r.DIASPROTECCION),
+                        precioUnitario: Number(r.PNETO),
+                    });
+                }
             });
         }
 
