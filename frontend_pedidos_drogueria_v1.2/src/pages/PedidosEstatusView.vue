@@ -579,6 +579,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { usePageSize } from '../utils/usePageSize';
 import axios from 'axios';
 import { useRouter } from 'vue-router';
 import { generarPedidoPDF, type ConteoPDFData } from '../utils/pedidoPDF';
@@ -609,7 +610,7 @@ const previewModal = ref<{
 }>({ show: false, orderId: '', estatus: '', cliente: '', fecha: '', totalUSD: 0, lineas: null, pedidoItem: null });
 const totalUSD = ref(0);
 const loading = ref(false);
-const itemsPerPage = ref(10);
+const itemsPerPage = usePageSize('pedidos-estatus');
 const snackbar = ref({ show: false, text: '', color: '' });
 const dialogEliminar  = ref(false);
 const pedidoAEliminar = ref<any>(null);

@@ -172,6 +172,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import axios from 'axios';
+import { usePageSize } from '../utils/usePageSize';
 
 const API = import.meta.env.VITE_API_URL;
 const tab = ref('clientes');
@@ -183,7 +184,7 @@ const busquedaCliente = ref('');
 const clientes = ref<any[]>([]);
 const totalClientes = ref(0);
 const cargandoClientes = ref(false);
-const itemsPerPageClientes = ref(10);
+const itemsPerPageClientes = usePageSize('clientes');
 const paginaClientes = ref(1);
 const guardandoId   = ref<number | null>(null);
 const guardandoD3Id = ref<number | null>(null);
@@ -227,7 +228,7 @@ const busquedaGrupo = ref('');
 const grupos = ref<any[]>([]);
 const totalGrupos = ref(0);
 const cargandoGrupos = ref(false);
-const itemsPerPageGrupos = ref(10);
+const itemsPerPageGrupos = usePageSize('clientes-grupos');
 const paginaGrupos = ref(1);
 const headersGrupos = [
   { title: 'ID', key: 'ID' },
@@ -288,7 +289,7 @@ const modalMiembros = ref<any>({ mostrar: false, grupo: null });
 const miembros = ref<any[]>([]);
 const totalMiembros = ref(0);
 const cargandoMiembros = ref(false);
-const itemsPerPageMiembros = ref(10);
+const itemsPerPageMiembros = usePageSize('clientes-miembros');
 const importandoExcel = ref(false);
 const resultadoImport = ref('');
 

@@ -117,6 +117,7 @@
             :items="productos"
             :items-length="totalProductos"
             :loading="cargandoProductos"
+            v-model:items-per-page="catalogoPageSize"
             @update:options="cargarProductosDesdeTabla"
             hover
             class="bg-white"
@@ -262,6 +263,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import axios from 'axios';
+import { usePageSize } from '../utils/usePageSize';
 import * as XLSX from 'xlsx';
 import * as ExcelJS from 'exceljs';
 import { useBrandingStore } from '../stores/useBrandingStore';
@@ -293,7 +295,8 @@ const productos = ref<any[]>([]);
 const cargandoProductos = ref(false);
 const busquedaProducto = ref('');
 const totalProductos = ref(0);
-const opcionesTabla = ref({ page: 1, itemsPerPage: 10 });
+const catalogoPageSize = usePageSize('catalogo');
+const opcionesTabla = ref({ page: 1, itemsPerPage: catalogoPageSize.value });
 const headersProductos = [
   { title: 'Código', key: 'CODARTICULO' },
   { title: 'Referencia', key: 'REFPROVEEDOR' },
@@ -545,7 +548,7 @@ const calcularPrecioFinalDolar = (item: any): number => {
 const getStockTotal = (p: any) => p.stocks?.reduce((t: number, s: any) => t + s.STOCK, 0) || 0;
 const lanzarAviso = (texto: string, color: string) => aviso.value = { mostrar: true, texto, color };
 const buscarDesdeBoton = () => { opcionesTabla.value.page = 1; ejecutarBusquedaProductos(); };
-const cargarProductosDesdeTabla = (opt: any) => { opcionesTabla.value = opt; ejecutarBusquedaProductos(); };
+const cargarProductosDesdeTabla = (opt: any) => { opcionesTabla.value = opt; catalogoPageSize.value = opt.itemsPerPage; ejecutarBusquedaProductos(); };
 const ejecutarBusquedaProductos = async () => {
   cargandoProductos.value = true;
   try {

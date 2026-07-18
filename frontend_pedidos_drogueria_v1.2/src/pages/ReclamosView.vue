@@ -126,6 +126,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import axios from 'axios';
+import { usePageSize } from '../utils/usePageSize';
 
 const API = import.meta.env.VITE_API_URL;
 const aviso = ref({ mostrar: false, texto: '', color: 'success' });
@@ -212,7 +213,7 @@ const busqueda = ref('');
 const reclamos = ref<any[]>([]);
 const totalReclamos = ref(0);
 const cargando = ref(false);
-const itemsPerPage = ref(10);
+const itemsPerPage = usePageSize('reclamos');
 const pagina = ref(1);
 const headers = [
   { title: 'ID', key: 'ID' },

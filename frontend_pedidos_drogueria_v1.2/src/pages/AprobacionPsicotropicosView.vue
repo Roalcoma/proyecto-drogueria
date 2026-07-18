@@ -233,6 +233,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
+import { usePageSize } from '../utils/usePageSize';
 import { useCarritoStore } from '../stores/useCarritoStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import MontoDisplay from '../components/MontoDisplay.vue';
@@ -247,7 +248,7 @@ const ESTATUS = 'APROBACION PSICOTROPICOS';
 const pedidos      = ref<any[]>([]);
 const totalPedidos = ref(0);
 const cargando     = ref(false);
-const itemsPerPage = ref(10);
+const itemsPerPage = usePageSize('aprobacion-psico');
 const pagina       = ref(1);
 const headers = [
   { title: 'Orden',   key: 'ORDERID' },

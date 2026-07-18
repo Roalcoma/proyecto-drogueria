@@ -218,6 +218,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import axios from 'axios';
+import { usePageSize } from '../utils/usePageSize';
 import { usePromocionesStore } from '../stores/usePromocionesStore';
 import { useCarritoStore } from '../stores/useCarritoStore';
 
@@ -234,7 +235,7 @@ const busquedaPromo = ref('');
 const promos = ref<any[]>([]);
 const totalPromos = ref(0);
 const cargandoPromos = ref(false);
-const itemsPerPagePromos = ref(10);
+const itemsPerPagePromos = usePageSize('promos');
 const paginaPromos = ref(1);
 const headersPromos = [
   { title: 'Nombre', key: 'NOMBRE' },
@@ -344,7 +345,7 @@ const busquedaGrupo = ref('');
 const grupos = ref<any[]>([]);
 const totalGrupos = ref(0);
 const cargandoGrupos = ref(false);
-const itemsPerPageGrupos = ref(10);
+const itemsPerPageGrupos = usePageSize('promos-grupos');
 const paginaGrupos = ref(1);
 const headersGrupos = [
   { title: 'ID', key: 'ID' },
@@ -409,7 +410,7 @@ const modalMiembros = ref<any>({ mostrar: false, grupo: null });
 const miembros = ref<any[]>([]);
 const totalMiembros = ref(0);
 const cargandoMiembros = ref(false);
-const itemsPerPageMiembros = ref(10);
+const itemsPerPageMiembros = usePageSize('promos-miembros');
 const paginaMiembros = ref(1);
 const headersMiembros = [
   { title: 'Código', key: 'CODARTICULO' },

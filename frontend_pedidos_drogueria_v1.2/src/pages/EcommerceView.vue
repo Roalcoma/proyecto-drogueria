@@ -53,6 +53,7 @@
         :items="pedidos"
         :items-length="total"
         :loading="cargando"
+        v-model:items-per-page="porPagina"
         @update:options="cargarPagina"
         :items-per-page-options="[10, 25, 50, 100, 200]"
         hover
@@ -113,6 +114,7 @@
         :items="auditoria"
         :items-length="totalAud"
         :loading="cargandoAud"
+        v-model:items-per-page="porPaginaAud"
         @update:options="cargarPaginaAuditoria"
         :items-per-page-options="[25, 50, 100]"
         hover
@@ -186,6 +188,7 @@ import { ref, watch } from 'vue';
 import axios from 'axios';
 import { useCarritoStore } from '../stores/useCarritoStore';
 import MontoDisplay from '../components/MontoDisplay.vue';
+import { usePageSize } from '../utils/usePageSize';
 
 const carritoStore = useCarritoStore();
 const API = `${import.meta.env.VITE_API_URL}/ecommerce`;
@@ -197,7 +200,7 @@ const pedidos  = ref<any[]>([]);
 const total    = ref(0);
 const cargando = ref(false);
 const pagina   = ref(1);
-const porPagina = ref(10);
+const porPagina = usePageSize('ecommerce-pedidos');
 const snack    = ref({ show: false, text: '', color: 'success' });
 const aprobando = ref<number | null>(null);
 
@@ -207,7 +210,7 @@ const auditoria    = ref<any[]>([]);
 const totalAud     = ref(0);
 const cargandoAud  = ref(false);
 const paginaAud    = ref(1);
-const porPaginaAud = ref(25);
+const porPaginaAud = usePageSize('ecommerce-auditoria', 25);
 
 const EVENTO_COLOR: Record<string, string> = {
   APROBADO:         'success',

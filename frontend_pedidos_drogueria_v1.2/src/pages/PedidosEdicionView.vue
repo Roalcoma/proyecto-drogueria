@@ -311,6 +311,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
+import { usePageSize } from '../utils/usePageSize';
 import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
 import { useAuthStore } from '../stores/useAuthStore';
@@ -330,7 +331,7 @@ const puedeEditarEstatus = (est: string) =>
 const listaPedidos  = ref<any[]>([]);
 const totalPedidos  = ref(0);
 const loadingLista  = ref(false);
-const itemsPerPage  = ref(10);
+const itemsPerPage  = usePageSize('pedidos-edicion');
 const paginaActual  = ref(1);
 const busquedaId    = ref('');
 const filtroEstatus = ref('PENDIENTE');

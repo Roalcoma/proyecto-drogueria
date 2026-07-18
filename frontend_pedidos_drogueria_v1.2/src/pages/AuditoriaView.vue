@@ -111,12 +111,13 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import axios from 'axios';
+import { usePageSize } from '../utils/usePageSize';
 
 const API = import.meta.env.VITE_API_URL;
 
 const tab          = ref('pedidos');
 const cargando     = ref(false);
-const itemsPerPage = ref(25);
+const itemsPerPage = usePageSize('auditoria', 25);
 const pagina       = ref(1);
 
 // Pedidos
