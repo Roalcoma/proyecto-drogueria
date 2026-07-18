@@ -147,10 +147,13 @@ export class EcommerceService {
                 const existe = await pool.request()
                     .input('NUM',  mssql.NVarChar(50),  parsed.pedido.numeroPedido)
                     .input('ARCH', mssql.NVarChar(500), archivo)
-                    .query(`SELECT 1 FROM APP_ECOMMERCE_PEDIDOS WHERE NUMERO_PEDIDO = @NUM AND ARCHIVO = @ARCH`);
+                    .query(`SELECT PROCESADO FROM APP_ECOMMERCE_PEDIDOS WHERE NUMERO_PEDIDO = @NUM AND ARCHIVO = @ARCH`);
 
                 if (existe.recordset.length > 0) {
-                    try { fs.renameSync(rutaArchivo, rutaArchivo + '.done'); } catch {}
+                    // Ya registrado: solo marcar done si además está aprobado
+                    if (existe.recordset[0].PROCESADO) {
+                        try { fs.renameSync(rutaArchivo, rutaArchivo + '.done'); } catch {}
+                    }
                     continue;
                 }
 
@@ -175,11 +178,9 @@ export class EcommerceService {
                         )
                     `);
 
-                // Si rowsAffected=0, el otro scan ganó la carrera — no duplicamos
-                if (!insRes.recordset.length) {
-                    try { fs.renameSync(rutaArchivo, rutaArchivo + '.done'); } catch {}
-                    continue;
-                }
+                // Si rowsAffected=0, el otro scan ganó la carrera — no tocar el archivo,
+                // el scan ganador lo moverá a .done cuando termine con éxito
+                if (!insRes.recordset.length) continue;
 
                 const idPedido: number = insRes.recordset[0].ID;
                 idPedidoActual = idPedido;
