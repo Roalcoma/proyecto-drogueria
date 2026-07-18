@@ -32,7 +32,7 @@ export class ProductsService {
                 .input('ALMACEN', mssql.VarChar(10), getDbConfig().codAlmacen)
                 .input('dptoPsico', mssql.Int, getDbConfig().dptoPsicotropicos)
                 .input('SOLO_CTRL', mssql.Int, soloControlados ? 1 : 0)
-                .input('CONDICION', mssql.VarChar(5), condicion)
+                .input('CONDICION', mssql.VarChar(10), condicion)
                 .query(`
                     DECLARE @FILTRO AS NVARCHAR(50)='%'+UPPER(REPLACE(LTRIM(RTRIM(@ARTICULO)),' ','%'))+'%'
 
@@ -55,9 +55,10 @@ export class ProductsService {
                         )
                         AND (@SOLO_CTRL = 0 OR A.SECCION = @dptoPsico)
                         AND (@CONDICION = ''
-                            OR (@CONDICION = 'P'  AND A.SECCION = @dptoPsico)
-                            OR (@CONDICION = 'SD' AND ISNULL(A.NODTOAPLICABLE,0) = 1)
-                            OR (@CONDICION = 'NI' AND ISNULL(PCL.DIASPROTECCION,0) > 0))
+                            OR (@CONDICION = 'P'      AND A.SECCION = @dptoPsico)
+                            OR (@CONDICION = 'SD'     AND ISNULL(A.NODTOAPLICABLE,0) = 1)
+                            OR (@CONDICION = 'NI'     AND ISNULL(PCL.DIASPROTECCION,0) > 0)
+                            OR (@CONDICION = 'NORMAL' AND A.SECCION <> @dptoPsico AND ISNULL(A.NODTOAPLICABLE,0) = 0 AND ISNULL(PCL.DIASPROTECCION,0) = 0))
                 `);
 
             return result.recordset[0].TOTAL;
@@ -82,7 +83,7 @@ export class ProductsService {
                 .input('dptoPsico', mssql.Int, getDbConfig().dptoPsicotropicos)
                 .input('ALMACEN', mssql.VarChar(10), getDbConfig().codAlmacen)
                 .input('SOLO_CTRL', mssql.Int, soloControlados ? 1 : 0)
-                .input('CONDICION', mssql.VarChar(5), condicion)
+                .input('CONDICION', mssql.VarChar(10), condicion)
                 .query(`
                     DECLARE @FILTRO AS NVARCHAR(50)='%'+UPPER(REPLACE(LTRIM(RTRIM(@ARTICULO)),' ','%'))+'%'
 
@@ -123,9 +124,10 @@ export class ProductsService {
                         )
                         AND (@SOLO_CTRL = 0 OR A.SECCION = @dptoPsico)
                         AND (@CONDICION = ''
-                            OR (@CONDICION = 'P'  AND A.SECCION = @dptoPsico)
-                            OR (@CONDICION = 'SD' AND ISNULL(A.NODTOAPLICABLE,0) = 1)
-                            OR (@CONDICION = 'NI' AND ISNULL(PCL.DIASPROTECCION,0) > 0))
+                            OR (@CONDICION = 'P'      AND A.SECCION = @dptoPsico)
+                            OR (@CONDICION = 'SD'     AND ISNULL(A.NODTOAPLICABLE,0) = 1)
+                            OR (@CONDICION = 'NI'     AND ISNULL(PCL.DIASPROTECCION,0) > 0)
+                            OR (@CONDICION = 'NORMAL' AND A.SECCION <> @dptoPsico AND ISNULL(A.NODTOAPLICABLE,0) = 0 AND ISNULL(PCL.DIASPROTECCION,0) = 0))
                     ORDER BY STOCKTOTAL DESC, ACL.DESCRIPCIONLARGA
                     OFFSET @OFFSET ROWS
                     FETCH NEXT @LIMIT ROWS ONLY

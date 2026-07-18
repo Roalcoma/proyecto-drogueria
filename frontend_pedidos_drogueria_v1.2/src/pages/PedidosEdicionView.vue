@@ -534,7 +534,7 @@ const buscarProductos = async () => {
   resultadosBusqueda.value = [];
   try {
     const params: any = { articulo: busquedaProducto.value.trim() };
-    if (condicionPedido.value) params.condicion = condicionPedido.value;
+    params.condicion = condicionPedido.value || 'NORMAL';
     const res = await axios.get(`${API}/products/get-products`, { params });
     const tarifa = lineasEditadas.value[0]?.IDTARIFAV || 1;
     resultadosBusqueda.value = (res.data.data ?? res.data ?? []).map((p: any) => ({
