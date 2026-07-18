@@ -58,6 +58,18 @@ export class EcommerceService {
 
                 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_ECOML_IDPEDIDO' AND object_id=OBJECT_ID('APP_ECOMMERCE_LINEAS'))
                     CREATE INDEX IX_ECOML_IDPEDIDO ON APP_ECOMMERCE_LINEAS (ID_PEDIDO);
+
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'APP_ECOMMERCE_AUDITORIA')
+                    CREATE TABLE APP_ECOMMERCE_AUDITORIA (
+                        ID      INT IDENTITY PRIMARY KEY,
+                        ARCHIVO NVARCHAR(500) NOT NULL,
+                        FECHA   DATETIME NOT NULL DEFAULT GETDATE(),
+                        EVENTO  NVARCHAR(50)  NOT NULL,
+                        ORDERID NVARCHAR(50)  NULL,
+                        MENSAJE NVARCHAR(500) NULL
+                    );
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_ECAUD_ARCH' AND object_id=OBJECT_ID('APP_ECOMMERCE_AUDITORIA'))
+                    CREATE INDEX IX_ECAUD_ARCH ON APP_ECOMMERCE_AUDITORIA (ARCHIVO, FECHA);
             `);
             console.log('[Ecommerce] Tablas verificadas/creadas');
         } catch (err) {
@@ -77,6 +89,20 @@ export class EcommerceService {
         await pool.request()
             .input('RUTA', mssql.NVarChar(500), ruta)
             .query(`UPDATE APP_ECOMMERCE_CONFIG SET RUTA = @RUTA WHERE ID = 1`);
+    }
+
+    private static async registrarAuditoria(
+        archivo: string, evento: string, mensaje?: string, orderId?: string
+    ): Promise<void> {
+        try {
+            const pool = await connectDb();
+            await pool.request()
+                .input('ARCH', mssql.NVarChar(500), archivo)
+                .input('EVT',  mssql.NVarChar(50),  evento)
+                .input('OID',  mssql.NVarChar(50),  orderId ?? null)
+                .input('MSG',  mssql.NVarChar(500), mensaje ? mensaje.substring(0, 500) : null)
+                .query(`INSERT INTO APP_ECOMMERCE_AUDITORIA (ARCHIVO, EVENTO, ORDERID, MENSAJE) VALUES (@ARCH, @EVT, @OID, @MSG)`);
+        } catch {}
     }
 
     private static parsearArchivo(contenido: string, nombreArchivo: string): { pedido: any; lineas: any[] } | null {
@@ -139,7 +165,11 @@ export class EcommerceService {
             try {
                 const contenido = fs.readFileSync(rutaArchivo, 'utf-8');
                 const parsed = this.parsearArchivo(contenido, archivo);
-                if (!parsed) { errores++; continue; }
+                if (!parsed) {
+                    errores++;
+                    EcommerceService.registrarAuditoria(archivo, 'PARSE_ERROR', 'El archivo no pudo ser interpretado (formato inesperado)');
+                    continue;
+                }
 
                 const pool = await connectDb();
 
@@ -150,9 +180,11 @@ export class EcommerceService {
                     .query(`SELECT PROCESADO FROM APP_ECOMMERCE_PEDIDOS WHERE NUMERO_PEDIDO = @NUM AND ARCHIVO = @ARCH`);
 
                 if (existe.recordset.length > 0) {
-                    // Ya registrado: solo marcar done si además está aprobado
                     if (existe.recordset[0].PROCESADO) {
+                        EcommerceService.registrarAuditoria(archivo, 'YA_APROBADO', 'Pedido ya procesado y aprobado anteriormente');
                         try { fs.renameSync(rutaArchivo, rutaArchivo + '.done'); } catch {}
+                    } else {
+                        EcommerceService.registrarAuditoria(archivo, 'DUPLICADO', 'El archivo ya está registrado pero pendiente de aprobación');
                     }
                     continue;
                 }
@@ -180,7 +212,10 @@ export class EcommerceService {
 
                 // Si rowsAffected=0, el otro scan ganó la carrera — no tocar el archivo,
                 // el scan ganador lo moverá a .done cuando termine con éxito
-                if (!insRes.recordset.length) continue;
+                if (!insRes.recordset.length) {
+                    EcommerceService.registrarAuditoria(archivo, 'CARRERA', 'Condición de carrera: otro scan procesó este archivo primero');
+                    continue;
+                }
 
                 const idPedido: number = insRes.recordset[0].ID;
                 idPedidoActual = idPedido;
@@ -202,11 +237,12 @@ export class EcommerceService {
                 // Auto-aprobar: insertar directamente en CABECERA_PED
                 const aprob = await this.aprobarPedido(idPedido);
                 if (aprob.success) {
+                    EcommerceService.registrarAuditoria(archivo, 'APROBADO', `Pedido creado en Control de Estatus`, aprob.orderId);
                     try { fs.renameSync(rutaArchivo, rutaArchivo + '.done'); } catch {}
                     console.log(`[Ecommerce] Pedido ${aprob.orderId} creado en Control de Estatus`);
                     importados++;
                 } else {
-                    // Marcar como error pero NO como done — permite revisar qué falló
+                    EcommerceService.registrarAuditoria(archivo, 'ERROR_APROBACION', aprob.message);
                     try { fs.renameSync(rutaArchivo, rutaArchivo + '.error'); } catch {}
                     console.warn(`[Ecommerce] ${archivo}: no se pudo crear en Control de Estatus — ${aprob.message}`);
                     try {
@@ -221,6 +257,7 @@ export class EcommerceService {
                 const msg = (e?.message ?? String(e)).substring(0, 500);
                 console.error(`[Ecommerce] Error al importar ${archivo}:`, e);
                 errores++;
+                EcommerceService.registrarAuditoria(archivo, 'ERROR_CRITICO', msg);
                 try { fs.renameSync(rutaArchivo, rutaArchivo + '.error'); } catch {}
                 if (idPedidoActual !== null) {
                     try {
@@ -278,6 +315,33 @@ export class EcommerceService {
             .input('ID', mssql.Int, id)
             .input('P',  mssql.Bit, procesado ? 1 : 0)
             .query(`UPDATE APP_ECOMMERCE_PEDIDOS SET PROCESADO = @P WHERE ID = @ID`);
+    }
+
+    static async getAuditoria(search: string, page: number, limit: number): Promise<{ data: any[]; total: number }> {
+        const pool = await connectDb();
+        const filtro = `%${search ?? ''}%`;
+        const safeLimit = limit === -1 ? 10000 : Math.max(1, limit);
+        const offset = limit === -1 ? 0 : (Math.max(1, page) - 1) * safeLimit;
+
+        const totalRes = await pool.request()
+            .input('F', mssql.NVarChar, filtro)
+            .query(`
+                SELECT COUNT(*) AS T FROM APP_ECOMMERCE_AUDITORIA
+                WHERE ARCHIVO LIKE @F OR EVENTO LIKE @F OR ISNULL(ORDERID,'') LIKE @F OR ISNULL(MENSAJE,'') LIKE @F
+            `);
+
+        const dataRes = await pool.request()
+            .input('F',   mssql.NVarChar, filtro)
+            .input('OFF', mssql.Int, offset)
+            .input('LIM', mssql.Int, safeLimit)
+            .query(`
+                SELECT * FROM APP_ECOMMERCE_AUDITORIA
+                WHERE ARCHIVO LIKE @F OR EVENTO LIKE @F OR ISNULL(ORDERID,'') LIKE @F OR ISNULL(MENSAJE,'') LIKE @F
+                ORDER BY FECHA DESC
+                OFFSET @OFF ROWS FETCH NEXT @LIM ROWS ONLY
+            `);
+
+        return { data: dataRes.recordset, total: totalRes.recordset[0].T };
     }
 
     static async aprobarPedido(id: number): Promise<{ success: boolean; message: string; orderId?: string }> {

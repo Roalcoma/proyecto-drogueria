@@ -50,4 +50,12 @@ export class EcommerceController {
             res.status(500).json({ success: false, message: e.message ?? 'Error al aprobar pedido' });
         }
     }
+
+    static async getAuditoria(req: Request, res: Response): Promise<void> {
+        const { search, page, limit } = req.query;
+        const result = await EcommerceService.getAuditoria(
+            (search as string) || '', Number(page) || 1, Number(limit) || 25
+        );
+        res.json({ success: true, ...result });
+    }
 }

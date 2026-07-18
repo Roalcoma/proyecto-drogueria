@@ -13,5 +13,6 @@ ecommerceRouter.get('/pedidos',         EcommerceController.getPedidos);
 ecommerceRouter.get('/pedidos/:id/lineas', EcommerceController.getLineas);
 ecommerceRouter.patch('/pedidos/:id/procesado', EcommerceController.marcarProcesado);
 ecommerceRouter.post('/pedidos/:id/aprobar',   EcommerceController.aprobarPedido);
+ecommerceRouter.get('/auditoria',              EcommerceController.getAuditoria);
 
 export default ecommerceRouter;
