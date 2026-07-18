@@ -37,7 +37,7 @@ export class EcommerceService {
                         TOTAL          DECIMAL(18,2),
                         ARCHIVO        NVARCHAR(500),
                         PROCESADO      BIT NOT NULL DEFAULT 0,
-                        FECHA_IMPORT   DATETIME NOT NULL DEFAULT GETDATE(),
+                        FECHA_IMPORT   DATETIME NOT NULL DEFAULT GETUTCDATE(),
                         MENSAJE_ERROR  NVARCHAR(500) NULL
                     );
                 IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='APP_ECOMMERCE_PEDIDOS' AND COLUMN_NAME='MENSAJE_ERROR')
@@ -63,7 +63,7 @@ export class EcommerceService {
                     CREATE TABLE APP_ECOMMERCE_AUDITORIA (
                         ID      INT IDENTITY PRIMARY KEY,
                         ARCHIVO NVARCHAR(500) NOT NULL,
-                        FECHA   DATETIME NOT NULL DEFAULT GETDATE(),
+                        FECHA   DATETIME NOT NULL DEFAULT GETUTCDATE(),
                         EVENTO  NVARCHAR(50)  NOT NULL,
                         ORDERID NVARCHAR(50)  NULL,
                         MENSAJE NVARCHAR(500) NULL
@@ -101,7 +101,7 @@ export class EcommerceService {
                 .input('EVT',  mssql.NVarChar(50),  evento)
                 .input('OID',  mssql.NVarChar(50),  orderId ?? null)
                 .input('MSG',  mssql.NVarChar(500), mensaje ? mensaje.substring(0, 500) : null)
-                .query(`INSERT INTO APP_ECOMMERCE_AUDITORIA (ARCHIVO, EVENTO, ORDERID, MENSAJE) VALUES (@ARCH, @EVT, @OID, @MSG)`);
+                .query(`INSERT INTO APP_ECOMMERCE_AUDITORIA (ARCHIVO, FECHA, EVENTO, ORDERID, MENSAJE) VALUES (@ARCH, GETUTCDATE(), @EVT, @OID, @MSG)`);
         } catch {}
     }
 
@@ -190,20 +190,24 @@ export class EcommerceService {
                 }
 
                 // INSERT atómico — previene duplicados por scans simultáneos
+                // Parsear la fecha del archivo como hora Venezuela (UTC-4) para almacenar UTC correcto
+                const fechaStr = parsed.pedido.fecha.replace(' ', 'T');
+                const fechaUtc = new Date(fechaStr + (fechaStr.includes('+') || fechaStr.includes('Z') ? '' : '-04:00'));
+
                 const insRes = await pool.request()
                     .input('NUM',    mssql.NVarChar(50),   parsed.pedido.numeroPedido)
                     .input('COD',    mssql.NVarChar(50),   parsed.pedido.codCliente)
                     .input('NOMBRE', mssql.NVarChar(200),  parsed.pedido.nombreCliente)
                     .input('RIF',    mssql.NVarChar(50),   parsed.pedido.rif)
-                    .input('FECHA',  mssql.DateTime,       new Date(parsed.pedido.fecha))
+                    .input('FECHA',  mssql.DateTime,       fechaUtc)
                     .input('ESTATUS',mssql.NVarChar(50),   parsed.pedido.estatus)
                     .input('TOTAL',  mssql.Decimal(18, 2), parsed.pedido.total)
                     .input('ARCH',   mssql.NVarChar(500),  archivo)
                     .query(`
                         INSERT INTO APP_ECOMMERCE_PEDIDOS
-                            (NUMERO_PEDIDO, COD_CLIENTE, NOMBRE_CLIENTE, RIF, FECHA, ESTATUS, TOTAL, ARCHIVO)
+                            (NUMERO_PEDIDO, COD_CLIENTE, NOMBRE_CLIENTE, RIF, FECHA, ESTATUS, TOTAL, ARCHIVO, FECHA_IMPORT)
                         OUTPUT INSERTED.ID
-                        SELECT @NUM, @COD, @NOMBRE, @RIF, @FECHA, @ESTATUS, @TOTAL, @ARCH
+                        SELECT @NUM, @COD, @NOMBRE, @RIF, @FECHA, @ESTATUS, @TOTAL, @ARCH, GETUTCDATE()
                         WHERE NOT EXISTS (
                             SELECT 1 FROM APP_ECOMMERCE_PEDIDOS
                             WHERE NUMERO_PEDIDO = @NUM AND ARCHIVO = @ARCH
