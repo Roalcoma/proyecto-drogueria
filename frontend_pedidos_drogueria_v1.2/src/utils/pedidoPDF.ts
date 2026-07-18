@@ -307,5 +307,5 @@ export async function generarPedidoPDF(data: PedidoPDFData): Promise<void> {
     doc.text('© RedesIP — Sistema de Pedidos Droguería Intercontinental', 105, pageH - 5, { align: 'center' });
     doc.setTextColor(0);
 
-    doc.save(`Pedido_${data.numeroOrden}.pdf`);
+    window.open(doc.output('bloburl'), '_blank');
 }

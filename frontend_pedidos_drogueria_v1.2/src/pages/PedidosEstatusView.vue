@@ -73,6 +73,10 @@
           clearable hide-details prepend-inner-icon="mdi-account-search" @update:model-value="aplicarFiltros" />
       </v-col>
       <v-col cols="12" sm="6" md="2">
+        <v-text-field v-model="filtros.usuario" label="Usuario" density="compact" variant="outlined"
+          clearable hide-details prepend-inner-icon="mdi-account-circle" @update:model-value="aplicarFiltros" />
+      </v-col>
+      <v-col cols="12" sm="6" md="2">
         <v-text-field v-model="filtros.codVendedor" label="Código Vendedor" density="compact" variant="outlined"
           clearable hide-details prepend-inner-icon="mdi-account-tie" type="number" @update:model-value="aplicarFiltros" />
       </v-col>
@@ -694,7 +698,7 @@ const estatusOpciones = [
 ];
 
 const zonas  = ref<{ zona: string; display: string }[]>([]);
-const filtros = ref({ buscarId: '', clienteId: '', codVendedor: '', estatus: null as string | null, riesgo: null as string | null, codruta: null as string | null, fechaDesde: null as string | null, fechaHasta: null as string | null, esPsicotropico: false, soloIcompras: false, soloFacturado: false, nombreCliente: '' });
+const filtros = ref({ buscarId: '', clienteId: '', codVendedor: '', estatus: null as string | null, riesgo: null as string | null, codruta: null as string | null, fechaDesde: null as string | null, fechaHasta: null as string | null, esPsicotropico: false, soloIcompras: false, soloFacturado: false, nombreCliente: '', usuario: '' });
 
 let filtroTimer: ReturnType<typeof setTimeout> | null = null;
 const aplicarFiltros = () => {
@@ -718,6 +722,7 @@ const obtenerPedidos = async (page = 1, limit = 10) => {
     if (filtros.value.esPsicotropico) params.esPsicotropico = '1';
     if (filtros.value.soloFacturado)  params.soloFacturado  = '1';
     if (filtros.value.nombreCliente)  params.nombreCliente  = filtros.value.nombreCliente;
+    if (filtros.value.usuario)        params.usuario        = filtros.value.usuario;
     const response = await axios.get(`${import.meta.env.VITE_API_URL}/pedidos`, { params });
     if (response.data.success) {
       pedidos.value = response.data.data;

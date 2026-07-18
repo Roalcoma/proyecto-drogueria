@@ -58,7 +58,7 @@ export class PedidosControllers {
             }
 
             // Lista paginada con filtros opcionales
-            const { clienteId, codVendedor, riesgo, codruta, fechaDesde, fechaHasta, esPsicotropico, nombreCliente, soloFacturado } = req.query;
+            const { clienteId, codVendedor, riesgo, codruta, fechaDesde, fechaHasta, esPsicotropico, nombreCliente, soloFacturado, usuario } = req.query;
             const result = await PedidosServices.getPedidos(
                 page, limit,
                 estatus         as string | undefined,
@@ -72,6 +72,7 @@ export class PedidosControllers {
                 esPsicotropico === '1' || esPsicotropico === 'true',
                 nombreCliente   as string | undefined,
                 soloFacturado  === '1' || soloFacturado  === 'true',
+                usuario         as string | undefined,
             );
             if (!result.success) return res.status(500).json(result);
             return res.status(200).json(result);

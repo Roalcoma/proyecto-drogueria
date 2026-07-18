@@ -248,7 +248,7 @@ export class PedidosServices {
     static async getPedidos(page: any = 1, limit: any = 10, estatus?: string, buscarId?: string,
                              clienteId?: string, codVendedor?: string, riesgo?: string, codruta?: string,
                              fechaDesde?: string, fechaHasta?: string, esPsicotropico?: boolean,
-                             nombreCliente?: string, soloFacturado?: boolean) {
+                             nombreCliente?: string, soloFacturado?: boolean, usuario?: string) {
         try {
             const isAll = Number(limit) === -1;
             let validPage = isAll ? 1 : Math.max(1, Number(page) || 1);
@@ -273,12 +273,13 @@ export class PedidosServices {
                 .input('NOMBRE_CLIENTE', mssql.NVarChar(200), nombreCliente ? `%${nombreCliente}%` : null)
                 .input('SOLO_FACTURADO', mssql.Bit,         soloFacturado  ? 1 : null)
                 .input('USD_CODE',       mssql.Int,         usdCode)
-                .input('VED_CODE',       mssql.Int,         vedCode);
+                .input('VED_CODE',       mssql.Int,         vedCode)
+                .input('USUARIO',        mssql.VarChar(100), usuario ? `%${usuario}%` : null);
 
             const result = await req.query(`
                 SELECT
                     CP.ORDERID, CP.CLIENTEID, CP.FECHA, CP.ESTATUS, CP.CODVENDEDOR, CP.TOTALPRECIO,
-                    CP.OBSERVACIONES, CP.PROMO_NOMBRE,
+                    CP.OBSERVACIONES, CP.PROMO_NOMBRE, LG.USUARIO AS CREADO_POR,
                     (SELECT TOP 1 AVC.FACTURADO FROM PEDVENTACAB PVC WITH(NOLOCK)
                      LEFT JOIN ALBVENTACAB AVC WITH(NOLOCK) ON AVC.NUMSERIE = PVC.SERIEALBARAN AND AVC.NUMALBARAN = PVC.NUMEROALBARAN AND AVC.N = PVC.NALBARAN
                      WHERE PVC.SUPEDIDO COLLATE DATABASE_DEFAULT = CP.ORDERID COLLATE DATABASE_DEFAULT) AS FACTURADO,
@@ -294,6 +295,7 @@ export class PedidosServices {
                     LEFT JOIN VENDEDORES V WITH (NOLOCK) ON V.CODVENDEDOR = CP.CODVENDEDOR
                     LEFT JOIN CLIENTESCAMPOSLIBRES CLC WITH (NOLOCK) ON CLC.CODCLIENTE = CP.CLIENTEID
                     LEFT JOIN RUTAS RUT WITH (NOLOCK) ON RUT.CODRUTA = TRY_CAST(CLC.ZONA AS INT)
+                    LEFT JOIN ${esquema}.APP_PEDIDO_LOG LG WITH (NOLOCK) ON LG.ORDERID = CP.ORDERID AND LG.EST_ANTERIOR IS NULL
                     LEFT JOIN (
                         SELECT CL.CODCLIENTE,
                             CASE
@@ -317,8 +319,9 @@ export class PedidosServices {
                     AND (@CODRUTA      IS NULL OR TRY_CAST(CLC.ZONA AS INT) = @CODRUTA)
                     AND (@FECHA_DESDE  IS NULL OR CAST(CP.FECHA AS DATE) >= @FECHA_DESDE)
                     AND (@FECHA_HASTA  IS NULL OR CAST(CP.FECHA AS DATE) <= @FECHA_HASTA)
-                    AND (@PSICO        IS NULL OR (@PSICO = 1 AND CP.OBSERVACIONES IS NOT NULL AND CP.OBSERVACIONES <> ''))
+                    AND (@PSICO        IS NULL OR (@PSICO = 1 AND CP.ORDERID LIKE '%P'))
                     AND (@NOMBRE_CLIENTE IS NULL OR CL.NOMBRECLIENTE LIKE @NOMBRE_CLIENTE)
+                    AND (@USUARIO       IS NULL OR ISNULL(LG.USUARIO, '') LIKE @USUARIO)
                     AND (@SOLO_FACTURADO IS NULL OR EXISTS (
                         SELECT 1 FROM PEDVENTACAB PVC2 WITH(NOLOCK)
                         INNER JOIN ALBVENTACAB AVC2 WITH(NOLOCK) ON AVC2.NUMSERIE = PVC2.SERIEALBARAN AND AVC2.NUMALBARAN = PVC2.NUMEROALBARAN AND AVC2.N = PVC2.NALBARAN
@@ -341,13 +344,15 @@ export class PedidosServices {
                 .input('FECHA_HASTA2',     mssql.Date,          fechaHasta || null)
                 .input('PSICO2',           mssql.Bit,           esPsicotropico ? 1 : null)
                 .input('NOMBRE_CLIENTE2',  mssql.NVarChar(200), nombreCliente ? `%${nombreCliente}%` : null)
-                .input('SOLO_FACTURADO2',  mssql.Bit,           soloFacturado  ? 1 : null);
+                .input('SOLO_FACTURADO2',  mssql.Bit,           soloFacturado  ? 1 : null)
+                .input('USUARIO2',         mssql.VarChar(100),  usuario ? `%${usuario}%` : null);
 
             const countResult = await countReq.query(`
                 SELECT COUNT(*) AS TOTAL, ISNULL(SUM(CP.TOTALPRECIO), 0) AS TOTAL_USD
                 FROM ${esquema}.CABECERA_PED CP WITH (NOLOCK)
                 LEFT JOIN CLIENTES CL2 WITH (NOLOCK) ON CL2.CODCLIENTE = CP.CLIENTEID
                 LEFT JOIN CLIENTESCAMPOSLIBRES CLC WITH (NOLOCK) ON CLC.CODCLIENTE = CP.CLIENTEID
+                LEFT JOIN ${esquema}.APP_PEDIDO_LOG LG2 WITH (NOLOCK) ON LG2.ORDERID = CP.ORDERID AND LG2.EST_ANTERIOR IS NULL
                 LEFT JOIN (
                     SELECT CL.CODCLIENTE,
                         CASE
@@ -370,8 +375,9 @@ export class PedidosServices {
                     AND (@CODRUTA2      IS NULL OR TRY_CAST(CLC.ZONA AS INT) = @CODRUTA2)
                     AND (@FECHA_DESDE2  IS NULL OR CAST(CP.FECHA AS DATE) >= @FECHA_DESDE2)
                     AND (@FECHA_HASTA2  IS NULL OR CAST(CP.FECHA AS DATE) <= @FECHA_HASTA2)
-                    AND (@PSICO2        IS NULL OR (@PSICO2 = 1 AND CP.OBSERVACIONES IS NOT NULL AND CP.OBSERVACIONES <> ''))
+                    AND (@PSICO2        IS NULL OR (@PSICO2 = 1 AND CP.ORDERID LIKE '%P'))
                     AND (@NOMBRE_CLIENTE2 IS NULL OR CL2.NOMBRECLIENTE LIKE @NOMBRE_CLIENTE2)
+                    AND (@USUARIO2       IS NULL OR ISNULL(LG2.USUARIO, '') LIKE @USUARIO2)
                     AND (@SOLO_FACTURADO2 IS NULL OR EXISTS (
                         SELECT 1 FROM PEDVENTACAB PVC2 WITH(NOLOCK)
                         INNER JOIN ALBVENTACAB AVC2 WITH(NOLOCK) ON AVC2.NUMSERIE = PVC2.SERIEALBARAN AND AVC2.NUMALBARAN = PVC2.NUMEROALBARAN AND AVC2.N = PVC2.NALBARAN
