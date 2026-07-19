@@ -129,51 +129,64 @@ export class PedidosServices {
 
             const requierePsicotropicos = await this.tieneArticulosPsicotropicos(lineas.map((l: any) => l.codarticulo));
             const estatusInicial = requierePsicotropicos ? ESTATUS_APROBACION_PSICOTROPICOS : 'PENDIENTE';
-
             const promoNombre = (promocionesAplicadas || []).map((p: any) => p.nombre).filter(Boolean).join(', ');
 
-            const pool = await connectDb()
-            const result = await pool.request()
-                .input('ORDERID', mssql.NVarChar, orderId)
-                .input('CLIENTEID', mssql.Int, clienteId)
-                .input('CODVENDEDOR', mssql.Int, codVendedor)
-                .input('TOTALPRECIO', mssql.Float, totalPed)
-                .input('ESTATUS', mssql.VarChar, estatusInicial)
-                .input('PROMO_NOMBRE', mssql.NVarChar(500), promoNombre || null)
-                .query(`INSERT INTO ${esquema}.CABECERA_PED (
-                            ORDERID, CLIENTEID, FECHA, ESTATUS, CODVENDEDOR, TOTALPRECIO, PROMO_NOMBRE
-                        ) VALUES (
-                            @ORDERID, @CLIENTEID, GETDATE(), @ESTATUS,
-                            ISNULL(NULLIF((SELECT TOP 1 CAST(CCL.CODVENDEDOR AS INT) FROM CLIENTESCAMPOSLIBRES CCL WHERE CCL.CODCLIENTE = @CLIENTEID AND CCL.CODVENDEDOR IS NOT NULL AND LTRIM(RTRIM(CAST(CCL.CODVENDEDOR AS NVARCHAR)))!=''), 0), @CODVENDEDOR),
-                            @TOTALPRECIO, @PROMO_NOMBRE
-                        );`)
+            const maxLineas = getDbConfig().maxLineasPorPedido ?? 0;
+            const insertarCabecera = async (chunkId: string, chunkTotal: number) => {
+                const pool = await connectDb();
+                return pool.request()
+                    .input('ORDERID', mssql.NVarChar, chunkId)
+                    .input('CLIENTEID', mssql.Int, clienteId)
+                    .input('CODVENDEDOR', mssql.Int, codVendedor)
+                    .input('TOTALPRECIO', mssql.Float, chunkTotal)
+                    .input('ESTATUS', mssql.VarChar, estatusInicial)
+                    .input('PROMO_NOMBRE', mssql.NVarChar(500), promoNombre || null)
+                    .query(`INSERT INTO ${esquema}.CABECERA_PED (
+                                ORDERID, CLIENTEID, FECHA, ESTATUS, CODVENDEDOR, TOTALPRECIO, PROMO_NOMBRE
+                            ) VALUES (
+                                @ORDERID, @CLIENTEID, GETDATE(), @ESTATUS,
+                                ISNULL(NULLIF((SELECT TOP 1 CAST(CCL.CODVENDEDOR AS INT) FROM CLIENTESCAMPOSLIBRES CCL WHERE CCL.CODCLIENTE = @CLIENTEID AND CCL.CODVENDEDOR IS NOT NULL AND LTRIM(RTRIM(CAST(CCL.CODVENDEDOR AS NVARCHAR)))!=''), 0), @CODVENDEDOR),
+                                @TOTALPRECIO, @PROMO_NOMBRE
+                            );`);
+            };
 
+            if (maxLineas > 0 && lineas.length > maxLineas) {
+                const totalChunks = Math.ceil(lineas.length / maxLineas);
+                const orderIds: string[] = [];
+                for (let i = 0; i < lineas.length; i += maxLineas) {
+                    const chunk = lineas.slice(i, i + maxLineas);
+                    const idx = Math.floor(i / maxLineas);
+                    const chunkId = idx === 0 ? orderId : `${orderId}-${idx + 1}`;
+                    const chunkTotal = chunk.reduce((s: number, l: any) => s + ((l.precio || 0) * (l.cantidad || 0)), 0);
 
-            const insertLineas = await this.postPedidosLinea(lineas, orderId)
+                    const result = await insertarCabecera(chunkId, chunkTotal || totalPed);
+                    const insertLineas = await this.postPedidosLinea(chunk, chunkId);
+                    if (Number(result.rowsAffected) === 0 || insertLineas.success === false) {
+                        return { success: false, message: 'No se pudo insertar el pedido' };
+                    }
+                    await PedidosServices.registrarLog(chunkId, null, estatusInicial, codusuario, usuario,
+                        `Pedido creado (parte ${idx + 1}/${totalChunks}). Cliente: ${clienteId}.`);
+                    orderIds.push(chunkId);
+                }
+                await PromocionesService.registrarAplicadas(orderId, promocionesAplicadas);
+                return { success: true, message: 'El pedido fue insertado de forma satisfactoria', orderId, orderIds };
+            }
+
+            const result = await insertarCabecera(orderId, totalPed);
+            const insertLineas = await this.postPedidosLinea(lineas, orderId);
 
             if (Number(result.rowsAffected) === 0 || insertLineas.success === false) {
-                return {
-                    success: false,
-                    message: 'No se pudo insertar el pedido'
-                }
+                return { success: false, message: 'No se pudo insertar el pedido' };
             }
 
             await PromocionesService.registrarAplicadas(orderId, promocionesAplicadas);
             await PedidosServices.registrarLog(orderId, null, estatusInicial, codusuario, usuario, `Pedido creado. Cliente: ${clienteId}. Total: ${totalPed}`);
 
-            return {
-                success: true,
-                message: 'El pedido fue insertado de forma satisfactoria',
-                orderId
-            }
+            return { success: true, message: 'El pedido fue insertado de forma satisfactoria', orderId };
 
         } catch (error) {
             console.error('Error al subir el pedido: ', error)
-            return {
-                success: false,
-                message: 'Hubo un fallo con la base de datos',
-                error: error
-            }
+            return { success: false, message: 'Hubo un fallo con la base de datos', error: error }
         }
     }
 
