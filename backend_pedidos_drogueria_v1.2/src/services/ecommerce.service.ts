@@ -491,25 +491,12 @@ export class EcommerceService {
         if (!gruposConLineas.length)
             return { success: false, message: 'Ningún artículo del pedido fue encontrado en el sistema' };
 
-        // 8. Helper: armar tabla e insertar un grupo (dentro de una transacción)
-        const insertarGrupo = async (sufijo: string, items: GrupoLinea[], tx: mssql.Transaction) => {
-            const orderIdGrupo = sufijo === 'normal' ? orderId : orderId + sufijo;
-            const estatus = sufijo === 'P' ? 'APROBACION PSICOTROPICOS' : 'PENDIENTE';
-
-            const tabla = new mssql.Table(`${esquema}.LINEA_PED`);
-            tabla.create = false;
-            tabla.columns.add('ORDERID',        mssql.VarChar(50), { nullable: false });
-            tabla.columns.add('CODARTICULO',    mssql.Int,         { nullable: false });
-            tabla.columns.add('REFERENCIA',     mssql.VarChar(50), { nullable: true  });
-            tabla.columns.add('CODALMACEN',     mssql.VarChar(10), { nullable: false });
-            tabla.columns.add('IDTARIFAV',      mssql.Int,         { nullable: false });
-            tabla.columns.add('PRODUCTCOUNT',   mssql.Int,         { nullable: false });
-            tabla.columns.add('PRECIOUNITARIO', mssql.Float,       { nullable: false });
-            tabla.columns.add('DESCUENTO1',     mssql.Float,       { nullable: true  });
-            tabla.columns.add('DESCUENTO2',     mssql.Float,       { nullable: true  });
-            tabla.columns.add('DESCUENTO3',     mssql.Float,       { nullable: true  });
-            tabla.columns.add('DESCUENTO4',     mssql.Float,       { nullable: true  });
-            tabla.columns.add('PRECIOBRUTO',    mssql.Float,       { nullable: true  });
+        // 8. Helper: armar tabla e insertar un grupo (dentro de una transacción).
+        //    Si el grupo supera maxLineasPorPedido, se parte en pedidos consecutivos.
+        const insertarGrupo = async (sufijo: string, items: GrupoLinea[], tx: mssql.Transaction): Promise<string[]> => {
+            const orderIdBase = sufijo === 'normal' ? orderId : orderId + sufijo;
+            const estatus     = sufijo === 'P' ? 'APROBACION PSICOTROPICOS' : 'PENDIENTE';
+            const maxLineas   = getDbConfig().maxLineasPorPedido;
 
             const consolidated = new Map<number, { linea: any; art: (typeof items)[0]['art'] }>();
             for (const { linea: l, art } of items) {
@@ -533,52 +520,85 @@ export class EcommerceService {
                 for (const r of stockRes.recordset) stockMap.set(r.CODARTICULO, Number(r.STOCK));
             }
 
-            let total = 0;
+            // Recolectar filas válidas (con stock) antes de dividir
+            type Fila = { codart: number; ref: string; cantidad: number; precioFinal: number; desc1: number; desc2: number; bruto: number };
+            const filasValidas: Fila[] = [];
             for (const { linea: l, art } of consolidated.values()) {
                 const stockDisponible = stockMap.get(art.codarticulo) ?? 0;
                 if (stockDisponible <= 0) {
-                    console.log(`[Ecommerce] ${orderIdGrupo}: artículo ${art.codarticulo} sin stock — descartado`);
+                    console.log(`[Ecommerce] ${orderIdBase}: artículo ${art.codarticulo} sin stock — descartado`);
                     continue;
                 }
-                const precioUsdBruto = art.precioUnitario;
-                const cantidad       = Math.min(Number(l.CANTIDAD), stockDisponible);
-                const desc1 = art.nodto ? 0 : descuentoGlobal;
-                const desc2 = art.nodto ? 0 : (promoDescMap.get(art.codarticulo) ?? 0);
-                const precioFinal = precioUsdBruto * (1 - desc1 / 100) * (1 - desc2 / 100);
-                total += precioFinal * cantidad;
-                tabla.rows.add(orderIdGrupo, art.codarticulo, art.ref, 'ZAV', VED,
-                    cantidad, precioFinal, desc1, desc2, 0, 0, precioUsdBruto);
+                const cantidad    = Math.min(Number(l.CANTIDAD), stockDisponible);
+                const desc1       = art.nodto ? 0 : descuentoGlobal;
+                const desc2       = art.nodto ? 0 : (promoDescMap.get(art.codarticulo) ?? 0);
+                const precioFinal = art.precioUnitario * (1 - desc1 / 100) * (1 - desc2 / 100);
+                filasValidas.push({ codart: art.codarticulo, ref: art.ref, cantidad, precioFinal, desc1, desc2, bruto: art.precioUnitario });
             }
 
-            if (tabla.rows.length === 0) {
-                console.log(`[Ecommerce] ${orderIdGrupo}: todas las líneas sin stock — grupo omitido`);
-                return null;
+            if (filasValidas.length === 0) {
+                console.log(`[Ecommerce] ${orderIdBase}: todas las líneas sin stock — grupo omitido`);
+                return [];
             }
 
-            await new mssql.Request(tx)
-                .input('ORDERID',     mssql.NVarChar(50), orderIdGrupo)
-                .input('CLIENTEID',   mssql.Int,          clienteId)
-                .input('CODVENDEDOR', mssql.Int,          codVendedor)
-                .input('TOTAL',       mssql.Float,        total)
-                .input('ESTATUS',     mssql.VarChar(50),  estatus)
-                .query(`
-                    INSERT INTO ${esquema}.CABECERA_PED (ORDERID, CLIENTEID, FECHA, ESTATUS, CODVENDEDOR, TOTALPRECIO)
-                    VALUES (@ORDERID, @CLIENTEID, GETDATE(), @ESTATUS,
-                        ISNULL(NULLIF((SELECT TOP 1 CAST(CCL.CODVENDEDOR AS INT) FROM CLIENTESCAMPOSLIBRES CCL WHERE CCL.CODCLIENTE = @CLIENTEID AND CCL.CODVENDEDOR IS NOT NULL AND LTRIM(RTRIM(CAST(CCL.CODVENDEDOR AS NVARCHAR)))!=''), 0), @CODVENDEDOR),
-                        @TOTAL)
-                `);
+            // Dividir en chunks según maxLineasPorPedido
+            const chunks: Fila[][] = [];
+            for (let i = 0; i < filasValidas.length; i += maxLineas) chunks.push(filasValidas.slice(i, i + maxLineas));
 
-            await new mssql.Request(tx).bulk(tabla);
+            const idsInsertados: string[] = [];
+            for (let ci = 0; ci < chunks.length; ci++) {
+                const chunk = chunks[ci];
+                // El primer chunk mantiene el orderId base; los siguientes llevan sufijo -2, -3, ...
+                const orderIdGrupo = ci === 0 ? orderIdBase : `${orderIdBase}-${ci + 1}`;
 
-            await new mssql.Request(tx)
-                .input('OID',     mssql.VarChar(50), orderIdGrupo)
-                .input('ESTATUS', mssql.VarChar(50), estatus)
-                .query(`
-                    INSERT INTO ${esquema}.APP_PEDIDO_LOG (ORDERID, EST_ANTERIOR, EST_NUEVO, USUARIO, DETALLES)
-                    VALUES (@OID, NULL, @ESTATUS, 'Ecommerce', 'Pedido importado desde integración Icompras')
-                `);
+                const tabla = new mssql.Table(`${esquema}.LINEA_PED`);
+                tabla.create = false;
+                tabla.columns.add('ORDERID',        mssql.VarChar(50), { nullable: false });
+                tabla.columns.add('CODARTICULO',    mssql.Int,         { nullable: false });
+                tabla.columns.add('REFERENCIA',     mssql.VarChar(50), { nullable: true  });
+                tabla.columns.add('CODALMACEN',     mssql.VarChar(10), { nullable: false });
+                tabla.columns.add('IDTARIFAV',      mssql.Int,         { nullable: false });
+                tabla.columns.add('PRODUCTCOUNT',   mssql.Int,         { nullable: false });
+                tabla.columns.add('PRECIOUNITARIO', mssql.Float,       { nullable: false });
+                tabla.columns.add('DESCUENTO1',     mssql.Float,       { nullable: true  });
+                tabla.columns.add('DESCUENTO2',     mssql.Float,       { nullable: true  });
+                tabla.columns.add('DESCUENTO3',     mssql.Float,       { nullable: true  });
+                tabla.columns.add('DESCUENTO4',     mssql.Float,       { nullable: true  });
+                tabla.columns.add('PRECIOBRUTO',    mssql.Float,       { nullable: true  });
 
-            return orderIdGrupo;
+                let total = 0;
+                for (const f of chunk) {
+                    total += f.precioFinal * f.cantidad;
+                    tabla.rows.add(orderIdGrupo, f.codart, f.ref, 'ZAV', VED, f.cantidad, f.precioFinal, f.desc1, f.desc2, 0, 0, f.bruto);
+                }
+
+                await new mssql.Request(tx)
+                    .input('ORDERID',     mssql.NVarChar(50), orderIdGrupo)
+                    .input('CLIENTEID',   mssql.Int,          clienteId)
+                    .input('CODVENDEDOR', mssql.Int,          codVendedor)
+                    .input('TOTAL',       mssql.Float,        total)
+                    .input('ESTATUS',     mssql.VarChar(50),  estatus)
+                    .query(`
+                        INSERT INTO ${esquema}.CABECERA_PED (ORDERID, CLIENTEID, FECHA, ESTATUS, CODVENDEDOR, TOTALPRECIO)
+                        VALUES (@ORDERID, @CLIENTEID, GETDATE(), @ESTATUS,
+                            ISNULL(NULLIF((SELECT TOP 1 CAST(CCL.CODVENDEDOR AS INT) FROM CLIENTESCAMPOSLIBRES CCL WHERE CCL.CODCLIENTE = @CLIENTEID AND CCL.CODVENDEDOR IS NOT NULL AND LTRIM(RTRIM(CAST(CCL.CODVENDEDOR AS NVARCHAR)))!=''), 0), @CODVENDEDOR),
+                            @TOTAL)
+                    `);
+
+                await new mssql.Request(tx).bulk(tabla);
+
+                await new mssql.Request(tx)
+                    .input('OID',     mssql.VarChar(50), orderIdGrupo)
+                    .input('ESTATUS', mssql.VarChar(50), estatus)
+                    .query(`
+                        INSERT INTO ${esquema}.APP_PEDIDO_LOG (ORDERID, EST_ANTERIOR, EST_NUEVO, USUARIO, DETALLES)
+                        VALUES (@OID, NULL, @ESTATUS, 'Ecommerce', 'Pedido importado desde integración Icompras')
+                    `);
+
+                console.log(`[Ecommerce] ${orderIdGrupo}: ${chunk.length} líneas insertadas (chunk ${ci + 1}/${chunks.length})`);
+                idsInsertados.push(orderIdGrupo);
+            }
+            return idsInsertados;
         };
 
         // 9. Insertar cada grupo dentro de una transacción — si falla alguno, todos se revierten
@@ -587,8 +607,8 @@ export class EcommerceService {
         await tx.begin();
         try {
             for (const [sufijo, items] of gruposConLineas) {
-                const id = await insertarGrupo(sufijo, items, tx);
-                if (id !== null) idsCreados.push(id);
+                const ids = await insertarGrupo(sufijo, items, tx);
+                idsCreados.push(...ids);
             }
             await tx.commit();
         } catch (err) {
