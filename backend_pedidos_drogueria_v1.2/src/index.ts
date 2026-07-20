@@ -90,6 +90,9 @@ app.listen(port, async () => {
     await EcommerceService.initTablas();
     await RuteroService.initTablas();
     await FtpService.initTablas();
+    if (getDbConfig().ftpHabilitado) {
+        FtpService.iniciarServidor().catch(console.error);
+    }
     // Cron: escanear carpeta ecommerce cada 30s, FTP cada 10 min
     setInterval(() => EcommerceService.escanearCarpeta().catch(console.error), 30_000);
     setInterval(() => FtpService.escanearCarpeta().catch(console.error), 600_000);

@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import mssql from 'mssql';
+import bcrypt from 'bcryptjs';
+import { FtpServer } from 'ftp-srv';
 import { connectDb } from '../db/db.conection';
 import { getDbConfig } from './dbconfig.service';
 
@@ -8,6 +10,8 @@ const esquema = process.env.DB_ESQUEMA || 'dbo';
 
 export class FtpService {
     private static escaneando = false;
+    private static ftpServer: FtpServer | null = null;
+    private static ftpWatcher: fs.FSWatcher | null = null;
 
     static async initTablas(): Promise<void> {
         try {
@@ -34,12 +38,25 @@ export class FtpService {
                     );
                 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_FTPAUD_ARCH' AND object_id=OBJECT_ID('APP_FTP_AUDITORIA'))
                     CREATE INDEX IX_FTPAUD_ARCH ON APP_FTP_AUDITORIA (ARCHIVO, FECHA);
+
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'APP_FTP_USUARIOS')
+                    CREATE TABLE APP_FTP_USUARIOS (
+                        ID             INT IDENTITY(1,1) PRIMARY KEY,
+                        USUARIO        NVARCHAR(100) NOT NULL,
+                        PASSWORD_HASH  NVARCHAR(255) NOT NULL,
+                        COD_CLIENTE    NVARCHAR(50)  NULL,
+                        ACTIVO         CHAR(1) NOT NULL DEFAULT 'T',
+                        FECHA_CREACION DATETIME NOT NULL DEFAULT GETDATE(),
+                        CONSTRAINT UQ_FTP_USUARIO UNIQUE (USUARIO)
+                    );
             `);
             console.log('[FTP] Tablas verificadas/creadas');
         } catch (err) {
             console.error('[FTP] Error en initTablas:', err);
         }
     }
+
+    // ── Configuración de ruta de escaneo ──────────────────────────────────────
 
     static async getConfig(): Promise<string> {
         const pool = await connectDb();
@@ -53,6 +70,8 @@ export class FtpService {
             .input('RUTA', mssql.NVarChar(500), ruta)
             .query(`UPDATE APP_FTP_CONFIG SET RUTA = @RUTA WHERE ID = 1`);
     }
+
+    // ── Auditoría ─────────────────────────────────────────────────────────────
 
     private static async registrarAuditoria(
         archivo: string, evento: string, codCli?: string, orderId?: string, mensaje?: string
@@ -95,6 +114,8 @@ export class FtpService {
 
         return { data: dataRes.recordset, total: totalRes.recordset[0].T };
     }
+
+    // ── Escaneo de archivos ───────────────────────────────────────────────────
 
     static async escanearCarpeta(): Promise<void> {
         if (FtpService.escaneando) return;
@@ -149,19 +170,17 @@ export class FtpService {
     }
 
     private static async _procesarArchivo(rutaCompleta: string, archivo: string): Promise<void> {
-        // Formato nombre: {codCliente}P{numPedido}.txt
         const match = archivo.match(/^(.+)P(\d+)\.txt$/i);
         if (!match) {
             await FtpService.registrarAuditoria(archivo, 'PARSE_ERROR', undefined, undefined, 'Nombre de archivo no reconocido (esperado: {cliente}P{numero}.txt)');
             return;
         }
-        const codCli   = match[1];
+        const codCli    = match[1];
         const numPedido = match[2];
-        const orderId  = `FP-${codCli}-${numPedido}`;
+        const orderId   = `FP-${codCli}-${numPedido}`;
 
         const pool = await connectDb();
 
-        // Verificar duplicado
         const dup = await pool.request()
             .input('OID', mssql.VarChar(50), orderId)
             .query(`SELECT 1 FROM ${esquema}.CABECERA_PED WHERE ORDERID = @OID`);
@@ -171,7 +190,6 @@ export class FtpService {
             return;
         }
 
-        // Buscar cliente en la BD (co_cli puede ser numérico)
         const clienteRes = await pool.request()
             .input('COD', mssql.NVarChar(50), codCli.replace(/^c/i, ''))
             .query(`SELECT TOP 1 CODCLIENTE,
@@ -188,7 +206,6 @@ export class FtpService {
         }
         const { CODCLIENTE, CODVENDEDOR } = clienteRes.recordset[0];
 
-        // Leer y parsear contenido
         let contenido: string;
         try {
             contenido = fs.readFileSync(rutaCompleta, 'latin1');
@@ -220,11 +237,10 @@ export class FtpService {
             return;
         }
 
-        // Dividir en chunks
-        const maxLineas  = getDbConfig().maxLineasPorPedido ?? 0;
-        const cfg        = getDbConfig();
-        const tarifa     = cfg.tarifaBaseCatalogo;
-        const almacen    = cfg.codAlmacen;
+        const maxLineas   = getDbConfig().maxLineasPorPedido ?? 0;
+        const cfg         = getDbConfig();
+        const tarifa      = cfg.tarifaBaseCatalogo;
+        const almacen     = cfg.codAlmacen;
         const totalChunks = maxLineas > 0 && lineas.length > maxLineas
             ? Math.ceil(lineas.length / maxLineas) : 1;
         const chunks: typeof lineas[] = [];
@@ -235,11 +251,10 @@ export class FtpService {
         const orderIds: string[] = [];
         try {
             for (let ci = 0; ci < chunks.length; ci++) {
-                const chunk   = chunks[ci];
-                const chunkId = ci === 0 ? orderId : `${orderId}-${ci + 1}`;
+                const chunk      = chunks[ci];
+                const chunkId    = ci === 0 ? orderId : `${orderId}-${ci + 1}`;
                 const totalChunk = chunk.reduce((s, l) => s + l.precioTotal, 0);
 
-                // CABECERA_PED
                 await pool.request()
                     .input('OID', mssql.NVarChar(50), chunkId)
                     .input('CLI', mssql.Int, CODCLIENTE)
@@ -248,7 +263,6 @@ export class FtpService {
                     .query(`INSERT INTO ${esquema}.CABECERA_PED (ORDERID, CLIENTEID, FECHA, ESTATUS, CODVENDEDOR, TOTALPRECIO)
                             VALUES (@OID, @CLI, GETDATE(), 'PENDIENTE', @VND, @TOT)`);
 
-                // LINEA_PED (bulk)
                 const tabla = new mssql.Table(`${esquema}.LINEA_PED`);
                 tabla.create = false;
                 tabla.columns.add('ORDERID',        mssql.VarChar(50),  { nullable: false });
@@ -272,7 +286,6 @@ export class FtpService {
                 }
                 await pool.request().bulk(tabla);
 
-                // Log de estado
                 await pool.request()
                     .input('OID', mssql.NVarChar(50), chunkId)
                     .input('EST', mssql.NVarChar(50), 'PENDIENTE')
@@ -285,7 +298,6 @@ export class FtpService {
                 console.log(`[FTP] ${archivo} → ${chunkId} (${chunk.length} líneas, parte ${ci + 1}/${totalChunks})`);
             }
 
-            // Renombrar a .bak
             fs.renameSync(rutaCompleta, rutaCompleta.replace(/\.txt$/i, '.bak'));
             await FtpService.registrarAuditoria(archivo, 'PROCESADO', codCli, orderIds.join(', '),
                 `${lineas.length} línea(s) → ${orderIds.join(', ')}`);
@@ -301,5 +313,137 @@ export class FtpService {
         if (FtpService.escaneando) return { message: 'Escaneo ya en progreso' };
         FtpService.escanearCarpeta().catch(console.error);
         return { message: 'Escaneo iniciado' };
+    }
+
+    // ── Gestión de usuarios FTP ───────────────────────────────────────────────
+
+    static async getUsuarios(): Promise<any[]> {
+        const pool = await connectDb();
+        const res = await pool.request().query(
+            `SELECT ID, USUARIO, COD_CLIENTE, ACTIVO, FECHA_CREACION FROM APP_FTP_USUARIOS ORDER BY ID`
+        );
+        return res.recordset;
+    }
+
+    static async crearUsuario(usuario: string, password: string, codCliente: string): Promise<void> {
+        const hash = await bcrypt.hash(password, 10);
+        const pool = await connectDb();
+        await pool.request()
+            .input('USR',  mssql.NVarChar(100), usuario.trim())
+            .input('HASH', mssql.NVarChar(255), hash)
+            .input('COD',  mssql.NVarChar(50),  codCliente.trim() || null)
+            .query(`INSERT INTO APP_FTP_USUARIOS (USUARIO, PASSWORD_HASH, COD_CLIENTE) VALUES (@USR, @HASH, @COD)`);
+    }
+
+    static async eliminarUsuario(id: number): Promise<void> {
+        const pool = await connectDb();
+        await pool.request()
+            .input('ID', mssql.Int, id)
+            .query(`DELETE FROM APP_FTP_USUARIOS WHERE ID = @ID`);
+    }
+
+    static async toggleUsuario(id: number): Promise<void> {
+        const pool = await connectDb();
+        await pool.request()
+            .input('ID', mssql.Int, id)
+            .query(`UPDATE APP_FTP_USUARIOS SET ACTIVO = CASE WHEN ACTIVO = 'T' THEN 'F' ELSE 'T' END WHERE ID = @ID`);
+    }
+
+    static async cambiarPassword(id: number, password: string): Promise<void> {
+        const hash = await bcrypt.hash(password, 10);
+        const pool = await connectDb();
+        await pool.request()
+            .input('ID',   mssql.Int,           id)
+            .input('HASH', mssql.NVarChar(255), hash)
+            .query(`UPDATE APP_FTP_USUARIOS SET PASSWORD_HASH = @HASH WHERE ID = @ID`);
+    }
+
+    private static async _getUsuarioPorNombre(usuario: string): Promise<any | null> {
+        const pool = await connectDb();
+        const res = await pool.request()
+            .input('USR', mssql.NVarChar(100), usuario)
+            .query(`SELECT * FROM APP_FTP_USUARIOS WHERE USUARIO = @USR`);
+        return res.recordset[0] ?? null;
+    }
+
+    // ── Servidor FTP embebido ─────────────────────────────────────────────────
+
+    static getEstadoServidor(): { activo: boolean; puerto: number } {
+        const cfg = getDbConfig();
+        return { activo: FtpService.ftpServer !== null, puerto: cfg.ftpPuerto };
+    }
+
+    static async iniciarServidor(): Promise<{ ok: boolean; message: string }> {
+        if (FtpService.ftpServer) return { ok: false, message: 'El servidor FTP ya está en ejecución' };
+
+        const cfg       = getDbConfig();
+        const puerto    = cfg.ftpPuerto;
+        const pasivoMin = cfg.ftpPasivoMin;
+        const pasivoMax = cfg.ftpPasivoMax;
+        const ipExterna = cfg.ftpIpExterna || '0.0.0.0';
+
+        const server = new FtpServer({
+            url:       `ftp://0.0.0.0:${puerto}`,
+            anonymous: false,
+            pasv_url:  ipExterna,
+            pasv_min:  pasivoMin,
+            pasv_max:  pasivoMax,
+            greeting:  ['Bienvenido - Pedidos Drogueria FTP'],
+        });
+
+        server.on('login', async ({ username, password }, resolve, reject) => {
+            try {
+                const user = await FtpService._getUsuarioPorNombre(username);
+                if (!user || user.ACTIVO !== 'T') {
+                    return reject(new Error('Usuario inactivo o no encontrado'));
+                }
+                const valid = await bcrypt.compare(password, user.PASSWORD_HASH);
+                if (!valid) return reject(new Error('Credenciales incorrectas'));
+
+                const ftpPath  = await FtpService.getConfig();
+                const userRoot = path.join(ftpPath, `c${user.COD_CLIENTE}`);
+                fs.mkdirSync(path.join(userRoot, 'Pedidos'), { recursive: true });
+                resolve({ root: userRoot });
+            } catch (err: any) {
+                reject(err);
+            }
+        });
+
+        try {
+            await server.listen();
+            FtpService.ftpServer = server;
+
+            // Detectar archivos nuevos y disparar escaneo (debounce 3s)
+            const ftpPath = await FtpService.getConfig();
+            if (ftpPath && fs.existsSync(ftpPath)) {
+                let scanTimer: ReturnType<typeof setTimeout> | null = null;
+                FtpService.ftpWatcher = fs.watch(ftpPath, { recursive: true }, (_evt, filename) => {
+                    if (filename && filename.toLowerCase().endsWith('.txt')) {
+                        if (scanTimer) clearTimeout(scanTimer);
+                        scanTimer = setTimeout(() => FtpService.escanearCarpeta().catch(console.error), 3000);
+                    }
+                });
+            }
+
+            console.log(`[FTP] Servidor iniciado en puerto ${puerto}`);
+            return { ok: true, message: `Servidor FTP iniciado en puerto ${puerto}` };
+        } catch (err: any) {
+            FtpService.ftpServer = null;
+            const msg = `Error al iniciar servidor FTP: ${err.message ?? err}`;
+            console.error('[FTP]', msg);
+            return { ok: false, message: msg };
+        }
+    }
+
+    static async detenerServidor(): Promise<{ ok: boolean; message: string }> {
+        if (!FtpService.ftpServer) return { ok: false, message: 'El servidor FTP no está en ejecución' };
+        try { await FtpService.ftpServer.close(); } catch {}
+        FtpService.ftpServer = null;
+        if (FtpService.ftpWatcher) {
+            FtpService.ftpWatcher.close();
+            FtpService.ftpWatcher = null;
+        }
+        console.log('[FTP] Servidor detenido');
+        return { ok: true, message: 'Servidor FTP detenido' };
     }
 }

@@ -18,6 +18,11 @@ export interface DbConfig {
     maxLineasPorPedido:  number;
     clavePickingAdmin:   string;
     zonaHoraria:         string;
+    ftpPuerto:           number;
+    ftpPasivoMin:        number;
+    ftpPasivoMax:        number;
+    ftpIpExterna:        string;
+    ftpHabilitado:       boolean;
 }
 
 const CONFIG_PATH = path.resolve(process.cwd(), 'config', 'connections.json');
@@ -51,6 +56,11 @@ export function getDbConfig(): DbConfig {
         maxLineasPorPedido:  Number((file as any).maxLineasPorPedido ?? 50),
         clavePickingAdmin:   String((file as any).clavePickingAdmin ?? 'admin123'),
         zonaHoraria:         String((file as any).zonaHoraria ?? 'America/Caracas'),
+        ftpPuerto:           Number((file as any).ftpPuerto    ?? 21),
+        ftpPasivoMin:        Number((file as any).ftpPasivoMin ?? 40000),
+        ftpPasivoMax:        Number((file as any).ftpPasivoMax ?? 40100),
+        ftpIpExterna:        String((file as any).ftpIpExterna ?? ''),
+        ftpHabilitado:       (file as any).ftpHabilitado === true,
     };
 }
 
@@ -80,5 +90,10 @@ export function getDbConfigPublica(): Omit<DbConfig, 'password'> & { passwordMas
         maxLineasPorPedido:  cfg.maxLineasPorPedido,
         clavePickingAdmin:   cfg.clavePickingAdmin,
         zonaHoraria:         cfg.zonaHoraria,
+        ftpPuerto:           cfg.ftpPuerto,
+        ftpPasivoMin:        cfg.ftpPasivoMin,
+        ftpPasivoMax:        cfg.ftpPasivoMax,
+        ftpIpExterna:        cfg.ftpIpExterna,
+        ftpHabilitado:       cfg.ftpHabilitado,
     };
 }
