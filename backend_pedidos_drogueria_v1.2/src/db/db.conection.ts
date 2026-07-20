@@ -19,7 +19,7 @@ function buildBase(): sql.config {
         server:   cfg.server,
         port:     cfg.port,
         pool:     { max: 10, min: 0, idleTimeoutMillis: 30000 },
-        options:  { encrypt: false, trustServerCertificate: true },
+        options:  { encrypt: false, trustServerCertificate: true, useUTC: false },
     };
 }
 
@@ -95,7 +95,7 @@ export async function probarConexion(cfg: { server: string; user: string; passwo
             password: cfg.password,
             database: cfg.dbName,
             port:     cfg.port ?? 1433,
-            options:  { encrypt: false, trustServerCertificate: true },
+            options:  { encrypt: false, trustServerCertificate: true, useUTC: false },
         }).connect();
         await pool.request().query('SELECT 1');
         return { ok: true, mensaje: `Conexión exitosa a ${cfg.dbName} en ${cfg.server}` };

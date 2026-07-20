@@ -13,7 +13,7 @@ function buildConfig(): sql.config {
         port:     cfg.port,
         database: cfg.dbGeneralName,
         pool:     { max: 5, min: 0, idleTimeoutMillis: 30000 },
-        options:  { encrypt: false, trustServerCertificate: true },
+        options:  { encrypt: false, trustServerCertificate: true, useUTC: false },
     };
 }
 
