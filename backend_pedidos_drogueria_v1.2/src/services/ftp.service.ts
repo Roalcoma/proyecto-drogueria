@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import mssql from 'mssql';
 import bcrypt from 'bcryptjs';
+import { FtpServer } from 'ftp-srv';
 import { connectDb } from '../db/db.conection';
 import { getDbConfig } from './dbconfig.service';
 
@@ -9,7 +10,7 @@ const esquema = process.env.DB_ESQUEMA || 'dbo';
 
 export class FtpService {
     private static escaneando = false;
-    private static ftpServer: any = null;
+    private static ftpServer: FtpServer | null = null;
     private static ftpWatcher: fs.FSWatcher | null = null;
 
     static async initTablas(): Promise<void> {
@@ -381,9 +382,6 @@ export class FtpService {
         const pasivoMax = cfg.ftpPasivoMax;
         const ipExterna = cfg.ftpIpExterna || '0.0.0.0';
 
-        // ponytail: require dinámico para que el backend arranque aunque ftp-srv no esté instalado
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { FtpServer } = require('ftp-srv');
         const server = new FtpServer({
             url:       `ftp://0.0.0.0:${puerto}`,
             anonymous: false,
@@ -393,7 +391,7 @@ export class FtpService {
             greeting:  ['Bienvenido - Pedidos Drogueria FTP'],
         });
 
-        server.on('login', async ({ username, password }: any, resolve: any, reject: any) => {
+        server.on('login', async ({ username, password }, resolve, reject) => {
             try {
                 const user = await FtpService._getUsuarioPorNombre(username);
                 if (!user || user.ACTIVO !== 'T') {
