@@ -861,10 +861,10 @@ export class PromocionesService {
                 .input('NOMBRE', mssql.NVarChar, promo.nombre)
                 .input('BASE', mssql.VarChar, promo.base)
                 .input('ALCANCE', mssql.VarChar, promo.alcanceCliente)
-                .input('FECHAINICIO', mssql.Date, promo.fechaInicio)
-                .input('FECHAFIN', mssql.Date, promo.fechaFin)
+                .input('FECHAINICIO', mssql.VarChar(10), promo.fechaInicio)
+                .input('FECHAFIN', mssql.VarChar(10), promo.fechaFin)
                 .input('SLOT', mssql.TinyInt, promo.slotDescuento ?? 2)
-                .query(`INSERT INTO APP_PROMOCIONES (NOMBRE, BASE, ALCANCE_CLIENTE, FECHAINICIO, FECHAFIN, SLOT_DESCUENTO) OUTPUT INSERTED.ID VALUES (@NOMBRE, @BASE, @ALCANCE, @FECHAINICIO, @FECHAFIN, @SLOT)`);
+                .query(`INSERT INTO APP_PROMOCIONES (NOMBRE, BASE, ALCANCE_CLIENTE, FECHAINICIO, FECHAFIN, SLOT_DESCUENTO) OUTPUT INSERTED.ID VALUES (@NOMBRE, @BASE, @ALCANCE, CONVERT(DATE,@FECHAINICIO,23), CONVERT(DATE,@FECHAFIN,23), @SLOT)`);
             const idPromocion = result.recordset[0].ID;
 
             for (const g of promo.gruposArticulos) {
@@ -907,9 +907,9 @@ export class PromocionesService {
             await new mssql.Request(transaction)
                 .input('ID', mssql.Int, id).input('NOMBRE', mssql.NVarChar, promo.nombre)
                 .input('BASE', mssql.VarChar, promo.base).input('ALCANCE', mssql.VarChar, promo.alcanceCliente)
-                .input('FECHAINICIO', mssql.Date, promo.fechaInicio).input('FECHAFIN', mssql.Date, promo.fechaFin)
+                .input('FECHAINICIO', mssql.VarChar(10), promo.fechaInicio).input('FECHAFIN', mssql.VarChar(10), promo.fechaFin)
                 .input('SLOT', mssql.TinyInt, promo.slotDescuento ?? 2)
-                .query(`UPDATE APP_PROMOCIONES SET NOMBRE=@NOMBRE, BASE=@BASE, ALCANCE_CLIENTE=@ALCANCE, FECHAINICIO=@FECHAINICIO, FECHAFIN=@FECHAFIN, SLOT_DESCUENTO=@SLOT WHERE ID=@ID`);
+                .query(`UPDATE APP_PROMOCIONES SET NOMBRE=@NOMBRE, BASE=@BASE, ALCANCE_CLIENTE=@ALCANCE, FECHAINICIO=CONVERT(DATE,@FECHAINICIO,23), FECHAFIN=CONVERT(DATE,@FECHAFIN,23), SLOT_DESCUENTO=@SLOT WHERE ID=@ID`);
 
             await new mssql.Request(transaction).input('ID', mssql.Int, id)
                 .query(`DELETE FROM APP_PROMOCIONES_GRUPOS_ARTICULOS WHERE IDPROMO=@ID`);
