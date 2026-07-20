@@ -93,7 +93,7 @@ export async function generarPedidoPDF(data: PedidoPDFData): Promise<void> {
 
     const tz = { timeZone: useBrandingStore().zonaHoraria };
     const fechaTexto = data.fecha
-        ? new Date(data.fecha).toLocaleString('es-VE', tz)
+        ? new Date(data.fecha).toLocaleDateString('es-VE', tz)
         : new Date().toLocaleDateString('es-VE', tz);
     doc.text(`Fecha: ${fechaTexto}`, 155, 46);
     doc.text(`ID Cliente: ${data.cliente.codcliente ?? '---'}`, 16, 46);
