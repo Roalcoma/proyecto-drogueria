@@ -501,7 +501,7 @@ const imprimirPDF = async (item: any, sinPrecios: boolean) => {
       ocultarPrecios: sinPrecios,
       firmante: {
         usuario: authStore.usuario?.usuario || 'Usuario desconocido',
-        fecha:   new Date().toLocaleString('es-VE', tz),
+        fecha:   new Date().toLocaleDateString('es-VE', tz),
       },
     });
   } catch {
