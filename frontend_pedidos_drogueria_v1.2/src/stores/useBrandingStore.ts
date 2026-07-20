@@ -27,11 +27,12 @@ export const useBrandingStore = defineStore('branding', () => {
     const primary    = ref<string>(cached?.primary    ?? '#0891B2');
     const secondary  = ref<string>(cached?.secondary  ?? '#059669');
     const logoBase64 = ref<string | null>(cached?.logoBase64 ?? null);
+    const zonaHoraria = ref<string>(cached?.zonaHoraria ?? 'America/Caracas');
 
     const logo = computed<string>(() => logoBase64.value ?? (defaultLogo as string));
 
     const _persist = () => localStorage.setItem(CACHE_KEY, JSON.stringify({
-        primary: primary.value, secondary: secondary.value, logoBase64: logoBase64.value,
+        primary: primary.value, secondary: secondary.value, logoBase64: logoBase64.value, zonaHoraria: zonaHoraria.value,
     }));
 
     const init = async () => {
@@ -39,9 +40,10 @@ export const useBrandingStore = defineStore('branding', () => {
             const res = await axios.get(API);
             if (res.data.success) {
                 const d = res.data.data;
-                primary.value    = d.primary    ?? primary.value;
-                secondary.value  = d.secondary  ?? secondary.value;
-                logoBase64.value = d.logoBase64  ?? null;
+                primary.value     = d.primary     ?? primary.value;
+                secondary.value   = d.secondary   ?? secondary.value;
+                logoBase64.value  = d.logoBase64  ?? null;
+                zonaHoraria.value = d.zonaHoraria ?? zonaHoraria.value;
                 _persist();
             }
         } catch { /* keep cached / defaults */ }
@@ -55,5 +57,5 @@ export const useBrandingStore = defineStore('branding', () => {
         _persist();
     };
 
-    return { primary, secondary, logoBase64, logo, init, update };
+    return { primary, secondary, logoBase64, logo, zonaHoraria, init, update };
 });

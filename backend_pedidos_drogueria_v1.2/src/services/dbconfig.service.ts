@@ -17,6 +17,7 @@ export interface DbConfig {
     codAlmacen:          string;
     maxLineasPorPedido:  number;
     clavePickingAdmin:   string;
+    zonaHoraria:         string;
 }
 
 const CONFIG_PATH = path.resolve(process.cwd(), 'config', 'connections.json');
@@ -49,6 +50,7 @@ export function getDbConfig(): DbConfig {
         codAlmacen:          String((file as any).codAlmacen ?? 'ZAV'),
         maxLineasPorPedido:  Number((file as any).maxLineasPorPedido ?? 50),
         clavePickingAdmin:   String((file as any).clavePickingAdmin ?? 'admin123'),
+        zonaHoraria:         String((file as any).zonaHoraria ?? 'America/Caracas'),
     };
 }
 
@@ -77,5 +79,6 @@ export function getDbConfigPublica(): Omit<DbConfig, 'password'> & { passwordMas
         codAlmacen:          cfg.codAlmacen,
         maxLineasPorPedido:  cfg.maxLineasPorPedido,
         clavePickingAdmin:   cfg.clavePickingAdmin,
+        zonaHoraria:         cfg.zonaHoraria,
     };
 }

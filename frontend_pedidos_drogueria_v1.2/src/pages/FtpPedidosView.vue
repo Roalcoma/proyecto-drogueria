@@ -55,7 +55,7 @@
           </v-chip>
         </template>
         <template v-slot:item.FECHA="{ item }">
-          {{ item.FECHA ? new Date(item.FECHA).toLocaleString('es-VE', { timeZone: 'America/Caracas' }) : '---' }}
+          {{ item.FECHA ? new Date(item.FECHA).toLocaleString('es-VE', { timeZone: brandingStore.zonaHoraria }) : '---' }}
         </template>
         <template v-slot:item.ARCHIVO="{ item }">
           <span class="text-caption font-weight-medium">{{ item.ARCHIVO }}</span>
@@ -112,9 +112,11 @@
 import { ref, onMounted } from 'vue';
 import axios from 'axios';
 import { useAuthStore } from '../stores/useAuthStore';
+import { useBrandingStore } from '../stores/useBrandingStore';
 import { usePageSize } from '../utils/usePageSize';
 
-const authStore = useAuthStore();
+const authStore     = useAuthStore();
+const brandingStore = useBrandingStore();
 const API = `${import.meta.env.VITE_API_URL}/ftp`;
 
 const tab      = ref('auditoria');

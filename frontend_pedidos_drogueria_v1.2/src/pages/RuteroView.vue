@@ -909,7 +909,7 @@ const totalRuterosHist = ref(0);
 const limitHist        = 15;
 const buscarHistorial = () => { paginaHist.value = 1; cargarHistorial(); };
 const limpiarFiltrosHist = () => { filtroHist.value = { numero: '', factura: '', pedido: '' }; paginaHist.value = 1; cargarHistorial(); };
-const hoyISO = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Caracas' });
+const hoyISO = new Date().toLocaleDateString('en-CA', { timeZone: useBrandingStore().zonaHoraria });
 
 const filtrarFacturasRutero = (id: number) => {
   const lista = facturasRutero[id] ?? [];
@@ -1110,7 +1110,7 @@ const escanearCajaGlobal = async () => {
         POSICION: res.data.posicion, NCAJAS: res.data.ncajas,
         NUMSERIE: res.data.factura?.split('-')[0], NUMFACTURA: res.data.factura?.split('-')[1],
         CLIENTE: res.data.cliente, RUTERO_NUMERO: res.data.ruteroNumero,
-        FECHAESCAN: new Date().toLocaleString('es-VE', { timeZone: 'America/Caracas' }),
+        FECHAESCAN: new Date().toLocaleString('es-VE', { timeZone: useBrandingStore().zonaHoraria }),
       });
       const r = sesionPicking.value.find(x => x.ID === res.data.ruteroId);
       if (r) {
@@ -1521,7 +1521,7 @@ const imprimirRutero = async (r: any) => {
 
 // ─── PDF ──────────────────────────────────────────────────────────────────────
 const generarPDF = (numero: string, zonaDisplay: string, lista: any[]) => {
-  const fecha = new Date().toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'America/Caracas' });
+  const fecha = new Date().toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: useBrandingStore().zonaHoraria });
   const doc   = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
   const logo  = new Image();
   logo.src    = useBrandingStore().logo;

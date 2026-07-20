@@ -148,6 +148,21 @@ export class SistemaController {
         res.json({ success: true, message: `Máximo de líneas por pedido actualizado a ${maxLineasPorPedido}` });
     }
 
+    static async getZonaHoraria(_req: Request, res: Response): Promise<void> {
+        const cfg = getDbConfigPublica() as any;
+        res.json({ success: true, zonaHoraria: cfg.zonaHoraria ?? 'America/Caracas' });
+    }
+
+    static async guardarZonaHoraria(req: Request, res: Response): Promise<void> {
+        const { zonaHoraria } = req.body;
+        if (!zonaHoraria || typeof zonaHoraria !== 'string' || zonaHoraria.trim().length === 0) {
+            res.status(400).json({ success: false, message: 'zonaHoraria no puede estar vacía' });
+            return;
+        }
+        guardarDbConfig({ zonaHoraria: zonaHoraria.trim() } as any);
+        res.json({ success: true, message: `Zona horaria actualizada a ${zonaHoraria.trim()}` });
+    }
+
     static async getClavePickingAdmin(_req: Request, res: Response): Promise<void> {
         const cfg = getDbConfigPublica() as any;
         res.json({ success: true, clavePickingAdmin: cfg.clavePickingAdmin ?? 'admin123' });

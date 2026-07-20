@@ -454,6 +454,36 @@
       </v-card-text>
     </v-card>
 
+    <!-- Zona horaria -->
+    <v-card rounded="xl" elevation="2" class="mt-6">
+      <v-card-title class="pa-4 d-flex align-center">
+        <v-icon color="teal-darken-1" class="mr-2">mdi-clock-time-four-outline</v-icon>
+        <span class="font-weight-bold">Zona Horaria del Sistema</span>
+      </v-card-title>
+      <v-divider />
+      <v-card-text class="pa-4">
+        <p class="text-caption text-grey mb-3">
+          Zona horaria usada en todas las fechas del aplicativo (registros, PDFs, auditorías).
+          Por defecto: <code>America/Caracas</code> (UTC-4, Venezuela).
+        </p>
+        <div class="d-flex align-center gap-3 flex-wrap">
+          <v-autocomplete
+            v-model="zonaHoraria"
+            :items="ZONAS_HORARIAS"
+            label="Zona horaria"
+            variant="outlined"
+            density="compact"
+            hide-details
+            prepend-inner-icon="mdi-earth"
+            style="max-width:340px;"
+          />
+          <v-btn color="teal-darken-1" variant="elevated" :loading="guardandoZona" @click="guardarZonaHorariaFn">
+            Guardar
+          </v-btn>
+        </div>
+      </v-card-text>
+    </v-card>
+
     <!-- Clave admin picking -->
     <v-card rounded="xl" elevation="2" class="mt-6">
       <v-card-title class="pa-4 d-flex align-center">
@@ -949,6 +979,34 @@ const guardarMaxLineasFn = async () => {
   } finally { guardandoMaxLineas.value = false; }
 };
 
+// ─── Zona horaria ─────────────────────────────────────────────
+const ZONAS_HORARIAS = [
+  'America/Caracas', 'America/Bogota', 'America/Lima', 'America/Santiago',
+  'America/Argentina/Buenos_Aires', 'America/Sao_Paulo', 'America/New_York',
+  'America/Chicago', 'America/Denver', 'America/Los_Angeles',
+  'Europe/Madrid', 'Europe/London', 'UTC',
+];
+const zonaHoraria     = ref<string>('America/Caracas');
+const guardandoZona   = ref(false);
+
+const cargarZonaHoraria = async () => {
+  try {
+    const res = await axios.get(`${API_SIS}/zona-horaria`);
+    if (res.data.success) zonaHoraria.value = res.data.zonaHoraria;
+  } catch { /* silencioso */ }
+};
+
+const guardarZonaHorariaFn = async () => {
+  guardandoZona.value = true;
+  try {
+    await axios.post(`${API_SIS}/zona-horaria`, { zonaHoraria: zonaHoraria.value });
+    brandingStore.zonaHoraria = zonaHoraria.value;
+    mostrarSnack(`Zona horaria actualizada a ${zonaHoraria.value}`, 'success');
+  } catch (e: any) {
+    mostrarSnack(e.response?.data?.message ?? 'Error al guardar', 'error');
+  } finally { guardandoZona.value = false; }
+};
+
 // ─── Clave admin picking ──────────────────────────────────────
 const clavePickingAdmin   = ref('');
 const guardandoClaveAdmin = ref(false);
@@ -1036,6 +1094,7 @@ onMounted(async () => {
   await cargarTarifaCatalogo();
   await cargarSeq();
   await cargarMaxLineas();
+  await cargarZonaHoraria();
   await cargarClavePickingAdmin();
 });
 </script>

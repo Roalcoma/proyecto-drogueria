@@ -64,7 +64,7 @@
         </template>
 
         <template v-slot:item.FECHA="{ item }">
-          {{ item.FECHA ? new Date(item.FECHA).toLocaleDateString('es-VE', { timeZone: 'America/Caracas' }) : '---' }}
+          {{ item.FECHA ? new Date(item.FECHA).toLocaleDateString('es-VE', { timeZone: brandingStore.zonaHoraria }) : '---' }}
         </template>
 
         <template v-slot:item.TOTAL="{ item }">
@@ -126,7 +126,7 @@
           </v-chip>
         </template>
         <template v-slot:item.FECHA="{ item }">
-          {{ item.FECHA ? new Date(item.FECHA).toLocaleString('es-VE', { timeZone: 'America/Caracas' }) : '---' }}
+          {{ item.FECHA ? new Date(item.FECHA).toLocaleString('es-VE', { timeZone: brandingStore.zonaHoraria }) : '---' }}
         </template>
         <template v-slot:item.ARCHIVO="{ item }">
           <span class="text-caption font-weight-medium">{{ item.ARCHIVO }}</span>
@@ -187,10 +187,12 @@
 import { ref, watch } from 'vue';
 import axios from 'axios';
 import { useCarritoStore } from '../stores/useCarritoStore';
+import { useBrandingStore } from '../stores/useBrandingStore';
 import MontoDisplay from '../components/MontoDisplay.vue';
 import { usePageSize } from '../utils/usePageSize';
 
 const carritoStore = useCarritoStore();
+const brandingStore = useBrandingStore();
 const API = `${import.meta.env.VITE_API_URL}/ecommerce`;
 
 const tab = ref('pedidos');

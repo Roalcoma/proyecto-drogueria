@@ -91,7 +91,7 @@ export async function generarPedidoPDF(data: PedidoPDFData): Promise<void> {
     doc.rect(14, 41, 182, (data.estatus ? 42 : 36) + extraAddrH, 'F');
     doc.setFont('helvetica', 'normal');
 
-    const tz = { timeZone: 'America/Caracas' };
+    const tz = { timeZone: useBrandingStore().zonaHoraria };
     const fechaTexto = data.fecha
         ? new Date(data.fecha).toLocaleString('es-VE', tz)
         : new Date().toLocaleDateString('es-VE', tz);

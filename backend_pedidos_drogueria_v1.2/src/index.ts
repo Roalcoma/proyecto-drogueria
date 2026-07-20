@@ -21,6 +21,7 @@ import { EcommerceService }   from "./services/ecommerce.service";
 import { FtpService }         from "./services/ftp.service";
 import { RuteroService }      from "./services/rutero.service";
 import { BrandingService }    from "./services/branding.service";
+import { getDbConfig }        from "./services/dbconfig.service";
 import { dbModeMiddleware }   from "./db/dbMode.middleware";
 import { authMiddleware, adminMiddleware } from "./middleware/auth.middleware";
 
@@ -43,7 +44,7 @@ app.get('/', (_req, res) => {
 app.post('/api/eventos', (_req, res) => res.status(200).send('OK'));
 
 app.get('/api/branding', (_req, res) => {
-    res.json({ success: true, data: BrandingService.get() });
+    res.json({ success: true, data: { ...BrandingService.get(), zonaHoraria: getDbConfig().zonaHoraria } });
 });
 
 app.put('/api/branding', authMiddleware, adminMiddleware, (req: any, res: any) => {

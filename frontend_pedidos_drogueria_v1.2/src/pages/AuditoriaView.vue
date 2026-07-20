@@ -44,7 +44,7 @@
             :items-per-page-options="[10, 25, 50, 100, 200]"
           >
             <template v-slot:item.FECHA="{ item }">
-              <span class="text-caption">{{ new Date(item.FECHA).toLocaleString('es-VE', { timeZone: 'America/Caracas' }) }}</span>
+              <span class="text-caption">{{ new Date(item.FECHA).toLocaleString('es-VE', { timeZone: brandingStore.zonaHoraria }) }}</span>
             </template>
             <template v-slot:item.EST_ANTERIOR="{ item }">
               <v-chip v-if="item.EST_ANTERIOR" :color="colorEstatus(item.EST_ANTERIOR)" size="x-small" variant="tonal">{{ item.EST_ANTERIOR }}</v-chip>
@@ -87,7 +87,7 @@
             :items-per-page-options="[10, 25, 50, 100, 200]"
           >
             <template v-slot:item.FECHA="{ item }">
-              <span class="text-caption">{{ new Date(item.FECHA).toLocaleString('es-VE', { timeZone: 'America/Caracas' }) }}</span>
+              <span class="text-caption">{{ new Date(item.FECHA).toLocaleString('es-VE', { timeZone: brandingStore.zonaHoraria }) }}</span>
             </template>
             <template v-slot:item.ACCION="{ item }">
               <v-chip :color="colorAccion(item.ACCION)" size="x-small" variant="tonal">{{ item.ACCION }}</v-chip>
@@ -112,8 +112,10 @@
 import { ref, watch } from 'vue';
 import axios from 'axios';
 import { usePageSize } from '../utils/usePageSize';
+import { useBrandingStore } from '../stores/useBrandingStore';
 
 const API = import.meta.env.VITE_API_URL;
+const brandingStore = useBrandingStore();
 
 const tab          = ref('pedidos');
 const cargando     = ref(false);

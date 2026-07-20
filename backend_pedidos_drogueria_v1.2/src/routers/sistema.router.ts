@@ -20,6 +20,8 @@ sistemaRouter.get('/cod-almacen',         authMiddleware, adminMiddleware, Siste
 sistemaRouter.post('/cod-almacen',        authMiddleware, adminMiddleware, SistemaController.guardarCodAlmacen);
 sistemaRouter.get('/max-lineas',              authMiddleware,                  SistemaController.getMaxLineas);
 sistemaRouter.post('/max-lineas',             authMiddleware, adminMiddleware, SistemaController.guardarMaxLineas);
+sistemaRouter.get('/zona-horaria',            authMiddleware,                  SistemaController.getZonaHoraria);
+sistemaRouter.post('/zona-horaria',           authMiddleware, adminMiddleware, SistemaController.guardarZonaHoraria);
 sistemaRouter.get('/clave-picking-admin',     authMiddleware, adminMiddleware, SistemaController.getClavePickingAdmin);
 sistemaRouter.post('/clave-picking-admin',    authMiddleware, adminMiddleware, SistemaController.guardarClavePickingAdmin);
 

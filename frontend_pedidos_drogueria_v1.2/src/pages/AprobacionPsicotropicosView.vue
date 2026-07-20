@@ -33,7 +33,7 @@
         v-model:items-per-page="itemsPerPage" @update:options="cargarPagina"
         :items-per-page-options="[10, 25, 50, 100, 200]">
         <template v-slot:item.FECHA="{ item }">
-          {{ new Date(item.FECHA).toLocaleString('es-VE', { timeZone: 'America/Caracas' }) }}
+          {{ new Date(item.FECHA).toLocaleString('es-VE', { timeZone: brandingStore.zonaHoraria }) }}
         </template>
         <template v-slot:item.cliente_psico="{ item }">
           <span class="font-weight-medium">{{ item.CLIENTEID }}</span>
@@ -236,11 +236,13 @@ import axios from 'axios';
 import { usePageSize } from '../utils/usePageSize';
 import { useCarritoStore } from '../stores/useCarritoStore';
 import { useAuthStore } from '../stores/useAuthStore';
+import { useBrandingStore } from '../stores/useBrandingStore';
 import MontoDisplay from '../components/MontoDisplay.vue';
 import { generarPedidoPDF } from '../utils/pedidoPDF';
 
-const carritoStore = useCarritoStore();
-const authStore    = useAuthStore();
+const carritoStore  = useCarritoStore();
+const authStore     = useAuthStore();
+const brandingStore = useBrandingStore();
 const API = import.meta.env.VITE_API_URL;
 const ESTATUS = 'APROBACION PSICOTROPICOS';
 
@@ -469,7 +471,7 @@ const imprimirPDF = async (item: any, sinPrecios: boolean) => {
     const res = await axios.get(`${API}/pedidos`, { params: { orderId: item.ORDERID } });
     if (!res.data.success) { lanzarAviso('No se pudo cargar el pedido', 'error'); return; }
     const pedido = res.data.data;
-    const tz = { timeZone: 'America/Caracas' };
+    const tz = { timeZone: brandingStore.zonaHoraria };
     await generarPedidoPDF({
       numeroOrden: item.ORDERID,
       fecha: item.FECHA,
