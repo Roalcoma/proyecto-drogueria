@@ -11,12 +11,14 @@ import ruteroRouter   from "./routers/rutero.router";
 import sistemaRouter    from "./routers/sistema.router";
 import ecommerceRouter  from "./routers/ecommerce.router";
 import facturasRouter   from "./routers/facturas.router";
+import ftpRouter        from "./routers/ftp.router";
 import { ExchangeService }    from "./services/exchange.service";
 import { AuthService }        from "./services/auth.service";
 import { PromocionesService } from "./services/promociones.service";
 import { PedidosServices }    from "./services/pedidos.service";
 import { ReclamosService }    from "./services/reclamos.service";
 import { EcommerceService }   from "./services/ecommerce.service";
+import { FtpService }         from "./services/ftp.service";
 import { RuteroService }      from "./services/rutero.service";
 import { BrandingService }    from "./services/branding.service";
 import { dbModeMiddleware }   from "./db/dbMode.middleware";
@@ -73,6 +75,7 @@ app.use('/rutero',     ruteroRouter);
 app.use('/sistema',    sistemaRouter);
 app.use('/ecommerce',  ecommerceRouter);
 app.use('/facturas',   facturasRouter);
+app.use('/ftp',        ftpRouter);
 
 app.listen(port, async () => {
     console.log(`Servidor en http://localhost:${port}`);
@@ -83,6 +86,8 @@ app.listen(port, async () => {
     await ReclamosService.initTablas();
     await EcommerceService.initTablas();
     await RuteroService.initTablas();
-    // Cron: escanear carpeta ecommerce cada 60 segundos
+    await FtpService.initTablas();
+    // Cron: escanear carpeta ecommerce cada 30s, FTP cada 10 min
     setInterval(() => EcommerceService.escanearCarpeta().catch(console.error), 30_000);
+    setInterval(() => FtpService.escanearCarpeta().catch(console.error), 600_000);
 });

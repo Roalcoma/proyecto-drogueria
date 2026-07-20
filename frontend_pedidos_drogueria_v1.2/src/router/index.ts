@@ -12,6 +12,7 @@ import AprobacionPsicotropicosView from '../pages/AprobacionPsicotropicosView.vu
 import ReclamosView       from '../pages/ReclamosView.vue';
 import AuditoriaView      from '../pages/AuditoriaView.vue';
 import RuteroView             from '../pages/RuteroView.vue';
+import FtpPedidosView        from '../pages/FtpPedidosView.vue';
 
 
 const router = createRouter({
@@ -29,6 +30,7 @@ const router = createRouter({
     { path: '/reclamos',         name: 'reclamos',        component: ReclamosView,       meta: { ruta: '/reclamos' } },
     { path: '/auditoria',        name: 'auditoria',       component: AuditoriaView,      meta: { ruta: '/auditoria' } },
     { path: '/rutero',              name: 'rutero',              component: RuteroView,            meta: { ruta: '/rutero' } },
+    { path: '/ftp-pedidos',         name: 'ftp-pedidos',         component: FtpPedidosView,        meta: { ruta: '/ftp-pedidos' } },
 
   ]
 });
