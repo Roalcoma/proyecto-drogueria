@@ -267,6 +267,19 @@ export class FtpService {
         const cfg         = getDbConfig();
         const tarifa      = cfg.tarifaBaseCatalogo;
         const almacen     = cfg.codAlmacen;
+
+        // Precios reales del sistema; ignoramos el precio del archivo
+        const codigos = [...new Set(lineas.map(l => l.codarticulo))].join(',');
+        const preciosRes = await pool.request()
+            .input('TARIFA', mssql.Int, tarifa)
+            .query(`SELECT CODARTICULO, PNETO FROM PRECIOSVENTA WHERE IDTARIFAV = @TARIFA AND CODARTICULO IN (${codigos})`);
+        const preciosSistema = new Map<number, number>(
+            preciosRes.recordset.map((r: any) => [r.CODARTICULO, Number(r.PNETO)])
+        );
+        for (const l of lineas) {
+            l.precioUnit = preciosSistema.get(l.codarticulo) ?? 0;
+            l.precioTotal = l.precioUnit * l.cantidad;
+        }
         const totalChunks = maxLineas > 0 && lineas.length > maxLineas
             ? Math.ceil(lineas.length / maxLineas) : 1;
         const chunks: typeof lineas[] = [];
