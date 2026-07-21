@@ -19,13 +19,14 @@
           {{ totalPedidos.toLocaleString() }} pedido{{ totalPedidos !== 1 ? 's' : '' }}
         </v-chip>
         <v-chip
-          color="green-darken-2"
+          :color="pedidosSeleccionados.length > 0 ? 'blue-darken-2' : 'green-darken-2'"
           variant="tonal"
           size="large"
-          prepend-icon="mdi-currency-usd"
+          :prepend-icon="pedidosSeleccionados.length > 0 ? 'mdi-checkbox-marked-outline' : 'mdi-currency-usd'"
           class="mr-3 font-weight-black text-h6 px-5"
         >
-          {{ totalUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+          {{ totalUSDMostrado.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+          <span v-if="pedidosSeleccionados.length > 0" class="text-caption ml-1 font-weight-regular">({{ pedidosSeleccionados.length }} sel.)</span>
         </v-chip>
         <v-btn
           prepend-icon="mdi-sync"
@@ -82,7 +83,7 @@
       </v-col>
       <v-col cols="12" sm="6" md="2">
         <v-select v-model="filtros.estatus" label="Estatus" density="compact" variant="outlined"
-          clearable hide-details prepend-inner-icon="mdi-list-status"
+          multiple chips closable-chips hide-details prepend-inner-icon="mdi-list-status"
           :items="estatusOpciones" @update:model-value="aplicarFiltros" />
       </v-col>
       <v-col cols="12" sm="6" md="2">
@@ -609,6 +610,12 @@ const previewModal = ref<{
   fecha: string; totalUSD: number; lineas: any[] | null; pedidoItem: any | null;
 }>({ show: false, orderId: '', estatus: '', cliente: '', fecha: '', totalUSD: 0, lineas: null, pedidoItem: null });
 const totalUSD = ref(0);
+const totalUSDMostrado = computed(() => {
+  if (pedidosSeleccionados.value.length === 0) return totalUSD.value;
+  return pedidosSeleccionados.value.reduce((sum: number, item: any) => {
+    return sum + Number(item?.TOTALPRECIO ?? 0);
+  }, 0);
+});
 const loading = ref(false);
 const itemsPerPage = usePageSize('pedidos-estatus');
 const snackbar = ref({ show: false, text: '', color: '' });
@@ -699,7 +706,7 @@ const estatusOpciones = [
 ];
 
 const zonas  = ref<{ zona: string; display: string }[]>([]);
-const filtros = ref({ buscarId: '', clienteId: '', codVendedor: '', estatus: null as string | null, riesgo: null as string | null, codruta: null as string | null, fechaDesde: null as string | null, fechaHasta: null as string | null, esPsicotropico: false, soloIcompras: false, soloFacturado: false, nombreCliente: '', usuario: '' });
+const filtros = ref({ buscarId: '', clienteId: '', codVendedor: '', estatus: [] as string[], riesgo: null as string | null, codruta: null as string | null, fechaDesde: null as string | null, fechaHasta: null as string | null, esPsicotropico: false, soloIcompras: false, soloFacturado: false, nombreCliente: '', usuario: '' });
 
 let filtroTimer: ReturnType<typeof setTimeout> | null = null;
 const aplicarFiltros = () => {
@@ -715,7 +722,7 @@ const obtenerPedidos = async (page = 1, limit = 10) => {
     else if (filtros.value.buscarId) params.buscarId = filtros.value.buscarId;
     if (filtros.value.clienteId)  params.clienteId   = filtros.value.clienteId;
     if (filtros.value.codVendedor) params.codVendedor = filtros.value.codVendedor;
-    if (filtros.value.estatus)    params.estatus     = filtros.value.estatus;
+    if (filtros.value.estatus.length) params.estatus = filtros.value.estatus.join(',');
     if (filtros.value.riesgo)      params.riesgo      = filtros.value.riesgo;
     if (filtros.value.codruta)     params.codruta     = filtros.value.codruta;
     if (filtros.value.fechaDesde)     params.fechaDesde     = filtros.value.fechaDesde;

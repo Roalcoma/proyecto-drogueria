@@ -18,6 +18,18 @@ const TRANSICIONES_PERMITIDAS: Record<string, string[]> = {
 
 export const ESTATUS_APROBACION_PSICOTROPICOS = 'APROBACION PSICOTROPICOS';
 
+const ESTATUSES_VALIDOS = new Set([
+    'PENDIENTE', 'PENDIENTE POR AUTORIZACION', 'APROBACION PSICOTROPICOS',
+    'AUTORIZADO', 'ICG', 'OK', 'EMPACADO', 'FINALIZADO', 'CANCELADO',
+]);
+const buildEstatusClause = (estatus: string | undefined, col: string): string | null => {
+    if (!estatus) return null;
+    const lista = estatus.split(',').map(s => s.trim()).filter(s => ESTATUSES_VALIDOS.has(s));
+    if (lista.length === 0) return null;
+    if (lista.length === 1) return `${col} = '${lista[0]}'`;
+    return `${col} IN (${lista.map(s => `'${s}'`).join(',')})`;
+};
+
 export class PedidosServices {
 
     static async initTablas(): Promise<void> {
@@ -271,10 +283,11 @@ export class PedidosServices {
             const vedCode = Number(process.env.VED) || 1;
 
             const pool = await connectDb();
+            const estatusClause  = buildEstatusClause(estatus, 'CP.ESTATUS');
+            const estatusClause2 = buildEstatusClause(estatus, 'CP.ESTATUS');
             const req = pool.request()
                 .input('OFFSET',         mssql.Int,         offset)
                 .input('LIMIT',          mssql.Int,         validLimit)
-                .input('ESTATUS',        mssql.VarChar(50), estatus    || null)
                 .input('BUSCAR_ID',      mssql.VarChar(50), buscarId   ? `%${buscarId}%`   : null)
                 .input('CLIENTE_ID',     mssql.Int,         clienteId  ? Number(clienteId)  : null)
                 .input('COD_VENDEDOR',   mssql.Int,         codVendedor ? Number(codVendedor) : null)
@@ -324,7 +337,7 @@ export class PedidosServices {
                         GROUP BY CL.CODCLIENTE, CL.RIESGOCONCEDIDO
                     ) CR ON CR.CODCLIENTE = CP.CLIENTEID
                 WHERE
-                    (@ESTATUS       IS NULL OR CP.ESTATUS    = @ESTATUS)
+                    (${estatusClause ? estatusClause : '1=1'})
                     AND (@BUSCAR_ID    IS NULL OR CP.ORDERID    LIKE @BUSCAR_ID)
                     AND (@CLIENTE_ID   IS NULL OR CP.CLIENTEID  = @CLIENTE_ID)
                     AND (@COD_VENDEDOR IS NULL OR CP.CODVENDEDOR = @COD_VENDEDOR)
@@ -347,7 +360,6 @@ export class PedidosServices {
             `);
 
             const countReq = pool.request()
-                .input('ESTATUS2',         mssql.VarChar(50),   estatus    || null)
                 .input('BUSCAR_ID2',       mssql.VarChar(50),   buscarId   ? `%${buscarId}%`   : null)
                 .input('CLIENTE_ID2',      mssql.Int,           clienteId  ? Number(clienteId)  : null)
                 .input('COD_VENDEDOR2',    mssql.Int,           codVendedor ? Number(codVendedor) : null)
@@ -380,7 +392,7 @@ export class PedidosServices {
                         AND T.ESTADO = 'P' AND T.ORIGEN = 'C' AND T.SERIE NOT LIKE '%P'
                     GROUP BY CL.CODCLIENTE, CL.RIESGOCONCEDIDO
                 ) CR ON CR.CODCLIENTE = CP.CLIENTEID
-                WHERE (@ESTATUS2       IS NULL OR CP.ESTATUS    = @ESTATUS2)
+                WHERE (${estatusClause2 ? estatusClause2 : '1=1'})
                     AND (@BUSCAR_ID2    IS NULL OR CP.ORDERID    LIKE @BUSCAR_ID2)
                     AND (@CLIENTE_ID2   IS NULL OR CP.CLIENTEID  = @CLIENTE_ID2)
                     AND (@COD_VENDEDOR2 IS NULL OR CP.CODVENDEDOR = @COD_VENDEDOR2)
