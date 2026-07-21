@@ -46,6 +46,30 @@
                   @click="guardarD3(item)" :loading="guardandoD3Id === item.CODCLIENTE" />
               </div>
             </template>
+            <template v-slot:item.ftp="{ item }">
+              <template v-if="ftpPorCliente[item.CODCLIENTE]">
+                <v-chip
+                  :color="ftpPorCliente[item.CODCLIENTE].ACTIVO === 'T' ? 'success' : 'default'"
+                  size="small" variant="flat" class="mr-1">
+                  <v-icon start size="14">mdi-lan-connect</v-icon>
+                  {{ ftpPorCliente[item.CODCLIENTE].USUARIO }}
+                </v-chip>
+                <v-btn icon size="x-small" variant="text"
+                  :color="ftpPorCliente[item.CODCLIENTE].ACTIVO === 'T' ? 'warning' : 'success'"
+                  :title="ftpPorCliente[item.CODCLIENTE].ACTIVO === 'T' ? 'Desactivar FTP' : 'Activar FTP'"
+                  @click="toggleFtpUsuario(ftpPorCliente[item.CODCLIENTE])">
+                  <v-icon>{{ ftpPorCliente[item.CODCLIENTE].ACTIVO === 'T' ? 'mdi-account-off' : 'mdi-account-check' }}</v-icon>
+                </v-btn>
+                <v-btn icon size="x-small" variant="text" color="error" title="Eliminar usuario FTP"
+                  @click="eliminarFtpUsuario(ftpPorCliente[item.CODCLIENTE])">
+                  <v-icon>mdi-delete</v-icon>
+                </v-btn>
+              </template>
+              <v-btn v-else size="x-small" variant="tonal" color="primary" prepend-icon="mdi-plus"
+                @click="abrirFtpDialog(item)">
+                Agregar
+              </v-btn>
+            </template>
           </v-data-table-server>
         </v-card>
       </v-window-item>
@@ -165,12 +189,35 @@
       </v-card>
     </v-dialog>
 
+    <!-- Dialog: configurar usuario FTP de cliente -->
+    <v-dialog v-model="ftpDialog.mostrar" max-width="400" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="text-h6 font-weight-bold pa-5 pb-2">
+          <v-icon start color="primary">mdi-lan-connect</v-icon>
+          Usuario FTP — {{ ftpDialog.codCliente }}
+        </v-card-title>
+        <v-card-text class="pa-5 pt-2">
+          <p class="text-body-2 text-medium-emphasis mb-4">{{ ftpDialog.nombreCliente }}</p>
+          <v-text-field v-model="ftpDialog.usuario" label="Usuario FTP" variant="outlined" density="compact" class="mb-3" hide-details />
+          <v-text-field v-model="ftpDialog.password" label="Contraseña" variant="outlined" density="compact" hide-details
+            :type="ftpDialog.mostrarPass ? 'text' : 'password'"
+            :append-inner-icon="ftpDialog.mostrarPass ? 'mdi-eye-off' : 'mdi-eye'"
+            @click:append-inner="ftpDialog.mostrarPass = !ftpDialog.mostrarPass" />
+        </v-card-text>
+        <v-card-actions class="pa-5 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="ftpDialog.mostrar = false">Cancelar</v-btn>
+          <v-btn color="primary" variant="flat" :loading="ftpDialog.guardando" @click="crearFtpUsuario">Crear</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-snackbar v-model="aviso.mostrar" :color="aviso.color" timeout="3000">{{ aviso.texto }}</v-snackbar>
   </v-container>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import axios from 'axios';
 import { usePageSize } from '../utils/usePageSize';
 
@@ -194,6 +241,7 @@ const headersClientes = [
   { title: 'Teléfono', key: 'TELF' },
   { title: 'Descuento D1', key: 'DESCUENTO', sortable: false },
   { title: 'Descuento D3 fijo', key: 'DESCUENTO_D3', sortable: false },
+  { title: 'FTP', key: 'ftp', sortable: false },
 ];
 
 const cargarClientes = async () => {
@@ -221,6 +269,71 @@ const guardarD3 = async (item: any) => {
     lanzarAviso('Descuento D3 actualizado');
   } catch { lanzarAviso('Error al actualizar D3', 'error'); }
   finally { guardandoD3Id.value = null; }
+};
+
+// ---------- FTP USUARIOS ----------
+const ftpUsuarios = ref<any[]>([]);
+const ftpPorCliente = computed(() => {
+  const map: Record<string, any> = {};
+  for (const u of ftpUsuarios.value) {
+    if (u.COD_CLIENTE) map[u.COD_CLIENTE] = u;
+  }
+  return map;
+});
+
+const cargarFtpUsuarios = async () => {
+  try {
+    const res = await axios.get(`${API}/ftp/usuarios`);
+    if (res.data.success) ftpUsuarios.value = res.data.data;
+  } catch {}
+};
+
+const ftpDialog = ref({ mostrar: false, codCliente: '', nombreCliente: '', usuario: '', password: '', mostrarPass: false, guardando: false });
+
+const abrirFtpDialog = (item: any) => {
+  ftpDialog.value = {
+    mostrar: true,
+    codCliente: item.CODCLIENTE,
+    nombreCliente: item.NOMBRECLIENTE,
+    usuario: `c${item.CODCLIENTE}`,
+    password: '',
+    mostrarPass: false,
+    guardando: false,
+  };
+};
+
+const crearFtpUsuario = async () => {
+  if (!ftpDialog.value.usuario || !ftpDialog.value.password) {
+    lanzarAviso('Usuario y contraseña son requeridos', 'warning'); return;
+  }
+  ftpDialog.value.guardando = true;
+  try {
+    const res = await axios.post(`${API}/ftp/usuarios`, {
+      usuario: ftpDialog.value.usuario,
+      password: ftpDialog.value.password,
+      codCliente: ftpDialog.value.codCliente,
+    });
+    lanzarAviso(res.data.message ?? 'Usuario FTP creado', 'success');
+    ftpDialog.value.mostrar = false;
+    await cargarFtpUsuarios();
+  } catch (e: any) {
+    lanzarAviso(e?.response?.data?.message ?? 'Error al crear usuario FTP', 'error');
+  } finally { ftpDialog.value.guardando = false; }
+};
+
+const toggleFtpUsuario = async (user: any) => {
+  try {
+    await axios.patch(`${API}/ftp/usuarios/${user.ID}/toggle`);
+    await cargarFtpUsuarios();
+  } catch { lanzarAviso('Error al cambiar estado FTP', 'error'); }
+};
+
+const eliminarFtpUsuario = async (user: any) => {
+  try {
+    await axios.delete(`${API}/ftp/usuarios/${user.ID}`);
+    lanzarAviso('Usuario FTP eliminado');
+    await cargarFtpUsuarios();
+  } catch { lanzarAviso('Error al eliminar usuario FTP', 'error'); }
 };
 
 // ---------- GRUPOS DE CLIENTES ----------
@@ -368,5 +481,6 @@ const quitarMiembro = async (codCliente: number) => {
 
 onMounted(() => {
   cargarCamposDisponibles();
+  cargarFtpUsuarios();
 });
 </script>

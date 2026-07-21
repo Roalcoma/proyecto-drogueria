@@ -25,4 +25,7 @@ ftpRouter.delete('/usuarios/:id',             adminMiddleware, FtpController.eli
 ftpRouter.patch('/usuarios/:id/toggle',       adminMiddleware, FtpController.toggleUsuario);
 ftpRouter.patch('/usuarios/:id/password',     adminMiddleware, FtpController.cambiarPassword);
 
+// Ciclo manual (inventario + facturas + pedidos)
+ftpRouter.post('/ciclo', adminMiddleware, FtpController.ejecutarCiclo);
+
 export default ftpRouter;

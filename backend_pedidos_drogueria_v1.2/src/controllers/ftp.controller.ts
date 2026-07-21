@@ -108,4 +108,9 @@ export class FtpController {
         await FtpService.cambiarPassword(Number(req.params.id), String(password));
         res.json({ success: true, message: 'Contraseña actualizada' });
     }
+
+    static async ejecutarCiclo(_req: Request, res: Response): Promise<void> {
+        const result = await FtpService.triggerCiclo();
+        res.json({ success: true, message: result.message });
+    }
 }

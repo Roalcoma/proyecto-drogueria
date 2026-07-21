@@ -11,7 +11,7 @@ const USD: number = Number(process.env.USD) || 2; // Asegúrate de que USD esté
 // getStocks() para el chip que ve el usuario — se reutiliza aquí para que el
 // filtro con_stock/sin_stock y el orden por stock no contradigan lo que se muestra.
 // ponytail: usa @ALMACEN como parámetro SQL para no interpolar strings del config
-const STOCK_DISPONIBLE_SQL = `(
+export const STOCK_DISPONIBLE_SQL = `(
     ISNULL((SELECT SUM(STOCK) FROM STOCKS WHERE CODARTICULO = A.CODARTICULO AND CODALMACEN = @ALMACEN), 0)
     - ISNULL((
         SELECT SUM(LP.PRODUCTCOUNT) FROM CABECERA_PED CP
@@ -204,9 +204,19 @@ export class ProductsService {
                     ISNULL(ACL.PRINCIPIOACTIVO, '') AS PRINCIPIOACTIVO,
                     ISNULL(M.DESCRIPCION, '') AS MARCA,
                     ISNULL(S.DESCRIPCION, '') AS SECCION,
-                    ISNULL(PR.NOMPROVEEDOR, '') AS PROVEEDOR,
                     PV.PNETO AS PRECIO_BASE,
-                    ${STOCK_DISPONIBLE_SQL} AS STOCK_DISP
+                    ${STOCK_DISPONIBLE_SQL} AS STOCK_DISP,
+                    (
+                        SELECT TOP 1 E.PORCENTAJE
+                        FROM APP_PROMOCIONES P
+                        INNER JOIN APP_PROMOCIONES_GRUPOS_ARTICULOS GA ON GA.IDPROMO = P.ID AND GA.TIPO = 'INCLUIR'
+                        INNER JOIN APP_GRUPOS_ARTICULOS G ON G.ID = GA.IDGRUPO AND G.TIPO <> 'CONDICION'
+                        INNER JOIN APP_GRUPOS_ARTICULOS_DETALLE D ON D.IDGRUPO = G.ID AND D.CODARTICULO = A.CODARTICULO
+                        INNER JOIN APP_PROMOCIONES_ESCALAS E ON E.IDPROMOCION = P.ID
+                        WHERE P.ACTIVO = 1 AND ISNULL(P.SLOT_DESCUENTO, 2) = 2
+                          AND CAST(GETDATE() AS DATE) BETWEEN P.FECHAINICIO AND P.FECHAFIN
+                        ORDER BY E.MINIMO
+                    ) AS D2_PORCENTAJE
                 FROM ARTICULOS A WITH(NOLOCK)
                     INNER JOIN ARTICULOSCAMPOSLIBRES ACL WITH(NOLOCK) ON A.CODARTICULO = ACL.CODARTICULO
                     INNER JOIN PRECIOSVENTA PV WITH(NOLOCK) ON PV.CODARTICULO = A.CODARTICULO

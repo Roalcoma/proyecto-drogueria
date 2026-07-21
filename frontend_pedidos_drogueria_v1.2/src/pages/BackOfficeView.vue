@@ -21,7 +21,7 @@
           <strong>{{ m.bit }}</strong> — {{ m.nombre }}
         </v-chip>
         <v-chip size="small" color="success" variant="tonal" prepend-icon="mdi-star">
-          <strong>8191</strong> — Acceso total (todos los módulos)
+          <strong>32767</strong> — Acceso total (todos los módulos)
         </v-chip>
       </div>
     </v-card>
@@ -642,7 +642,9 @@ const MODULOS = [
   { bit: 512, codigo: 'DESCUENTO_LINEA', nombre: 'Descuentos en línea',  icono: 'mdi-percent'       },
   { bit: 1024, codigo: 'AUDITORIA',   nombre: 'Auditoría',                icono: 'mdi-clipboard-text-clock' },
   { bit: 2048, codigo: 'AUTORIZADOR', nombre: 'Puede autorizar pedidos',  icono: 'mdi-check-decagram'       },
-  { bit: 4096, codigo: 'RUTERO',              nombre: 'Rutero de Entrega',        icono: 'mdi-truck-delivery' },
+  { bit: 4096,  codigo: 'RUTERO',       nombre: 'Rutero de Entrega', icono: 'mdi-truck-delivery'  },
+  { bit: 8192,  codigo: 'FTP_PEDIDOS', nombre: 'Pedidos FTP',       icono: 'mdi-folder-network'  },
+  { bit: 16384, codigo: 'FTP_SERVIDOR', nombre: 'Servidor FTP',     icono: 'mdi-server-network'  },
 ];
 
 const headers = [

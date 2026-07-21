@@ -13,6 +13,7 @@ import ReclamosView       from '../pages/ReclamosView.vue';
 import AuditoriaView      from '../pages/AuditoriaView.vue';
 import RuteroView             from '../pages/RuteroView.vue';
 import FtpPedidosView        from '../pages/FtpPedidosView.vue';
+import FtpServidorView       from '../pages/FtpServidorView.vue';
 
 
 const router = createRouter({
@@ -31,7 +32,7 @@ const router = createRouter({
     { path: '/auditoria',        name: 'auditoria',       component: AuditoriaView,      meta: { ruta: '/auditoria' } },
     { path: '/rutero',              name: 'rutero',              component: RuteroView,            meta: { ruta: '/rutero' } },
     { path: '/ftp-pedidos',         name: 'ftp-pedidos',         component: FtpPedidosView,        meta: { ruta: '/ftp-pedidos' } },
-
+    { path: '/ftp-servidor',        name: 'ftp-servidor',        component: FtpServidorView,       meta: { ruta: '/ftp-servidor' } },
   ]
 });
 

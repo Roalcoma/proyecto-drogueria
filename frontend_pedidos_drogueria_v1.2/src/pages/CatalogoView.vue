@@ -364,23 +364,24 @@ const exportarCatalogoSegmentos = async () => {
     const FILA_HEADER  = 6;  // fila de encabezados de columna
     const FILA_SUB     = 7;  // fila con sub-etiquetas (Pedido / Total)
     const FILA_INICIO  = 8;  // primera fila de datos
-    const NCOLS        = 10; // A-J
+    const NCOLS        = 11; // A-K
     const COLOR_HEADER = '1F4E79'; // azul oscuro
     const COLOR_SUB    = '2E75B6'; // azul medio
     const COLOR_TEXTO  = 'FFFFFF';
     const fecha = new Date().toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: useBrandingStore().zonaHoraria });
     const wb = new ExcelJS.Workbook();
 
-    // columnas: REF | DESC | P.ACTIVO | PROVEEDOR | MARCA | SECCION | PRECIO | STOCK | CANTIDAD | SUBTOTAL
-    const COL_PRECIO    = 7;
-    const COL_STOCK     = 8;
-    const COL_CANTIDAD  = 9;
-    const COL_SUBTOTAL  = 10;
+    // columnas: REF | DESC | P.ACTIVO | MARCA | SECCION | %D1 | %D2 | PRECIO | STOCK | CANTIDAD | SUBTOTAL
+    const COL_PRECIO    = 8;
+    const COL_STOCK     = 9;
+    const COL_CANTIDAD  = 10;
+    const COL_SUBTOTAL  = 11;
 
-    const colWidths = [12, 50, 28, 32, 18, 22, 13, 10, 12, 14];
+    const colWidths = [12, 50, 28, 18, 22, 11, 11, 13, 10, 12, 14];
     const colHeaders = (dto: number) => [
-      'REFERENCIA', 'DESCRIPCION', 'PRINCIPIO ACTIVO', 'PROVEEDOR',
+      'REFERENCIA', 'DESCRIPCION', 'PRINCIPIO ACTIVO',
       'MARCA', 'SECCION',
+      '% DESC D1', '% DESC D2',
       dto === 0 ? 'PRECIO ($)' : `PRECIO -${dto}% ($)`,
       'STOCK', 'CANTIDAD', 'SUBTOTAL',
     ];
@@ -406,7 +407,7 @@ const exportarCatalogoSegmentos = async () => {
       const imageId = wb.addImage({ buffer: logoBuffer, extension: 'png' });
       ws.addImage(imageId, { tl: { col: 0, row: 0 }, ext: { width: 200, height: 60 } });
 
-      // --- Fila de título empresa (fila 2, columnas E-J) ---
+      // --- Fila de título empresa (fila 2, columnas E-K) ---
       ws.mergeCells(2, 4, 2, NCOLS);
       const titleCell = ws.getCell(2, 4);
       titleCell.value = 'DROGUERIA INTERCONTINENTAL';
@@ -414,7 +415,7 @@ const exportarCatalogoSegmentos = async () => {
       titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
       ws.getRow(2).height = 22;
 
-      // --- Fila de segmento + fecha (fila 3, columnas E-J) ---
+      // --- Fila de segmento + fecha (fila 3, columnas E-K) ---
       ws.mergeCells(3, 4, 3, NCOLS);
       const subTitleCell = ws.getCell(3, 4);
       subTitleCell.value = dto === 0 ? `Lista de precios — ${fecha}` : `Descuento ${dto}% — ${fecha}`;
@@ -443,7 +444,7 @@ const exportarCatalogoSegmentos = async () => {
       }
 
       // --- AutoFilter en fila de encabezados ---
-      ws.autoFilter = `A${FILA_HEADER}:J${FILA_HEADER}`;
+      ws.autoFilter = `A${FILA_HEADER}:K${FILA_HEADER}`;
 
       // --- Filas de datos ---
       productos.forEach((p, i) => {
@@ -455,9 +456,10 @@ const exportarCatalogoSegmentos = async () => {
           p.REFPROVEEDOR,
           p.DESCRIPCION,
           p.PRINCIPIOACTIVO ?? '',
-          p.PROVEEDOR ?? '',
           p.MARCA ?? '',
           p.SECCION ?? '',
+          dto,
+          p.D2_PORCENTAJE ?? 0,
           precioConDto,
           p.STOCK_DISP ?? 0,
           0,
@@ -466,7 +468,7 @@ const exportarCatalogoSegmentos = async () => {
 
         row.getCell(COL_PRECIO).numFmt   = FORMATO_DOLAR;
         row.getCell(COL_CANTIDAD).numFmt = '#,##0';
-        row.getCell(COL_SUBTOTAL).value  = { formula: `G${rowNum}*I${rowNum}` };
+        row.getCell(COL_SUBTOTAL).value  = { formula: `H${rowNum}*J${rowNum}` };
         row.getCell(COL_SUBTOTAL).numFmt = FORMATO_DOLAR;
 
         // Zebra suave
@@ -509,7 +511,7 @@ const importarArticulosExcel = async (fileOrFiles: File | File[] | null) => {
   reader.onload = async (e: any) => {
     const data = new Uint8Array(e.target.result);
     const workbook = XLSX.read(data, { type: 'array' });
-    const jsonData: any[] = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+    const jsonData: any[] = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { range: 5 });
     const itemsParaCargar = jsonData.filter(row => row['CANTIDAD'] && Number(row['CANTIDAD']) > 0);
 
     if (itemsParaCargar.length === 0) { lanzarAviso("No hay cantidades en el archivo", "warning"); return; }

@@ -1,17 +1,30 @@
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import mssql from 'mssql';
 import bcrypt from 'bcryptjs';
-import { FtpServer } from 'ftp-srv';
+import { FtpSrv } from 'ftp-srv';
 import { connectDb } from '../db/db.conection';
 import { getDbConfig } from './dbconfig.service';
+import { STOCK_DISPONIBLE_SQL } from './products.service';
+
+const getLocalIp = (): string => {
+    for (const ifaces of Object.values(os.networkInterfaces())) {
+        for (const iface of ifaces ?? []) {
+            if (iface.family === 'IPv4' && !iface.internal) return iface.address;
+        }
+    }
+    return '127.0.0.1';
+};
 
 const esquema = process.env.DB_ESQUEMA || 'dbo';
 
 export class FtpService {
-    private static escaneando = false;
-    private static ftpServer: FtpServer | null = null;
+    private static escaneando   = false;
+    private static generando    = false;
+    private static ftpServer: FtpSrv | null = null;
     private static ftpWatcher: fs.FSWatcher | null = null;
+    private static cicloTimer: NodeJS.Timeout | null = null;
 
     static async initTablas(): Promise<void> {
         try {
@@ -44,10 +57,23 @@ export class FtpService {
                         ID             INT IDENTITY(1,1) PRIMARY KEY,
                         USUARIO        NVARCHAR(100) NOT NULL,
                         PASSWORD_HASH  NVARCHAR(255) NOT NULL,
+                        PASSWORD_PLAIN NVARCHAR(100) NULL,
                         COD_CLIENTE    NVARCHAR(50)  NULL,
                         ACTIVO         CHAR(1) NOT NULL DEFAULT 'T',
                         FECHA_CREACION DATETIME NOT NULL DEFAULT GETDATE(),
                         CONSTRAINT UQ_FTP_USUARIO UNIQUE (USUARIO)
+                    );
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('APP_FTP_USUARIOS') AND name = 'PASSWORD_PLAIN')
+                    ALTER TABLE APP_FTP_USUARIOS ADD PASSWORD_PLAIN NVARCHAR(100) NULL;
+
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'APP_FTP_FACTURAS_ENVIADAS')
+                    CREATE TABLE APP_FTP_FACTURAS_ENVIADAS (
+                        ID          INT IDENTITY PRIMARY KEY,
+                        NUMSERIE    NVARCHAR(20) NOT NULL,
+                        NUMFACTURA  INT NOT NULL,
+                        COD_CLIENTE NVARCHAR(50) NOT NULL,
+                        FECHA_ENVIO DATETIME NOT NULL DEFAULT GETDATE(),
+                        CONSTRAINT UQ_FTP_FACTURA UNIQUE (NUMSERIE, NUMFACTURA)
                     );
             `);
             console.log('[FTP] Tablas verificadas/creadas');
@@ -320,7 +346,7 @@ export class FtpService {
     static async getUsuarios(): Promise<any[]> {
         const pool = await connectDb();
         const res = await pool.request().query(
-            `SELECT ID, USUARIO, COD_CLIENTE, ACTIVO, FECHA_CREACION FROM APP_FTP_USUARIOS ORDER BY ID`
+            `SELECT ID, USUARIO, PASSWORD_PLAIN, COD_CLIENTE, ACTIVO, FECHA_CREACION FROM APP_FTP_USUARIOS ORDER BY ID`
         );
         return res.recordset;
     }
@@ -329,10 +355,11 @@ export class FtpService {
         const hash = await bcrypt.hash(password, 10);
         const pool = await connectDb();
         await pool.request()
-            .input('USR',  mssql.NVarChar(100), usuario.trim())
-            .input('HASH', mssql.NVarChar(255), hash)
-            .input('COD',  mssql.NVarChar(50),  codCliente.trim() || null)
-            .query(`INSERT INTO APP_FTP_USUARIOS (USUARIO, PASSWORD_HASH, COD_CLIENTE) VALUES (@USR, @HASH, @COD)`);
+            .input('USR',   mssql.NVarChar(100), usuario.trim())
+            .input('HASH',  mssql.NVarChar(255), hash)
+            .input('PLAIN', mssql.NVarChar(100), password)
+            .input('COD',   mssql.NVarChar(50),  codCliente.trim() || null)
+            .query(`INSERT INTO APP_FTP_USUARIOS (USUARIO, PASSWORD_HASH, PASSWORD_PLAIN, COD_CLIENTE) VALUES (@USR, @HASH, @PLAIN, @COD)`);
     }
 
     static async eliminarUsuario(id: number): Promise<void> {
@@ -353,9 +380,336 @@ export class FtpService {
         const hash = await bcrypt.hash(password, 10);
         const pool = await connectDb();
         await pool.request()
-            .input('ID',   mssql.Int,           id)
-            .input('HASH', mssql.NVarChar(255), hash)
-            .query(`UPDATE APP_FTP_USUARIOS SET PASSWORD_HASH = @HASH WHERE ID = @ID`);
+            .input('ID',    mssql.Int,           id)
+            .input('HASH',  mssql.NVarChar(255), hash)
+            .input('PLAIN', mssql.NVarChar(100), password)
+            .query(`UPDATE APP_FTP_USUARIOS SET PASSWORD_HASH = @HASH, PASSWORD_PLAIN = @PLAIN WHERE ID = @ID`);
+    }
+
+    // ── Estructura de carpetas por cliente ────────────────────────────────────
+
+    static _crearEstructuraCliente(codCliente: string, ftpPath: string): void {
+        const base = path.join(ftpPath, `c${codCliente}`);
+        fs.mkdirSync(path.join(base, 'Facturas'), { recursive: true });
+        fs.mkdirSync(path.join(base, 'Pedidos'),  { recursive: true });
+    }
+
+    // ── Generación de inventario.txt ──────────────────────────────────────────
+
+    static async _generarInventarioCliente(codCliente: string, ftpPath: string): Promise<void> {
+        const { tarifaBaseCatalogo, codAlmacen } = getDbConfig();
+        const clienteNum = parseInt(codCliente.replace(/^c/i, ''), 10);
+        const pool = await connectDb();
+
+        const dtoRes = await pool.request()
+            .input('CLI', mssql.Int, clienteNum)
+            .query(`SELECT ISNULL(TRY_CAST(D1 AS FLOAT), 0) AS D1 FROM CLIENTESCAMPOSLIBRES WHERE CODCLIENTE = @CLI`);
+        const d1Cliente = Number(dtoRes.recordset[0]?.D1 ?? 0);
+
+        const result = await pool.request()
+            .input('TARIFA',  mssql.Int,         tarifaBaseCatalogo)
+            .input('ALMACEN', mssql.VarChar(10), codAlmacen)
+            .input('CLI',     mssql.Int,         clienteNum)
+            .query(`
+                SELECT A.CODARTICULO,
+                    A.REFPROVEEDOR,
+                    ACL.DESCRIPCIONLARGA AS DESCRIPCION,
+                    ISNULL(A.NODTOAPLICABLE, 0) AS NODTO,
+                    (SELECT TOP 1
+                        CONVERT(NVARCHAR(10),
+                            COALESCE(TRY_CONVERT(DATE, AL.GARANTIACOMPRA, 103), TRY_CONVERT(DATE, AL.GARANTIACOMPRA, 23)),
+                            103)
+                     FROM ARTICULOSLIN AL WITH(NOLOCK)
+                     WHERE AL.CODARTICULO = A.CODARTICULO
+                       AND COALESCE(TRY_CONVERT(DATE, AL.GARANTIACOMPRA, 103), TRY_CONVERT(DATE, AL.GARANTIACOMPRA, 23)) >= CAST(GETDATE() AS DATE)
+                     ORDER BY COALESCE(TRY_CONVERT(DATE, AL.GARANTIACOMPRA, 103), TRY_CONVERT(DATE, AL.GARANTIACOMPRA, 23))
+                    ) AS VENCE,
+                    PV.PNETO AS PRECIO,
+                    ISNULL(M.DESCRIPCION, '') AS MARCA,
+                    ${STOCK_DISPONIBLE_SQL} AS STOCK_DISP,
+                    ISNULL((
+                        SELECT TOP 1 E.PORCENTAJE
+                        FROM APP_PROMOCIONES P
+                        INNER JOIN APP_PROMOCIONES_GRUPOS_ARTICULOS GA ON GA.IDPROMO = P.ID AND GA.TIPO = 'INCLUIR'
+                        INNER JOIN APP_GRUPOS_ARTICULOS G  ON G.ID = GA.IDGRUPO AND G.TIPO <> 'CONDICION'
+                        INNER JOIN APP_GRUPOS_ARTICULOS_DETALLE D ON D.IDGRUPO = G.ID AND D.CODARTICULO = A.CODARTICULO
+                        INNER JOIN APP_PROMOCIONES_ESCALAS E ON E.IDPROMOCION = P.ID
+                        WHERE P.ACTIVO = 1 AND ISNULL(P.SLOT_DESCUENTO, 2) = 1
+                          AND CAST(GETDATE() AS DATE) BETWEEN P.FECHAINICIO AND P.FECHAFIN
+                          AND ISNULL(A.NODTOAPLICABLE, 0) = 0
+                          AND (
+                              NOT EXISTS (SELECT 1 FROM APP_PROMOCIONES_GRUPOS_CLIENTES GC WHERE GC.IDPROMO = P.ID)
+                              OR EXISTS (SELECT 1 FROM APP_PROMOCIONES_GRUPOS_CLIENTES GC
+                                         INNER JOIN APP_GRUPOS_CLIENTES_DETALLE GCD ON GCD.IDGRUPO = GC.IDGRUPO
+                                         WHERE GC.IDPROMO = P.ID AND GC.TIPO = 'INCLUIR' AND GCD.CODCLIENTE = @CLI)
+                          )
+                        ORDER BY E.MINIMO
+                    ), 0) AS PROMO1,
+                    ISNULL((
+                        SELECT TOP 1 E.PORCENTAJE
+                        FROM APP_PROMOCIONES P
+                        INNER JOIN APP_PROMOCIONES_GRUPOS_ARTICULOS GA ON GA.IDPROMO = P.ID AND GA.TIPO = 'INCLUIR'
+                        INNER JOIN APP_GRUPOS_ARTICULOS G  ON G.ID = GA.IDGRUPO AND G.TIPO <> 'CONDICION'
+                        INNER JOIN APP_GRUPOS_ARTICULOS_DETALLE D ON D.IDGRUPO = G.ID AND D.CODARTICULO = A.CODARTICULO
+                        INNER JOIN APP_PROMOCIONES_ESCALAS E ON E.IDPROMOCION = P.ID
+                        WHERE P.ACTIVO = 1 AND ISNULL(P.SLOT_DESCUENTO, 2) = 2
+                          AND CAST(GETDATE() AS DATE) BETWEEN P.FECHAINICIO AND P.FECHAFIN
+                          AND ISNULL(A.NODTOAPLICABLE, 0) = 0
+                          AND (
+                              NOT EXISTS (SELECT 1 FROM APP_PROMOCIONES_GRUPOS_CLIENTES GC WHERE GC.IDPROMO = P.ID)
+                              OR EXISTS (SELECT 1 FROM APP_PROMOCIONES_GRUPOS_CLIENTES GC
+                                         INNER JOIN APP_GRUPOS_CLIENTES_DETALLE GCD ON GCD.IDGRUPO = GC.IDGRUPO
+                                         WHERE GC.IDPROMO = P.ID AND GC.TIPO = 'INCLUIR' AND GCD.CODCLIENTE = @CLI)
+                          )
+                        ORDER BY E.MINIMO
+                    ), 0) AS PROMO2
+                FROM ARTICULOS A WITH(NOLOCK)
+                INNER JOIN ARTICULOSCAMPOSLIBRES ACL WITH(NOLOCK) ON ACL.CODARTICULO = A.CODARTICULO
+                INNER JOIN PRECIOSVENTA PV WITH(NOLOCK) ON PV.CODARTICULO = A.CODARTICULO AND PV.IDTARIFAV = @TARIFA
+                LEFT  JOIN MARCA M WITH(NOLOCK) ON M.CODMARCA = A.MARCA
+                LEFT  JOIN SECCIONES S WITH(NOLOCK) ON S.NUMDPTO = A.DPTO AND S.NUMSECCION = A.SECCION
+                WHERE A.TIPOARTICULO = 'A'
+                  AND A.DESCATALOGADO = 'F'
+                  AND A.DPTO = 1
+                  AND UPPER(ISNULL(S.DESCRIPCION, '')) NOT LIKE '%GASTO%'
+                  AND ${STOCK_DISPONIBLE_SQL} > 0
+                ORDER BY ACL.DESCRIPCIONLARGA
+            `);
+
+        const lines: string[] = [];
+        for (const r of result.recordset) {
+            const nodto = r.NODTO === 1;
+            const d1    = nodto ? 0 : d1Cliente;
+            // ponytail: d2 (descuento inventario) - identificar columna origen en BD cuando esté disponible
+            const d2    = 0;
+            const p1    = nodto ? 0 : Number(r.PROMO1);
+            const p2    = nodto ? 0 : Number(r.PROMO2);
+
+            const dtoStr = (d1 || d2 || p1 || p2) ? `${d1}+${d2}+${p1}+${p2}` : '';
+            const precio = Number(r.PRECIO);
+            const precioFinal = precio * (1 - d1/100) * (1 - d2/100) * (1 - p1/100) * (1 - p2/100);
+
+            lines.push([
+                String(r.CODARTICULO).padStart(5, '0'),
+                r.REFPROVEEDOR || '',
+                (r.DESCRIPCION || '').substring(0, 45).replace(/;/g, ','),
+                r.VENCE || '',
+                precio.toFixed(2),
+                dtoStr,
+                precioFinal.toFixed(2),
+                Math.max(0, Math.round(Number(r.STOCK_DISP))),
+                (r.MARCA || '').substring(0, 30),
+            ].join(';'));
+        }
+
+        FtpService._crearEstructuraCliente(codCliente, ftpPath);
+        const dest = path.join(ftpPath, `c${codCliente}`, 'inventario.txt');
+        fs.writeFileSync(dest, lines.join('\r\n'), 'latin1');
+        console.log(`[FTP] inventario.txt → c${codCliente}: ${lines.length} arts`);
+    }
+
+    // ── Generación de facturas TXT ────────────────────────────────────────────
+
+    static async _generarFacturasCliente(codCliente: string, ftpPath: string): Promise<void> {
+        const { tarifaBaseCatalogo } = getDbConfig();
+        const clienteNum = parseInt(codCliente.replace(/^c/i, ''), 10);
+        const pool = await connectDb();
+
+        // Facturas pendientes de envío (no en APP_FTP_FACTURAS_ENVIADAS)
+        const facRes = await pool.request()
+            .input('CLI', mssql.Int, clienteNum)
+            .query(`
+                SELECT FV.NUMSERIE, FV.NUMFACTURA,
+                    CONVERT(NVARCHAR(10), CAST(FV.FECHA AS DATE), 103) AS FECHA,
+                    ISNULL(TRY_CAST(DBO.F_GET_COTIZACION(FV.FECHA, 1) AS DECIMAL(18,2)), 1) AS TASA,
+                    FV.TOTALNETO, FV.TOTALBRUTO, FV.TOTALIMPUESTOS,
+                    ISNULL(CAST(CCAM.SICM AS NVARCHAR(20)), '') AS SICM,
+                    ISNULL(FCAM.NOCONTROL, '') AS NOFISCAL
+                FROM FACTURASVENTA FV WITH(NOLOCK)
+                LEFT JOIN CLIENTESCAMPOSLIBRES CCAM WITH(NOLOCK) ON CCAM.CODCLIENTE = FV.CODCLIENTE
+                LEFT JOIN FACTURASVENTACAMPOSLIBRES FCAM WITH(NOLOCK)
+                    ON FCAM.NUMSERIE COLLATE DATABASE_DEFAULT = FV.NUMSERIE AND FCAM.NUMFACTURA = FV.NUMFACTURA
+                WHERE FV.CODCLIENTE = @CLI
+                  AND FV.NUMSERIE NOT IN ('ZACN','ZAVN','ZACE','ZAVQ')
+                  AND NOT EXISTS (
+                      SELECT 1 FROM APP_FTP_FACTURAS_ENVIADAS EV
+                      WHERE EV.NUMSERIE COLLATE DATABASE_DEFAULT = FV.NUMSERIE AND EV.NUMFACTURA = FV.NUMFACTURA
+                  )
+                ORDER BY FV.NUMFACTURA
+            `);
+
+        if (!facRes.recordset.length) return;
+
+        const facturaDir = path.join(ftpPath, `c${codCliente}`, 'Facturas');
+        fs.mkdirSync(facturaDir, { recursive: true });
+
+        for (const fac of facRes.recordset) {
+            try {
+                const lineasRes = await pool.request()
+                    .input('NS', mssql.NVarChar(20), fac.NUMSERIE)
+                    .input('NF', mssql.Int, fac.NUMFACTURA)
+                    .query(`
+                        SELECT DISTINCT
+                            ART.CODARTICULO,
+                            A.REFPROVEEDOR,
+                            ACL.DESCRIPCIONLARGA AS DESCRIPCION,
+                            VENTA.UNIDADESTOTAL AS CANTIDAD,
+                            VENTA.TOTAL AS TOTAL_LINEA,
+                            ISNULL(LIP.PRECIOBRUTO, PV.PNETO) AS PRECIO_SD,
+                            ISNULL(LIP.PRECIOUNITARIO, VENTA.TOTAL / NULLIF(VENTA.UNIDADESTOTAL,0)) AS PRECIO_CD,
+                            ISNULL(LIP.DESCUENTO1, 0) AS D1,
+                            ISNULL(LIP.DESCUENTO2, 0) AS D2,
+                            ISNULL(LIP.DESCUENTO3, 0) AS D3,
+                            ISNULL(IMP.IVA, 0) AS TASA_IVA,
+                            ISNULL(ALIN.LOTE, '') AS LOTE,
+                            ISNULL(CONVERT(NVARCHAR(10), ALIN.GARANTIACOMPRA, 103), '') AS FECHA_LOTE
+                        FROM ALBVENTACAB AVC WITH(NOLOCK)
+                        INNER JOIN ALBVENTALIN VENTA WITH(NOLOCK)
+                            ON VENTA.NUMSERIE = AVC.NUMSERIE AND VENTA.NUMALBARAN = AVC.NUMALBARAN
+                        INNER JOIN ARTICULOS ART WITH(NOLOCK) ON ART.CODARTICULO = VENTA.CODARTICULO
+                        INNER JOIN ARTICULOSCAMPOSLIBRES ACL WITH(NOLOCK) ON ACL.CODARTICULO = ART.CODARTICULO
+                        INNER JOIN ARTICULOS A WITH(NOLOCK) ON A.CODARTICULO = ART.CODARTICULO
+                        LEFT  JOIN PRECIOSVENTA PV WITH(NOLOCK)
+                            ON PV.CODARTICULO = ART.CODARTICULO AND PV.IDTARIFAV = ${tarifaBaseCatalogo}
+                        LEFT  JOIN PEDVENTACAB PED WITH(NOLOCK)
+                            ON PED.SERIEALBARAN = AVC.NUMSERIE AND PED.NUMEROALBARAN = AVC.NUMALBARAN AND PED.NALBARAN = AVC.N
+                        LEFT  JOIN LINEA_PED LIP WITH(NOLOCK)
+                            ON LIP.ORDERID COLLATE DATABASE_DEFAULT = PED.SUPEDIDO AND LIP.CODARTICULO = ART.CODARTICULO
+                        LEFT  JOIN IMPUESTOS IMP WITH(NOLOCK) ON IMP.TIPOIVA = VENTA.TIPOIMPUESTO
+                        OUTER APPLY (
+                            SELECT TOP 1 AL.CODBARRAS AS LOTE,
+                                COALESCE(TRY_CONVERT(DATE, AL.GARANTIACOMPRA, 103), TRY_CONVERT(DATE, AL.GARANTIACOMPRA, 23)) AS GARANTIACOMPRA
+                            FROM ARTICULOSLIN AL WITH(NOLOCK)
+                            WHERE AL.CODARTICULO = ART.CODARTICULO
+                            ORDER BY COALESCE(TRY_CONVERT(DATE, AL.GARANTIACOMPRA, 103), TRY_CONVERT(DATE, AL.GARANTIACOMPRA, 23)) DESC
+                        ) ALIN
+                        WHERE AVC.NUMSERIEFAC COLLATE DATABASE_DEFAULT = @NS AND AVC.NUMFAC = @NF
+                          AND VENTA.UNIDADESTOTAL <> 0
+                    `);
+
+                if (!lineasRes.recordset.length) continue;
+
+                const numFacPad = String(fac.NUMFACTURA).padStart(8, '0');
+                const noFiscal  = fac.NOFISCAL || '';
+                const txtLines: string[] = [];
+                let totalUnidades = 0;
+
+                for (const l of lineasRes.recordset) {
+                    const cant   = Number(l.CANTIDAD);
+                    const psd    = Number(l.PRECIO_SD);
+                    const pcd    = Number(l.PRECIO_CD);
+                    const iva    = Number(l.TASA_IVA);
+                    const neto   = cant * pcd * (1 + iva / 100);
+                    const dtoStr = [l.D1, l.D2, l.D3].map(Number).join('+');
+
+                    totalUnidades += cant;
+                    txtLines.push([
+                        'R',
+                        numFacPad,
+                        noFiscal,
+                        String(l.CODARTICULO).padStart(5, '0'),
+                        l.REFPROVEEDOR || '',
+                        (l.DESCRIPCION || '').substring(0, 40).replace(/;/g, ','),
+                        cant.toFixed(3),
+                        neto.toFixed(2),
+                        psd.toFixed(2),
+                        dtoStr,
+                        pcd.toFixed(2),
+                        l.LOTE || '',
+                        l.FECHA_LOTE || '',
+                        iva.toFixed(2),
+                    ].join(';'));
+                }
+
+                const totNeto  = Number(fac.TOTALNETO);
+                const totBruto = Number(fac.TOTALBRUTO);
+                const totIva   = Number(fac.TOTALIMPUESTOS);
+                const desLineal = Math.max(0, totBruto - totNeto);
+
+                txtLines.push([
+                    'E',
+                    numFacPad,
+                    noFiscal,
+                    fac.FECHA,
+                    Number(fac.TASA).toFixed(2),
+                    '',
+                    Math.round(totalUnidades),
+                    totNeto.toFixed(2),
+                    (totNeto + totIva).toFixed(2),
+                    desLineal.toFixed(2),
+                    totIva.toFixed(2),
+                    '',
+                    fac.SICM,
+                    totIva.toFixed(2),
+                ].join(';'));
+
+                const dest = path.join(facturaDir, `F${String(fac.NUMFACTURA).padStart(8, '0')}.txt`);
+                fs.writeFileSync(dest, txtLines.join('\r\n'), 'latin1');
+
+                await pool.request()
+                    .input('NS',  mssql.NVarChar(20), fac.NUMSERIE)
+                    .input('NF',  mssql.Int, fac.NUMFACTURA)
+                    .input('CLI', mssql.NVarChar(50), codCliente)
+                    .query(`INSERT INTO APP_FTP_FACTURAS_ENVIADAS (NUMSERIE, NUMFACTURA, COD_CLIENTE) VALUES (@NS, @NF, @CLI)`);
+
+                console.log(`[FTP] factura F${numFacPad}.txt → c${codCliente}`);
+                await FtpService.registrarAuditoria(`F${numFacPad}.txt`, 'FACTURA_ENVIADA', codCliente, numFacPad);
+            } catch (err) {
+                console.error(`[FTP] Error generando factura ${fac.NUMFACTURA}:`, err);
+            }
+        }
+    }
+
+    // ── Ciclo completo (inventario + facturas + pedidos) ─────────────────────
+
+    static async cicloFtp(): Promise<void> {
+        if (FtpService.generando) return;
+        FtpService.generando = true;
+        try {
+            const ftpPath = await FtpService.getConfig();
+            if (!ftpPath || !fs.existsSync(ftpPath)) return;
+
+            const pool = await connectDb();
+            const usrs = await pool.request().query(
+                `SELECT DISTINCT COD_CLIENTE FROM APP_FTP_USUARIOS WHERE ACTIVO = 'T' AND COD_CLIENTE IS NOT NULL`
+            );
+
+            for (const u of usrs.recordset) {
+                const cod = String(u.COD_CLIENTE);
+                try {
+                    await FtpService._generarInventarioCliente(cod, ftpPath);
+                    await FtpService._generarFacturasCliente(cod, ftpPath);
+                } catch (err) {
+                    console.error(`[FTP] Error en ciclo para cliente ${cod}:`, err);
+                }
+            }
+
+            // Después de escribir, leer pedidos nuevos
+            await FtpService._escanearInterno();
+        } finally {
+            FtpService.generando = false;
+        }
+    }
+
+    static async triggerCiclo(): Promise<{ message: string }> {
+        if (FtpService.generando) return { message: 'Ciclo FTP ya en progreso' };
+        FtpService.cicloFtp().catch(console.error);
+        return { message: 'Ciclo FTP iniciado' };
+    }
+
+    private static iniciarCicloFtp(): void {
+        FtpService.detenerCicloFtp();
+        // Ejecutar inmediatamente y luego cada 10 minutos
+        FtpService.cicloFtp().catch(console.error);
+        FtpService.cicloTimer = setInterval(() => FtpService.cicloFtp().catch(console.error), 10 * 60 * 1000);
+        console.log('[FTP] Ciclo automático iniciado (10 min)');
+    }
+
+    private static detenerCicloFtp(): void {
+        if (FtpService.cicloTimer) {
+            clearInterval(FtpService.cicloTimer);
+            FtpService.cicloTimer = null;
+        }
     }
 
     private static async _getUsuarioPorNombre(usuario: string): Promise<any | null> {
@@ -380,18 +734,19 @@ export class FtpService {
         const puerto    = cfg.ftpPuerto;
         const pasivoMin = cfg.ftpPasivoMin;
         const pasivoMax = cfg.ftpPasivoMax;
-        const ipExterna = cfg.ftpIpExterna || '0.0.0.0';
 
-        const server = new FtpServer({
+        const serverOpts: any = {
             url:       `ftp://0.0.0.0:${puerto}`,
             anonymous: false,
-            pasv_url:  ipExterna,
+            pasv_url:  cfg.ftpIpExterna || getLocalIp(),
             pasv_min:  pasivoMin,
             pasv_max:  pasivoMax,
             greeting:  ['Bienvenido - Pedidos Drogueria FTP'],
-        });
+        };
 
-        server.on('login', async ({ username, password }, resolve, reject) => {
+        const server = new FtpSrv(serverOpts);
+
+        server.on('login', async ({ username, password }: any, resolve: any, reject: any) => {
             try {
                 const user = await FtpService._getUsuarioPorNombre(username);
                 if (!user || user.ACTIVO !== 'T') {
@@ -400,10 +755,19 @@ export class FtpService {
                 const valid = await bcrypt.compare(password, user.PASSWORD_HASH);
                 if (!valid) return reject(new Error('Credenciales incorrectas'));
 
-                const ftpPath  = await FtpService.getConfig();
-                const userRoot = path.join(ftpPath, `c${user.COD_CLIENTE}`);
-                fs.mkdirSync(path.join(userRoot, 'Pedidos'), { recursive: true });
-                resolve({ root: userRoot });
+                const ftpPath = await FtpService.getConfig();
+                if (!ftpPath) return reject(new Error('Ruta FTP no configurada en el servidor'));
+
+                if (user.COD_CLIENTE) {
+                    const cod = String(user.COD_CLIENTE);
+                    FtpService._crearEstructuraCliente(cod, ftpPath);
+                    // Regenerar inventario en cada conexión del cliente (datos frescos)
+                    FtpService._generarInventarioCliente(cod, ftpPath).catch(console.error);
+                    FtpService._generarFacturasCliente(cod, ftpPath).catch(console.error);
+                    resolve({ root: path.join(ftpPath, `c${cod}`) });
+                } else {
+                    resolve({ root: ftpPath });
+                }
             } catch (err: any) {
                 reject(err);
             }
@@ -425,6 +789,7 @@ export class FtpService {
                 });
             }
 
+            FtpService.iniciarCicloFtp();
             console.log(`[FTP] Servidor iniciado en puerto ${puerto}`);
             return { ok: true, message: `Servidor FTP iniciado en puerto ${puerto}` };
         } catch (err: any) {
@@ -439,6 +804,7 @@ export class FtpService {
         if (!FtpService.ftpServer) return { ok: false, message: 'El servidor FTP no está en ejecución' };
         try { await FtpService.ftpServer.close(); } catch {}
         FtpService.ftpServer = null;
+        FtpService.detenerCicloFtp();
         if (FtpService.ftpWatcher) {
             FtpService.ftpWatcher.close();
             FtpService.ftpWatcher = null;
