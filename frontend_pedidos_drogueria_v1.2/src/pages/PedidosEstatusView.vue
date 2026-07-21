@@ -151,12 +151,13 @@
         <v-card elevation="2" class="rounded-xl border-0 overflow-hidden">
           <v-data-table-server
             v-model:items-per-page="itemsPerPage"
-            v-model:selected="pedidosSeleccionados"
+            v-model="pedidosSeleccionados"
             :headers="headers"
             :items="pedidos"
             :items-length="totalPedidos"
             :loading="loading"
             show-select
+            return-object
             item-value="ORDERID"
             class="custom-table"
             @update:options="cargarPagina"
