@@ -483,6 +483,7 @@
                   color="indigo" variant="tonal"
                   prepend-icon="mdi-file-pdf-box"
                   :disabled="!sesionPicking.length"
+                  :loading="generandoControlPDF"
                   @click="generarControlRuterosPDF"
                 >Control de Ruteros</v-btn>
                 <v-btn
@@ -1526,7 +1527,31 @@ const imprimirRutero = async (r: any) => {
 };
 
 // ─── PDF ──────────────────────────────────────────────────────────────────────
-const generarControlRuterosPDF = () => {
+const generandoControlPDF = ref(false);
+
+const generarControlRuterosPDF = async () => {
+  if (!sesionPicking.value.length) return;
+  generandoControlPDF.value = true;
+
+  let filas: { nombre: string; facturas: number; bultos: number }[];
+  try {
+    filas = await Promise.all(
+      sesionPicking.value.map(async (r: any) => {
+        const res   = await axios.get(`${API}/rutero/ruteros/${r.ID}/picking`);
+        const lineas: any[] = res.data.data?.lineas ?? [];
+        return {
+          nombre:   r.NOMBRE_RUTA ?? r.CODRUTA ?? '',
+          facturas: lineas.filter((l: any) => l.escaneadas >= l.ncajas).length,
+          bultos:   Number(res.data.data?.cajasEscaneadas ?? 0),
+        };
+      })
+    );
+  } catch {
+    notify('Error al cargar datos de picking', 'error');
+    generandoControlPDF.value = false;
+    return;
+  }
+
   const brandingStore = useBrandingStore();
   const fecha = new Date().toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: brandingStore.zonaHoraria });
   const doc   = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
@@ -1564,12 +1589,10 @@ const generarControlRuterosPDF = () => {
     let totalFacturas = 0;
     let totalBultos   = 0;
 
-    for (const r of sesionPicking.value) {
-      const f = Number(r.TOTAL_FACTURAS ?? 0);
-      const b = Number(r.TOTAL_CAJAS    ?? 0);
-      totalFacturas += f;
-      totalBultos   += b;
-      body.push([r.NOMBRE_RUTA ?? r.CODRUTA ?? '', f, b]);
+    for (const f of filas) {
+      totalFacturas += f.facturas;
+      totalBultos   += f.bultos;
+      body.push([f.nombre, f.facturas, f.bultos]);
     }
 
     body.push([
@@ -1594,6 +1617,7 @@ const generarControlRuterosPDF = () => {
 
     doc.save(`control_ruteros_${fecha.replace(/\//g, '-')}.pdf`);
     notify('Control de Ruteros generado', 'success');
+    generandoControlPDF.value = false;
   };
 
   if (logo.complete && logo.naturalWidth > 0) {
