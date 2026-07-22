@@ -28,4 +28,7 @@ ftpRouter.patch('/usuarios/:id/password',     adminMiddleware, FtpController.cam
 // Ciclo manual (inventario + facturas + pedidos)
 ftpRouter.post('/ciclo', adminMiddleware, FtpController.ejecutarCiclo);
 
+// Carga masiva de usuarios desde Excel
+ftpRouter.post('/usuarios/importar', adminMiddleware, FtpController.importarUsuarios);
+
 export default ftpRouter;

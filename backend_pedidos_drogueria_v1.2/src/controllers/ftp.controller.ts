@@ -113,4 +113,14 @@ export class FtpController {
         const result = await FtpService.triggerCiclo();
         res.json({ success: true, message: result.message });
     }
+
+    static async importarUsuarios(req: Request, res: Response): Promise<void> {
+        const { filas } = req.body;
+        if (!Array.isArray(filas) || filas.length === 0) {
+            res.status(400).json({ success: false, message: 'Sin filas para importar' });
+            return;
+        }
+        const resultados = await FtpService.importarUsuarios(filas);
+        res.json({ success: true, resultados });
+    }
 }

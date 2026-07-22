@@ -375,6 +375,22 @@ export class FtpService {
             .query(`INSERT INTO APP_FTP_USUARIOS (USUARIO, PASSWORD_HASH, PASSWORD_PLAIN, COD_CLIENTE) VALUES (@USR, @HASH, @PLAIN, @COD)`);
     }
 
+    static async importarUsuarios(filas: { codCliente: string; usuario: string; password: string }[]): Promise<{ fila: number; usuario: string; ok: boolean; error?: string }[]> {
+        const resultados: { fila: number; usuario: string; ok: boolean; error?: string }[] = [];
+        for (let i = 0; i < filas.length; i++) {
+            const { codCliente, usuario, password } = filas[i];
+            try {
+                if (!usuario?.trim() || !password?.trim()) throw new Error('Usuario y clave son requeridos');
+                await FtpService.crearUsuario(usuario.trim(), password.trim(), codCliente?.trim() ?? '');
+                resultados.push({ fila: i + 2, usuario: usuario.trim(), ok: true });
+            } catch (err: any) {
+                const isDup = String(err.message ?? '').includes('UQ_FTP_USUARIO') || String(err.message ?? '').includes('Violation of UNIQUE');
+                resultados.push({ fila: i + 2, usuario: usuario?.trim() ?? '', ok: false, error: isDup ? 'El usuario ya existe' : (err.message ?? 'Error desconocido') });
+            }
+        }
+        return resultados;
+    }
+
     static async eliminarUsuario(id: number): Promise<void> {
         const pool = await connectDb();
         await pool.request()

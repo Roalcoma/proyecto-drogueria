@@ -117,6 +117,14 @@
           Usuarios FTP
         </div>
         <v-spacer />
+        <v-btn variant="tonal" color="teal-darken-1" prepend-icon="mdi-file-excel-outline" class="mr-2" @click="descargarPlantilla">
+          Plantilla
+        </v-btn>
+        <v-btn variant="tonal" color="green-darken-2" prepend-icon="mdi-file-import-outline" class="mr-2"
+          :loading="importandoExcel" @click="seleccionarExcel">
+          Importar Excel
+        </v-btn>
+        <input ref="inputImportRef" type="file" accept=".xlsx,.xls" style="display:none" @change="importarExcel" />
         <v-btn color="primary" variant="tonal" prepend-icon="mdi-account-plus" @click="abrirDialogNuevoUsuario">
           Nuevo usuario
         </v-btn>
@@ -215,12 +223,58 @@
       </v-card>
     </v-dialog>
 
+    <!-- Dialog: Resultados de importación -->
+    <v-dialog v-model="dialogResultados" max-width="560" scrollable>
+      <v-card rounded="xl">
+        <v-card-title class="pa-5 pb-2 d-flex align-center">
+          <v-icon start color="green-darken-2">mdi-file-import-outline</v-icon>
+          Resultado de importación
+          <v-spacer />
+          <v-chip size="small" color="success" variant="tonal" class="mr-1">
+            {{ resultadosImport.filter(r => r.ok).length }} ok
+          </v-chip>
+          <v-chip size="small" color="error" variant="tonal">
+            {{ resultadosImport.filter(r => !r.ok).length }} error
+          </v-chip>
+        </v-card-title>
+        <v-card-text class="pa-4">
+          <v-table density="compact">
+            <thead>
+              <tr>
+                <th>Fila</th><th>Usuario</th><th>Resultado</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="r in resultadosImport" :key="r.fila">
+                <td class="text-caption">{{ r.fila }}</td>
+                <td>{{ r.usuario }}</td>
+                <td>
+                  <v-chip v-if="r.ok" size="x-small" color="success" variant="flat">Creado</v-chip>
+                  <v-tooltip v-else location="top" :text="r.error">
+                    <template #activator="{ props }">
+                      <v-chip v-bind="props" size="x-small" color="error" variant="flat">Error</v-chip>
+                    </template>
+                  </v-tooltip>
+                </td>
+              </tr>
+            </tbody>
+          </v-table>
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="flat" color="primary" @click="dialogResultados = false">Cerrar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-snackbar v-model="snack.show" :color="snack.color" rounded="pill">{{ snack.text }}</v-snackbar>
   </v-container>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import axios from 'axios';
 import { useBrandingStore } from '../stores/useBrandingStore';
 
@@ -379,6 +433,61 @@ const eliminarUsuario = async () => {
     await cargarUsuarios();
   } catch { mostrarSnack('Error al eliminar usuario', 'error'); }
   finally { eliminandoUsuario.value = false; }
+};
+
+// ── Importación masiva por Excel ──────────────────────────────────────────────
+
+const inputImportRef    = ref<HTMLInputElement | null>(null);
+const importandoExcel   = ref(false);
+const dialogResultados  = ref(false);
+const resultadosImport  = ref<{ fila: number; usuario: string; ok: boolean; error?: string }[]>([]);
+
+const seleccionarExcel = () => inputImportRef.value?.click();
+
+const descargarPlantilla = async () => {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Usuarios FTP');
+  ws.columns = [
+    { header: 'CODCLIENTE', key: 'CODCLIENTE', width: 15 },
+    { header: 'USUARIO',    key: 'USUARIO',    width: 22 },
+    { header: 'CLAVE',      key: 'CLAVE',      width: 22 },
+  ];
+  const hdr = ws.getRow(1);
+  hdr.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  hdr.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF164E63' } };
+  ws.addRow({ CODCLIENTE: '1234', USUARIO: 'cliente1234', CLAVE: 'clave123' });
+  const buf = await wb.xlsx.writeBuffer();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  a.download = 'plantilla_usuarios_ftp.xlsx';
+  a.click();
+};
+
+const importarExcel = async (e: Event) => {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  importandoExcel.value = true;
+  try {
+    const buf = await file.arrayBuffer();
+    const wb  = XLSX.read(buf, { type: 'array' });
+    const rows: any[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+    if (!rows.length) { mostrarSnack('El archivo no tiene datos', 'warning'); return; }
+    const filas = rows.map((r: any) => ({
+      codCliente: String(r.CODCLIENTE ?? '').trim(),
+      usuario:    String(r.USUARIO    ?? '').trim(),
+      password:   String(r.CLAVE      ?? '').trim(),
+    })).filter(f => f.usuario);
+    if (!filas.length) { mostrarSnack('No se encontraron filas válidas (verifica encabezados: CODCLIENTE, USUARIO, CLAVE)', 'warning'); return; }
+    const res = await axios.post(`${API}/usuarios/importar`, { filas });
+    resultadosImport.value = res.data.resultados;
+    dialogResultados.value = true;
+    await cargarUsuarios();
+  } catch (err: any) {
+    mostrarSnack(err?.response?.data?.message ?? 'Error al importar', 'error');
+  } finally {
+    importandoExcel.value = false;
+    if (inputImportRef.value) inputImportRef.value.value = '';
+  }
 };
 
 onMounted(async () => {
