@@ -162,12 +162,40 @@
         <v-card-title class="pa-4 bg-primary text-white">{{ modalPromo.id ? 'Editar' : 'Nueva' }} Promoción</v-card-title>
         <v-card-text class="pa-4">
           <v-text-field v-model="modalPromo.nombre" label="Nombre" variant="outlined" density="comfortable" class="mb-3" />
-          <v-select v-model="modalPromo.idsGruposArticulosIncluir" :items="todosLosGrupos" item-title="NOMBRE" item-value="ID"
-            label="Grupos de artículos a incluir" variant="outlined" density="comfortable" class="mb-2"
-            multiple chips closable-chips hint="Artículos de estos grupos participan en la promoción" persistent-hint />
-          <v-select v-model="modalPromo.idsGruposArticulosExcluir" :items="todosLosGrupos" item-title="NOMBRE" item-value="ID"
-            label="Grupos de artículos a excluir (opcional)" variant="outlined" density="comfortable" class="mb-3"
-            multiple chips closable-chips clearable hint="Artículos de estos grupos quedan fuera aunque estén en los incluidos" persistent-hint />
+
+          <div class="text-caption text-medium-emphasis mb-1">Criterio de artículos</div>
+          <v-btn-toggle v-model="modalPromo.criterioTipo" color="primary" variant="outlined" divided mandatory class="mb-4">
+            <v-btn value="ARTICULOS">Por grupos</v-btn>
+            <v-btn value="PROVEEDOR_MARCA">Por proveedor / marca</v-btn>
+          </v-btn-toggle>
+
+          <!-- grupos de artículos — solo para ARTICULOS -->
+          <template v-if="modalPromo.criterioTipo === 'ARTICULOS'">
+            <v-select v-model="modalPromo.idsGruposArticulosIncluir" :items="todosLosGrupos" item-title="NOMBRE" item-value="ID"
+              label="Grupos de artículos a incluir" variant="outlined" density="comfortable" class="mb-2"
+              multiple chips closable-chips hint="Artículos de estos grupos participan en la promoción" persistent-hint />
+            <v-select v-model="modalPromo.idsGruposArticulosExcluir" :items="todosLosGrupos" item-title="NOMBRE" item-value="ID"
+              label="Grupos de artículos a excluir (opcional)" variant="outlined" density="comfortable" class="mb-3"
+              multiple chips closable-chips clearable hint="Artículos de estos grupos quedan fuera aunque estén en los incluidos" persistent-hint />
+          </template>
+
+          <!-- proveedores y marcas — solo para PROVEEDOR_MARCA -->
+          <template v-else>
+            <v-autocomplete v-model="modalPromo.proveedores" :items="todosLosProveedores"
+              item-title="NOMPROVEEDOR" item-value="CODPROVEEDOR"
+              label="Proveedores" variant="outlined" density="comfortable" class="mb-2"
+              multiple chips closable-chips clearable
+              hint="Todos los artículos de estos proveedores suman para la escala" persistent-hint />
+            <v-autocomplete v-model="modalPromo.marcas" :items="todosLasMarcas"
+              item-title="NOMMARCA" item-value="CODMARCA"
+              label="Marcas" variant="outlined" density="comfortable" class="mb-3"
+              multiple chips closable-chips clearable
+              hint="Todos los artículos de estas marcas suman para la escala" persistent-hint />
+            <v-alert type="info" variant="tonal" density="compact" class="mb-3">
+              Esta promoción siempre aplica en D3 (tercer descuento).
+            </v-alert>
+          </template>
+
           <v-row dense>
             <v-col cols="6">
               <v-select v-model="modalPromo.base" :items="['UNIDADES', 'MONTO']" label="Base de la escala" variant="outlined" density="comfortable" />
@@ -188,7 +216,7 @@
             <v-col cols="6"><v-text-field v-model="modalPromo.fechaInicio" type="date" label="Fecha inicio" variant="outlined" density="comfortable" /></v-col>
             <v-col cols="6"><v-text-field v-model="modalPromo.fechaFin" type="date" label="Fecha fin" variant="outlined" density="comfortable" /></v-col>
           </v-row>
-          <v-select v-model="modalPromo.slotDescuento" :items="opcionesSlot" item-title="texto" item-value="valor"
+          <v-select v-if="modalPromo.criterioTipo === 'ARTICULOS'" v-model="modalPromo.slotDescuento" :items="opcionesSlot" item-title="texto" item-value="valor"
             label="Posición del descuento" variant="outlined" density="comfortable" class="mb-3"
             hint="Columna de descuento que usará esta promoción en el pedido" persistent-hint />
 
@@ -273,30 +301,38 @@ const toggleActivo = async (item: any, activo: boolean) => {
   } catch { lanzarAviso('Error al actualizar estado', 'error'); }
 };
 
-const modalPromo = ref<any>({ mostrar: false, id: null, nombre: '', idsGruposArticulosIncluir: [], idsGruposArticulosExcluir: [], base: 'UNIDADES', alcanceCliente: 'TODOS', idsGruposClientesIncluir: [], idsGruposClientesExcluir: [], fechaInicio: '', fechaFin: '', escalas: [], slotDescuento: 2 });
+const emptyPromo = () => ({ mostrar: true, id: null, nombre: '', criterioTipo: 'ARTICULOS', idsGruposArticulosIncluir: [], idsGruposArticulosExcluir: [], proveedores: [], marcas: [], base: 'UNIDADES', alcanceCliente: 'TODOS', idsGruposClientesIncluir: [], idsGruposClientesExcluir: [], fechaInicio: '', fechaFin: '', escalas: [], slotDescuento: 2 });
+const modalPromo = ref<any>({ ...emptyPromo(), mostrar: false });
 const guardandoPromo = ref(false);
 const todosLosGrupos = ref<any[]>([]);
 const todosLosGruposClientes = ref<any[]>([]);
+const todosLosProveedores = ref<any[]>([]);
+const todosLasMarcas = ref<any[]>([]);
 
 const cargarSelectsGrupos = async () => {
-  const [resArt, resCli] = await Promise.all([
+  const [resArt, resCli, resProv, resMarca] = await Promise.all([
     axios.get(`${API}/promociones/grupos-articulos`, { params: { limit: 200 } }),
     axios.get(`${API}/promociones/grupos-clientes`, { params: { limit: 200 } }),
+    axios.get(`${API}/promociones/proveedores`),
+    axios.get(`${API}/promociones/marcas`),
   ]);
   if (resArt.data.success) todosLosGrupos.value = resArt.data.data;
   if (resCli.data.success) todosLosGruposClientes.value = resCli.data.data;
+  if (resProv.data.success) todosLosProveedores.value = resProv.data.data;
+  if (resMarca.data.success) todosLasMarcas.value = resMarca.data.data;
 };
 
-const abrirNuevaPromo = () => {
-  modalPromo.value = { mostrar: true, id: null, nombre: '', idsGruposArticulosIncluir: [], idsGruposArticulosExcluir: [], base: 'UNIDADES', alcanceCliente: 'TODOS', idsGruposClientesIncluir: [], idsGruposClientesExcluir: [], fechaInicio: '', fechaFin: '', escalas: [], slotDescuento: 2 };
-};
+const abrirNuevaPromo = () => { modalPromo.value = emptyPromo(); };
 const abrirEditarPromo = (item: any) => {
   const grpArt = (item.gruposArticulos ?? []);
   const grpCli = (item.gruposClientes ?? []);
   modalPromo.value = {
     mostrar: true, id: item.ID, nombre: item.NOMBRE,
+    criterioTipo: item.CRITERIO_TIPO ?? 'ARTICULOS',
     idsGruposArticulosIncluir: grpArt.filter((g: any) => g.TIPO === 'INCLUIR').map((g: any) => g.ID),
     idsGruposArticulosExcluir: grpArt.filter((g: any) => g.TIPO === 'EXCLUIR').map((g: any) => g.ID),
+    proveedores: (item.proveedores ?? []).map((p: any) => p.CODPROVEEDOR),
+    marcas: (item.marcas ?? []).map((m: any) => m.CODMARCA),
     base: item.BASE, alcanceCliente: item.ALCANCE_CLIENTE,
     idsGruposClientesIncluir: grpCli.filter((g: any) => g.TIPO === 'INCLUIR').map((g: any) => g.ID),
     idsGruposClientesExcluir: grpCli.filter((g: any) => g.TIPO === 'EXCLUIR').map((g: any) => g.ID),
@@ -308,8 +344,12 @@ const abrirEditarPromo = (item: any) => {
 const agregarEscala = () => modalPromo.value.escalas.push({ minimo: 0, maximo: null, porcentaje: 0 });
 
 const guardarPromo = async () => {
-  if (!modalPromo.value.nombre || modalPromo.value.idsGruposArticulosIncluir.length === 0 || !modalPromo.value.fechaInicio || !modalPromo.value.fechaFin) {
-    lanzarAviso('Completa nombre, al menos un grupo de artículos a incluir y fechas', 'warning'); return;
+  const esProvMarca = modalPromo.value.criterioTipo === 'PROVEEDOR_MARCA';
+  const articulosOk = esProvMarca
+    ? (modalPromo.value.proveedores.length > 0 || modalPromo.value.marcas.length > 0)
+    : modalPromo.value.idsGruposArticulosIncluir.length > 0;
+  if (!modalPromo.value.nombre || !articulosOk || !modalPromo.value.fechaInicio || !modalPromo.value.fechaFin) {
+    lanzarAviso(esProvMarca ? 'Completa nombre, al menos un proveedor o marca, y fechas' : 'Completa nombre, al menos un grupo de artículos a incluir y fechas', 'warning'); return;
   }
   guardandoPromo.value = true;
   try {
@@ -323,12 +363,15 @@ const guardarPromo = async () => {
     ];
     const payload = {
       nombre: modalPromo.value.nombre,
+      criterioTipo: modalPromo.value.criterioTipo,
       gruposArticulos,
       gruposClientes,
+      proveedores: esProvMarca ? modalPromo.value.proveedores : [],
+      marcas: esProvMarca ? modalPromo.value.marcas : [],
       base: modalPromo.value.base,
       alcanceCliente: modalPromo.value.alcanceCliente,
       fechaInicio: modalPromo.value.fechaInicio, fechaFin: modalPromo.value.fechaFin, escalas: modalPromo.value.escalas,
-      slotDescuento: modalPromo.value.slotDescuento ?? 2,
+      slotDescuento: esProvMarca ? 3 : (modalPromo.value.slotDescuento ?? 2),
     };
     if (modalPromo.value.id) await axios.put(`${API}/promociones/${modalPromo.value.id}`, payload);
     else await axios.post(`${API}/promociones`, payload);

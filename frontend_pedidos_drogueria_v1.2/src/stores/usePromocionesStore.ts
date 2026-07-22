@@ -10,6 +10,7 @@ export interface PromocionVigente {
     nombre: string;
     base: 'UNIDADES' | 'MONTO';
     alcanceCliente: 'TODOS' | 'INCLUIR_GRUPO' | 'EXCLUIR_GRUPO';
+    criterioTipo: 'ARTICULOS' | 'PROVEEDOR_MARCA';
     codigosArticulo: number[];
     codigosCliente: number[];
     codigosClienteExcluir: number[];
@@ -61,29 +62,47 @@ export const usePromocionesStore = defineStore('promociones', () => {
         for (const promo of vigentes.value) {
             if (!clienteCalifica(promo, cliente)) continue;
             const slot = promo.slotDescuento ?? 2;
-            if (slot !== 2 && slot !== 3) continue; // solo D2 y D3 son válidos para promociones
+            if (slot !== 2 && slot !== 3) continue;
 
             const itemsDelGrupo = articulos.filter(a => promo.codigosArticulo.includes(Number(a.CODARTICULO)));
             if (itemsDelGrupo.length === 0) continue;
 
-            let promoRegistrada = false;
-            for (const item of itemsDelGrupo) {
-                const base = promo.base === 'UNIDADES'
-                    ? item.cantidad
-                    : precioBase(item) * item.cantidad;
+            if (promo.criterioTipo === 'PROVEEDOR_MARCA') {
+                // Escala calculada sobre el TOTAL agregado de todos los artículos del grupo
+                const baseTotal = promo.base === 'UNIDADES'
+                    ? itemsDelGrupo.reduce((s, a) => s + a.cantidad, 0)
+                    : itemsDelGrupo.reduce((s, a) => s + precioBase(a) * a.cantidad, 0);
 
-                const tramo = promo.escalas.find(e => base >= e.minimo && (e.maximo === null || base <= e.maximo));
+                const tramo = promo.escalas.find(e => baseTotal >= e.minimo && (e.maximo === null || baseTotal <= e.maximo));
                 if (!tramo || tramo.porcentaje <= 0) continue;
 
-                const artSlots = slotsPorArticulo.get(item.CODARTICULO) ?? new Map<number, number>();
-                // First promo targeting this slot wins
-                if (!artSlots.has(slot)) {
-                    artSlots.set(slot, tramo.porcentaje);
-                    slotsPorArticulo.set(item.CODARTICULO, artSlots);
+                for (const item of itemsDelGrupo) {
+                    const artSlots = slotsPorArticulo.get(item.CODARTICULO) ?? new Map<number, number>();
+                    if (!artSlots.has(slot)) {
+                        artSlots.set(slot, tramo.porcentaje);
+                        slotsPorArticulo.set(item.CODARTICULO, artSlots);
+                    }
                 }
-                if (!promoRegistrada) {
-                    aplicadas.push({ idPromocion: promo.id, nombre: promo.nombre, porcentaje: tramo.porcentaje, base });
-                    promoRegistrada = true;
+                aplicadas.push({ idPromocion: promo.id, nombre: promo.nombre, porcentaje: tramo.porcentaje, base: baseTotal });
+            } else {
+                let promoRegistrada = false;
+                for (const item of itemsDelGrupo) {
+                    const base = promo.base === 'UNIDADES'
+                        ? item.cantidad
+                        : precioBase(item) * item.cantidad;
+
+                    const tramo = promo.escalas.find(e => base >= e.minimo && (e.maximo === null || base <= e.maximo));
+                    if (!tramo || tramo.porcentaje <= 0) continue;
+
+                    const artSlots = slotsPorArticulo.get(item.CODARTICULO) ?? new Map<number, number>();
+                    if (!artSlots.has(slot)) {
+                        artSlots.set(slot, tramo.porcentaje);
+                        slotsPorArticulo.set(item.CODARTICULO, artSlots);
+                    }
+                    if (!promoRegistrada) {
+                        aplicadas.push({ idPromocion: promo.id, nombre: promo.nombre, porcentaje: tramo.porcentaje, base });
+                        promoRegistrada = true;
+                    }
                 }
             }
         }

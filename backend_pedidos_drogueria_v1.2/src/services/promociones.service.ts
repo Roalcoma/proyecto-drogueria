@@ -245,6 +245,25 @@ export class PromocionesService {
                     TIPO VARCHAR(10) NOT NULL CHECK (TIPO IN ('INCLUIR','EXCLUIR')),
                     CONSTRAINT UQ_PROMO_GRP_CLI UNIQUE(IDPROMO, IDGRUPO, TIPO)
                 );
+
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='APP_PROMOCIONES' AND COLUMN_NAME='CRITERIO_TIPO')
+                    ALTER TABLE APP_PROMOCIONES ADD CRITERIO_TIPO VARCHAR(20) NOT NULL DEFAULT 'ARTICULOS';
+
+                IF NOT EXISTS (SELECT 1 FROM sysobjects WHERE name='APP_PROMOCIONES_PROVEEDORES' AND xtype='U')
+                CREATE TABLE APP_PROMOCIONES_PROVEEDORES (
+                    ID INT IDENTITY PRIMARY KEY,
+                    IDPROMO INT NOT NULL REFERENCES APP_PROMOCIONES(ID),
+                    CODPROVEEDOR INT NOT NULL,
+                    CONSTRAINT UQ_PROMO_PROV UNIQUE(IDPROMO, CODPROVEEDOR)
+                );
+
+                IF NOT EXISTS (SELECT 1 FROM sysobjects WHERE name='APP_PROMOCIONES_MARCAS' AND xtype='U')
+                CREATE TABLE APP_PROMOCIONES_MARCAS (
+                    ID INT IDENTITY PRIMARY KEY,
+                    IDPROMO INT NOT NULL REFERENCES APP_PROMOCIONES(ID),
+                    CODMARCA INT NOT NULL,
+                    CONSTRAINT UQ_PROMO_MARCA UNIQUE(IDPROMO, CODMARCA)
+                );
             `);
 
             // Migrar datos existentes de columnas únicas a junction tables (idempotente)
@@ -277,6 +296,41 @@ export class PromocionesService {
         } catch (err) {
             console.error('Advertencia en PromocionesService.initTablas:', err);
         }
+    }
+
+    // ---------- PROVEEDORES Y MARCAS ----------
+
+    static async getProveedores(search?: string) {
+        const pool = await connectDb();
+        const filtro = search ? `%${search.toUpperCase()}%` : '%';
+        const result = await pool.request()
+            .input('FILTRO', mssql.NVarChar, filtro)
+            .query(`
+                SELECT DISTINCT P.CODPROVEEDOR, P.NOMPROVEEDOR
+                FROM PROVEEDORES P
+                INNER JOIN ARTICULOSCAMPOSLIBRES ARCL ON ARCL.CODPROVEEDORICG = P.CODPROVEEDOR
+                INNER JOIN ARTICULOS ART ON ART.CODARTICULO = ARCL.CODARTICULO
+                WHERE ART.TIPOARTICULO = 'A' AND ART.DESCATALOGADO = 'F'
+                  AND (UPPER(P.NOMPROVEEDOR) LIKE @FILTRO OR CAST(P.CODPROVEEDOR AS VARCHAR) LIKE @FILTRO)
+                ORDER BY P.NOMPROVEEDOR
+            `);
+        return result.recordset;
+    }
+
+    static async getMarcas(search?: string) {
+        const pool = await connectDb();
+        const filtro = search ? `%${search.toUpperCase()}%` : '%';
+        const result = await pool.request()
+            .input('FILTRO', mssql.NVarChar, filtro)
+            .query(`
+                SELECT DISTINCT M.CODMARCA, M.DESCRIPCION AS NOMMARCA
+                FROM MARCA M
+                INNER JOIN ARTICULOS ART ON ART.MARCA = M.CODMARCA
+                WHERE ART.TIPOARTICULO = 'A' AND ART.DESCATALOGADO = 'F'
+                  AND (UPPER(M.DESCRIPCION) LIKE @FILTRO OR CAST(M.CODMARCA AS VARCHAR) LIKE @FILTRO)
+                ORDER BY M.DESCRIPCION
+            `);
+        return result.recordset;
     }
 
     // ---------- CAMPOS DISPONIBLES PARA CONDICIONES ----------
@@ -807,7 +861,8 @@ export class PromocionesService {
             .input('OFFSET', mssql.Int, offset)
             .input('LIMIT', mssql.Int, safeLimit)
             .query(`
-                SELECT P.ID, P.NOMBRE, P.BASE, P.ALCANCE_CLIENTE, P.FECHAINICIO, P.FECHAFIN, P.ACTIVO, P.SLOT_DESCUENTO
+                SELECT P.ID, P.NOMBRE, P.BASE, P.ALCANCE_CLIENTE, P.FECHAINICIO, P.FECHAFIN, P.ACTIVO, P.SLOT_DESCUENTO,
+                       ISNULL(P.CRITERIO_TIPO, 'ARTICULOS') AS CRITERIO_TIPO
                 FROM APP_PROMOCIONES P
                 WHERE P.NOMBRE LIKE @FILTRO
                 ORDER BY P.FECHACREACION DESC
@@ -821,10 +876,12 @@ export class PromocionesService {
         if (ids.length === 0) return { data: [], total: 0 };
 
         const idList = ids.join(',');
-        const [escResult, grpArtResult, grpCliResult] = await Promise.all([
+        const [escResult, grpArtResult, grpCliResult, provResult, marcaResult] = await Promise.all([
             pool.request().query(`SELECT IDPROMOCION, MINIMO, MAXIMO, PORCENTAJE FROM APP_PROMOCIONES_ESCALAS WHERE IDPROMOCION IN (${idList}) ORDER BY MINIMO`),
             pool.request().query(`SELECT PGA.IDPROMO, PGA.TIPO, GA.ID, GA.NOMBRE FROM APP_PROMOCIONES_GRUPOS_ARTICULOS PGA JOIN APP_GRUPOS_ARTICULOS GA ON GA.ID = PGA.IDGRUPO WHERE PGA.IDPROMO IN (${idList})`),
             pool.request().query(`SELECT PGC.IDPROMO, PGC.TIPO, GC.ID, GC.NOMBRE FROM APP_PROMOCIONES_GRUPOS_CLIENTES PGC JOIN APP_GRUPOS_CLIENTES GC ON GC.ID = PGC.IDGRUPO WHERE PGC.IDPROMO IN (${idList})`),
+            pool.request().query(`SELECT PP.IDPROMO, PP.CODPROVEEDOR, P.NOMPROVEEDOR FROM APP_PROMOCIONES_PROVEEDORES PP JOIN PROVEEDORES P ON P.CODPROVEEDOR = PP.CODPROVEEDOR WHERE PP.IDPROMO IN (${idList})`),
+            pool.request().query(`SELECT PM.IDPROMO, PM.CODMARCA, M.DESCRIPCION AS NOMMARCA FROM APP_PROMOCIONES_MARCAS PM JOIN MARCA M ON M.CODMARCA = PM.CODMARCA WHERE PM.IDPROMO IN (${idList})`),
         ]);
 
         const escalas: Record<number, any[]> = {};
@@ -833,25 +890,36 @@ export class PromocionesService {
         grpArtResult.recordset.forEach((r: any) => { (grpArt[r.IDPROMO] ??= []).push({ ID: r.ID, NOMBRE: r.NOMBRE, TIPO: r.TIPO }); });
         const grpCli: Record<number, any[]> = {};
         grpCliResult.recordset.forEach((r: any) => { (grpCli[r.IDPROMO] ??= []).push({ ID: r.ID, NOMBRE: r.NOMBRE, TIPO: r.TIPO }); });
+        const provPorPromo: Record<number, any[]> = {};
+        provResult.recordset.forEach((r: any) => { (provPorPromo[r.IDPROMO] ??= []).push({ CODPROVEEDOR: r.CODPROVEEDOR, NOMPROVEEDOR: r.NOMPROVEEDOR }); });
+        const marcaPorPromo: Record<number, any[]> = {};
+        marcaResult.recordset.forEach((r: any) => { (marcaPorPromo[r.IDPROMO] ??= []).push({ CODMARCA: r.CODMARCA, NOMMARCA: r.NOMMARCA }); });
 
         const data = result.recordset.map((r: any) => ({
             ...r,
             gruposArticulos: grpArt[r.ID] ?? [],
             gruposClientes: grpCli[r.ID] ?? [],
             escalas: escalas[r.ID] ?? [],
+            proveedores: provPorPromo[r.ID] ?? [],
+            marcas: marcaPorPromo[r.ID] ?? [],
         }));
         return { data, total: countResult.recordset[0].TOTAL };
     }
 
     static async crearPromocion(promo: {
         nombre: string;
+        criterioTipo?: 'ARTICULOS' | 'PROVEEDOR_MARCA';
         gruposArticulos: { id: number; tipo: 'INCLUIR' | 'EXCLUIR' }[];
         gruposClientes: { id: number; tipo: 'INCLUIR' | 'EXCLUIR' }[];
+        proveedores?: number[];
+        marcas?: number[];
         base: 'UNIDADES' | 'MONTO';
         alcanceCliente: 'TODOS' | 'INCLUIR_GRUPO' | 'EXCLUIR_GRUPO';
         fechaInicio: string; fechaFin: string; escalas: EscalaInput[];
         slotDescuento?: number;
     }) {
+        const criterioTipo = promo.criterioTipo ?? 'ARTICULOS';
+        const slot = criterioTipo === 'PROVEEDOR_MARCA' ? 3 : (promo.slotDescuento ?? 2);
         const pool = await connectDb();
         const transaction = new mssql.Transaction(pool);
         await transaction.begin();
@@ -863,8 +931,9 @@ export class PromocionesService {
                 .input('ALCANCE', mssql.VarChar, promo.alcanceCliente)
                 .input('FECHAINICIO', mssql.VarChar(10), promo.fechaInicio)
                 .input('FECHAFIN', mssql.VarChar(10), promo.fechaFin)
-                .input('SLOT', mssql.TinyInt, promo.slotDescuento ?? 2)
-                .query(`INSERT INTO APP_PROMOCIONES (NOMBRE, BASE, ALCANCE_CLIENTE, FECHAINICIO, FECHAFIN, SLOT_DESCUENTO) OUTPUT INSERTED.ID VALUES (@NOMBRE, @BASE, @ALCANCE, CONVERT(DATE,@FECHAINICIO,23), CONVERT(DATE,@FECHAFIN,23), @SLOT)`);
+                .input('SLOT', mssql.TinyInt, slot)
+                .input('CRITERIO', mssql.VarChar, criterioTipo)
+                .query(`INSERT INTO APP_PROMOCIONES (NOMBRE, BASE, ALCANCE_CLIENTE, FECHAINICIO, FECHAFIN, SLOT_DESCUENTO, CRITERIO_TIPO) OUTPUT INSERTED.ID VALUES (@NOMBRE, @BASE, @ALCANCE, CONVERT(DATE,@FECHAINICIO,23), CONVERT(DATE,@FECHAFIN,23), @SLOT, @CRITERIO)`);
             const idPromocion = result.recordset[0].ID;
 
             for (const g of promo.gruposArticulos) {
@@ -876,6 +945,16 @@ export class PromocionesService {
                 await new mssql.Request(transaction)
                     .input('IDPROMO', mssql.Int, idPromocion).input('IDGRUPO', mssql.Int, g.id).input('TIPO', mssql.VarChar, g.tipo)
                     .query(`INSERT INTO APP_PROMOCIONES_GRUPOS_CLIENTES (IDPROMO, IDGRUPO, TIPO) VALUES (@IDPROMO, @IDGRUPO, @TIPO)`);
+            }
+            for (const cod of (promo.proveedores ?? [])) {
+                await new mssql.Request(transaction)
+                    .input('IDPROMO', mssql.Int, idPromocion).input('CODPROVEEDOR', mssql.Int, cod)
+                    .query(`INSERT INTO APP_PROMOCIONES_PROVEEDORES (IDPROMO, CODPROVEEDOR) VALUES (@IDPROMO, @CODPROVEEDOR)`);
+            }
+            for (const cod of (promo.marcas ?? [])) {
+                await new mssql.Request(transaction)
+                    .input('IDPROMO', mssql.Int, idPromocion).input('CODMARCA', mssql.Int, cod)
+                    .query(`INSERT INTO APP_PROMOCIONES_MARCAS (IDPROMO, CODMARCA) VALUES (@IDPROMO, @CODMARCA)`);
             }
             for (const esc of promo.escalas) {
                 await new mssql.Request(transaction)
@@ -893,13 +972,18 @@ export class PromocionesService {
 
     static async actualizarPromocion(id: number, promo: {
         nombre: string;
+        criterioTipo?: 'ARTICULOS' | 'PROVEEDOR_MARCA';
         gruposArticulos: { id: number; tipo: 'INCLUIR' | 'EXCLUIR' }[];
         gruposClientes: { id: number; tipo: 'INCLUIR' | 'EXCLUIR' }[];
+        proveedores?: number[];
+        marcas?: number[];
         base: 'UNIDADES' | 'MONTO';
         alcanceCliente: 'TODOS' | 'INCLUIR_GRUPO' | 'EXCLUIR_GRUPO';
         fechaInicio: string; fechaFin: string; escalas: EscalaInput[];
         slotDescuento?: number;
     }) {
+        const criterioTipo = promo.criterioTipo ?? 'ARTICULOS';
+        const slot = criterioTipo === 'PROVEEDOR_MARCA' ? 3 : (promo.slotDescuento ?? 2);
         const pool = await connectDb();
         const transaction = new mssql.Transaction(pool);
         await transaction.begin();
@@ -908,8 +992,9 @@ export class PromocionesService {
                 .input('ID', mssql.Int, id).input('NOMBRE', mssql.NVarChar, promo.nombre)
                 .input('BASE', mssql.VarChar, promo.base).input('ALCANCE', mssql.VarChar, promo.alcanceCliente)
                 .input('FECHAINICIO', mssql.VarChar(10), promo.fechaInicio).input('FECHAFIN', mssql.VarChar(10), promo.fechaFin)
-                .input('SLOT', mssql.TinyInt, promo.slotDescuento ?? 2)
-                .query(`UPDATE APP_PROMOCIONES SET NOMBRE=@NOMBRE, BASE=@BASE, ALCANCE_CLIENTE=@ALCANCE, FECHAINICIO=CONVERT(DATE,@FECHAINICIO,23), FECHAFIN=CONVERT(DATE,@FECHAFIN,23), SLOT_DESCUENTO=@SLOT WHERE ID=@ID`);
+                .input('SLOT', mssql.TinyInt, slot)
+                .input('CRITERIO', mssql.VarChar, criterioTipo)
+                .query(`UPDATE APP_PROMOCIONES SET NOMBRE=@NOMBRE, BASE=@BASE, ALCANCE_CLIENTE=@ALCANCE, FECHAINICIO=CONVERT(DATE,@FECHAINICIO,23), FECHAFIN=CONVERT(DATE,@FECHAFIN,23), SLOT_DESCUENTO=@SLOT, CRITERIO_TIPO=@CRITERIO WHERE ID=@ID`);
 
             await new mssql.Request(transaction).input('ID', mssql.Int, id)
                 .query(`DELETE FROM APP_PROMOCIONES_GRUPOS_ARTICULOS WHERE IDPROMO=@ID`);
@@ -917,6 +1002,10 @@ export class PromocionesService {
                 .query(`DELETE FROM APP_PROMOCIONES_GRUPOS_CLIENTES WHERE IDPROMO=@ID`);
             await new mssql.Request(transaction).input('ID', mssql.Int, id)
                 .query(`DELETE FROM APP_PROMOCIONES_ESCALAS WHERE IDPROMOCION=@ID`);
+            await new mssql.Request(transaction).input('ID', mssql.Int, id)
+                .query(`DELETE FROM APP_PROMOCIONES_PROVEEDORES WHERE IDPROMO=@ID`);
+            await new mssql.Request(transaction).input('ID', mssql.Int, id)
+                .query(`DELETE FROM APP_PROMOCIONES_MARCAS WHERE IDPROMO=@ID`);
 
             for (const g of promo.gruposArticulos) {
                 await new mssql.Request(transaction)
@@ -927,6 +1016,16 @@ export class PromocionesService {
                 await new mssql.Request(transaction)
                     .input('IDPROMO', mssql.Int, id).input('IDGRUPO', mssql.Int, g.id).input('TIPO', mssql.VarChar, g.tipo)
                     .query(`INSERT INTO APP_PROMOCIONES_GRUPOS_CLIENTES (IDPROMO, IDGRUPO, TIPO) VALUES (@IDPROMO, @IDGRUPO, @TIPO)`);
+            }
+            for (const cod of (promo.proveedores ?? [])) {
+                await new mssql.Request(transaction)
+                    .input('IDPROMO', mssql.Int, id).input('CODPROVEEDOR', mssql.Int, cod)
+                    .query(`INSERT INTO APP_PROMOCIONES_PROVEEDORES (IDPROMO, CODPROVEEDOR) VALUES (@IDPROMO, @CODPROVEEDOR)`);
+            }
+            for (const cod of (promo.marcas ?? [])) {
+                await new mssql.Request(transaction)
+                    .input('IDPROMO', mssql.Int, id).input('CODMARCA', mssql.Int, cod)
+                    .query(`INSERT INTO APP_PROMOCIONES_MARCAS (IDPROMO, CODMARCA) VALUES (@IDPROMO, @CODMARCA)`);
             }
             for (const esc of promo.escalas) {
                 await new mssql.Request(transaction)
@@ -952,7 +1051,9 @@ export class PromocionesService {
     static async getVigentes() {
         const pool = await connectDb();
         const result = await pool.request().query(`
-            SELECT P.ID, P.NOMBRE, P.BASE, P.ALCANCE_CLIENTE, ISNULL(P.SLOT_DESCUENTO, 2) AS SLOT_DESCUENTO
+            SELECT P.ID, P.NOMBRE, P.BASE, P.ALCANCE_CLIENTE,
+                   ISNULL(P.SLOT_DESCUENTO, 2) AS SLOT_DESCUENTO,
+                   ISNULL(P.CRITERIO_TIPO, 'ARTICULOS') AS CRITERIO_TIPO
             FROM APP_PROMOCIONES P
             WHERE P.ACTIVO = 1 AND CAST(GETDATE() AS DATE) BETWEEN P.FECHAINICIO AND P.FECHAFIN
         `);
@@ -961,14 +1062,14 @@ export class PromocionesService {
 
         const idList = promos.map((p: any) => p.ID).join(',');
 
-        // Cargar escalas, grupos de artículos y grupos de clientes en paralelo
-        const [escalasResult, juncArtResult, juncCliResult] = await Promise.all([
+        const [escalasResult, juncArtResult, juncCliResult, provResult, marcaResult] = await Promise.all([
             pool.request().query(`SELECT IDPROMOCION, MINIMO, MAXIMO, PORCENTAJE FROM APP_PROMOCIONES_ESCALAS WHERE IDPROMOCION IN (${idList}) ORDER BY MINIMO`),
             pool.request().query(`SELECT IDPROMO, IDGRUPO, TIPO FROM APP_PROMOCIONES_GRUPOS_ARTICULOS WHERE IDPROMO IN (${idList})`),
             pool.request().query(`SELECT IDPROMO, IDGRUPO, TIPO FROM APP_PROMOCIONES_GRUPOS_CLIENTES WHERE IDPROMO IN (${idList})`),
+            pool.request().query(`SELECT IDPROMO, CODPROVEEDOR FROM APP_PROMOCIONES_PROVEEDORES WHERE IDPROMO IN (${idList})`),
+            pool.request().query(`SELECT IDPROMO, CODMARCA FROM APP_PROMOCIONES_MARCAS WHERE IDPROMO IN (${idList})`),
         ]);
 
-        // { idPromo → { INCLUIR: number[], EXCLUIR: number[] } }
         const juncArt: Record<number, { INCLUIR: number[]; EXCLUIR: number[] }> = {};
         juncArtResult.recordset.forEach((r: any) => {
             juncArt[r.IDPROMO] ??= { INCLUIR: [], EXCLUIR: [] };
@@ -979,12 +1080,15 @@ export class PromocionesService {
             juncCli[r.IDPROMO] ??= { INCLUIR: [], EXCLUIR: [] };
             juncCli[r.IDPROMO][r.TIPO as 'INCLUIR' | 'EXCLUIR'].push(r.IDGRUPO);
         });
+        const provPorPromo: Record<number, number[]> = {};
+        provResult.recordset.forEach((r: any) => { (provPorPromo[r.IDPROMO] ??= []).push(r.CODPROVEEDOR); });
+        const marcaPorPromo: Record<number, number[]> = {};
+        marcaResult.recordset.forEach((r: any) => { (marcaPorPromo[r.IDPROMO] ??= []).push(r.CODMARCA); });
 
-        // IDs únicos de todos los grupos de artículos y clientes a resolver
+        // Resolver artículos para promos tipo ARTICULOS (grupos)
         const todosIdsGrpArt = [...new Set(juncArtResult.recordset.map((r: any) => r.IDGRUPO as number))];
         const todosIdsGrpCli = [...new Set(juncCliResult.recordset.map((r: any) => r.IDGRUPO as number))];
 
-        // Tipos de grupos
         const tiposGrpArt: Record<number, string> = {};
         const tiposGrpCli: Record<number, string> = {};
         if (todosIdsGrpArt.length > 0) {
@@ -996,7 +1100,6 @@ export class PromocionesService {
                 .recordset.forEach((r: any) => { tiposGrpCli[r.ID] = r.TIPO; });
         }
 
-        // Resolver artículos por grupo (MANUAL: query con filtro NODTOAPLICABLE; CONDICION: resolver dinámico)
         const articulosPorGrupo: Record<number, number[]> = {};
         const idsManualArt = todosIdsGrpArt.filter(id => tiposGrpArt[id] !== 'CONDICION');
         if (idsManualArt.length > 0) {
@@ -1012,7 +1115,6 @@ export class PromocionesService {
             articulosPorGrupo[id] = await this.resolverMiembrosCondicionArticulos(id);
         }
 
-        // Resolver clientes por grupo
         const clientesPorGrupo: Record<number, number[]> = {};
         const idsManualCli = todosIdsGrpCli.filter(id => tiposGrpCli[id] !== 'CONDICION');
         if (idsManualCli.length > 0) {
@@ -1023,25 +1125,47 @@ export class PromocionesService {
             clientesPorGrupo[id] = await this.resolverMiembrosCondicionClientes(id);
         }
 
+        // Resolver artículos para promos tipo PROVEEDOR_MARCA (un query por promo con proveedores/marcas)
+        const articulosPorPromoProvMarca: Record<number, number[]> = {};
+        const promosProvMarca = promos.filter((p: any) => p.CRITERIO_TIPO === 'PROVEEDOR_MARCA');
+        for (const p of promosProvMarca) {
+            const provs = provPorPromo[p.ID] ?? [];
+            const marcas = marcaPorPromo[p.ID] ?? [];
+            if (provs.length === 0 && marcas.length === 0) { articulosPorPromoProvMarca[p.ID] = []; continue; }
+            const clauses: string[] = [];
+            if (provs.length > 0) clauses.push(`ARCL.CODPROVEEDORICG IN (${provs.join(',')})`);
+            if (marcas.length > 0) clauses.push(`ART.MARCA IN (${marcas.join(',')})`);
+            const res = await pool.request().query(`
+                SELECT DISTINCT ART.CODARTICULO
+                FROM ARTICULOS ART
+                INNER JOIN ARTICULOSCAMPOSLIBRES ARCL ON ARCL.CODARTICULO = ART.CODARTICULO
+                WHERE ART.TIPOARTICULO = 'A' AND ART.DESCATALOGADO = 'F' AND ISNULL(ART.NODTOAPLICABLE, 0) <> 1
+                  AND (${clauses.join(' OR ')})
+            `);
+            articulosPorPromoProvMarca[p.ID] = res.recordset.map((r: any) => r.CODARTICULO);
+        }
+
         const escalasPorPromo: Record<number, any[]> = {};
         escalasResult.recordset.forEach((e: any) => { (escalasPorPromo[e.IDPROMOCION] ??= []).push(e); });
 
         return promos.map((p: any) => {
-            const grpArt = juncArt[p.ID] ?? { INCLUIR: [], EXCLUIR: [] };
+            const criterioTipo: 'ARTICULOS' | 'PROVEEDOR_MARCA' = p.CRITERIO_TIPO ?? 'ARTICULOS';
+
+            let codigosArticulo: number[];
+            if (criterioTipo === 'PROVEEDOR_MARCA') {
+                codigosArticulo = articulosPorPromoProvMarca[p.ID] ?? [];
+            } else {
+                const grpArt = juncArt[p.ID] ?? { INCLUIR: [], EXCLUIR: [] };
+                const artIncluidos = [...new Set(grpArt.INCLUIR.flatMap(id => articulosPorGrupo[id] ?? []))];
+                const artExcluidosSet = new Set(grpArt.EXCLUIR.flatMap(id => articulosPorGrupo[id] ?? []));
+                codigosArticulo = artIncluidos.filter(cod => !artExcluidosSet.has(cod));
+            }
+
             const grpCli = juncCli[p.ID] ?? { INCLUIR: [], EXCLUIR: [] };
-
-            // Unión de todos los grupos INCLUIR de artículos
-            const artIncluidos = [...new Set(grpArt.INCLUIR.flatMap(id => articulosPorGrupo[id] ?? []))];
-            // Unión de todos los grupos EXCLUIR de artículos
-            const artExcluidosSet = new Set(grpArt.EXCLUIR.flatMap(id => articulosPorGrupo[id] ?? []));
-            const codigosArticulo = artIncluidos.filter(cod => !artExcluidosSet.has(cod));
-
-            // Unión de grupos INCLUIR de clientes
             const cliIncluidos = [...new Set(grpCli.INCLUIR.flatMap(id => clientesPorGrupo[id] ?? []))];
-            // Unión de grupos EXCLUIR de clientes
             const cliExcluidosSet = new Set(grpCli.EXCLUIR.flatMap(id => clientesPorGrupo[id] ?? []));
             const codigosCliente = cliIncluidos.filter(cod => !cliExcluidosSet.has(cod));
-            const codigosClienteExcluir = [...cliExcluidosSet]; // para modo TODOS+excluir
+            const codigosClienteExcluir = [...cliExcluidosSet];
 
             return {
                 id: p.ID,
@@ -1049,6 +1173,7 @@ export class PromocionesService {
                 base: p.BASE,
                 alcanceCliente: p.ALCANCE_CLIENTE,
                 slotDescuento: p.SLOT_DESCUENTO ?? 2,
+                criterioTipo,
                 codigosArticulo,
                 codigosCliente,
                 codigosClienteExcluir,

@@ -8,6 +8,8 @@ const promocionesRouter = Router();
 
 promocionesRouter.get('/vigentes', PromocionesController.getVigentes);
 promocionesRouter.get('/campos-disponibles', PromocionesController.getCamposDisponibles);
+promocionesRouter.get('/proveedores', PromocionesController.getProveedores);
+promocionesRouter.get('/marcas', PromocionesController.getMarcas);
 
 promocionesRouter.get('/grupos-articulos', PromocionesController.getGruposArticulos);
 promocionesRouter.post('/grupos-articulos', PromocionesController.crearGrupoArticulos);

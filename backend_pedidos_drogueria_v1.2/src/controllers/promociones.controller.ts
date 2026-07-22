@@ -199,4 +199,14 @@ export class PromocionesController {
         const data = await PromocionesService.getVigentes();
         res.status(200).json({ success: true, data });
     }
+
+    static async getProveedores(req: Request, res: Response): Promise<void> {
+        const data = await PromocionesService.getProveedores(req.query['search'] as string | undefined);
+        res.status(200).json({ success: true, data });
+    }
+
+    static async getMarcas(req: Request, res: Response): Promise<void> {
+        const data = await PromocionesService.getMarcas(req.query['search'] as string | undefined);
+        res.status(200).json({ success: true, data });
+    }
 }
