@@ -478,7 +478,13 @@
                   </v-card>
                 </v-col>
               </v-row>
-              <div class="d-flex justify-end mb-6">
+              <div class="d-flex justify-end gap-2 mb-6">
+                <v-btn
+                  color="indigo" variant="tonal"
+                  prepend-icon="mdi-file-pdf-box"
+                  :disabled="!sesionPicking.length"
+                  @click="generarControlRuterosPDF"
+                >Control de Ruteros</v-btn>
                 <v-btn
                   color="success" variant="elevated"
                   prepend-icon="mdi-truck-fast"
@@ -1520,6 +1526,84 @@ const imprimirRutero = async (r: any) => {
 };
 
 // ─── PDF ──────────────────────────────────────────────────────────────────────
+const generarControlRuterosPDF = () => {
+  const brandingStore = useBrandingStore();
+  const fecha = new Date().toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: brandingStore.zonaHoraria });
+  const doc   = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  const logo  = new Image();
+  logo.src    = brandingStore.logo;
+
+  const build = () => {
+    try { doc.addImage(logo, 'PNG', 10, 6, 28, 13); } catch { /* sin logo */ }
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(31, 78, 121);
+    doc.text('DROGUERIA INTERCONTINENTAL, C.A.', 105, 11, { align: 'center' });
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(60, 60, 60);
+    doc.text('RIF: J-501590192', 105, 15.5, { align: 'center' });
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(31, 78, 121);
+    doc.text('CONTROL DE RUTEROS', 105, 21, { align: 'center' });
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(50, 50, 50);
+    doc.text(`Fecha: ${fecha}`, 105, 26, { align: 'center' });
+
+    doc.setDrawColor(31, 78, 121);
+    doc.setLineWidth(0.5);
+    doc.line(10, 28.5, 205, 28.5);
+
+    const body: any[] = [];
+    let totalFacturas = 0;
+    let totalBultos   = 0;
+
+    for (const r of sesionPicking.value) {
+      const f = Number(r.TOTAL_FACTURAS ?? 0);
+      const b = Number(r.TOTAL_CAJAS    ?? 0);
+      totalFacturas += f;
+      totalBultos   += b;
+      body.push([r.NOMBRE_RUTA ?? r.CODRUTA ?? '', f, b]);
+    }
+
+    body.push([
+      { content: 'TOTAL', styles: { fontStyle: 'bold', fillColor: [31, 78, 121], textColor: [255, 255, 255] } },
+      { content: String(totalFacturas), styles: { fontStyle: 'bold', fillColor: [31, 78, 121], textColor: [255, 255, 255], halign: 'center' } },
+      { content: String(totalBultos),   styles: { fontStyle: 'bold', fillColor: [31, 78, 121], textColor: [255, 255, 255], halign: 'center' } },
+    ]);
+
+    autoTable(doc, {
+      startY: 30,
+      head: [['RUTEROS', 'FACTURAS', 'BULTOS']],
+      body,
+      theme: 'grid',
+      styles: { fontSize: 10, cellPadding: { top: 2.5, bottom: 2.5, left: 3, right: 3 }, valign: 'middle' },
+      headStyles: { fillColor: [31, 78, 121], textColor: 255, fontStyle: 'bold', fontSize: 10, halign: 'center' },
+      columnStyles: {
+        0: { cellWidth: 130 },
+        1: { cellWidth: 30, halign: 'center' },
+        2: { cellWidth: 30, halign: 'center' },
+      },
+    });
+
+    doc.save(`control_ruteros_${fecha.replace(/\//g, '-')}.pdf`);
+    notify('Control de Ruteros generado', 'success');
+  };
+
+  if (logo.complete && logo.naturalWidth > 0) {
+    build();
+  } else {
+    logo.onload  = build;
+    logo.onerror = build;
+  }
+};
+
 const generarPDF = (numero: string, zonaDisplay: string, lista: any[]) => {
   const fecha = new Date().toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: useBrandingStore().zonaHoraria });
   const doc   = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
