@@ -241,6 +241,7 @@
               hide-details
               class="mb-3"
             ></v-select>
+            <v-checkbox v-model="modalExcel.conProveedor" label="Incluir columna PROVEEDOR" density="compact" hide-details class="mb-2" />
             <v-btn block color="green-darken-1" variant="tonal" prepend-icon="mdi-download" :loading="modalExcel.descargando" @click="exportarCatalogoSegmentos">
               Descargar Catálogo por Segmento
             </v-btn>
@@ -316,6 +317,7 @@ const modalExcel = ref({
   descargando: false,
   archivo: null as any,
   segmentosSeleccionados: [] as number[],
+  conProveedor: false,
 });
 
 const cargarSegmentos = async () => {
@@ -347,6 +349,19 @@ const seleccionarCliente = (cliente: any) => {
   lanzarAviso(`Cliente seleccionado: ${cliente.CODCLIENTE} - ${cliente.NOMBRECOMERCIAL || cliente.NOMBRECLIENTE}`, "success");
 };
 
+// Colores de leyenda (orden de prioridad: condicionado > nuevo > IVA > normal)
+const COLOR_CONDICIONADO = 'FF81C784'; // verde
+const COLOR_NUEVO        = 'FF4DD0E1'; // teal
+const COLOR_IVA          = 'FFFFD54F'; // amarillo
+const COLOR_ZEBRA        = 'FFE3F2FD'; // azul muy claro (filas pares normales)
+
+const getColorFila = (p: any): string | null => {
+  if (p.NODTOAPLICABLE === 1) return COLOR_CONDICIONADO;
+  if (p.DIASPROTECCION > 0)   return COLOR_NUEVO;
+  if (p.PORCENTAJEIVA > 0)    return COLOR_IVA;
+  return null;
+};
+
 // --- MÉTODOS EXCEL ---
 const exportarCatalogoSegmentos = async () => {
   const descuentos = modalExcel.value.segmentosSeleccionados;
@@ -359,128 +374,117 @@ const exportarCatalogoSegmentos = async () => {
     const productos: any[] = res.data.data;
     if (!productos.length) { lanzarAviso('No hay artículos con precio en la tarifa base', 'warning'); return; }
 
-    const logoBuffer = await fetch(useBrandingStore().logo).then(r => r.arrayBuffer());
+    const bannerBuffer = await fetch('/banner_lista_precios.png').then(r => r.arrayBuffer());
     const FORMATO_DOLAR = '"$"#,##0.00';
-    const FILA_HEADER  = 6;  // fila de encabezados de columna
-    const FILA_SUB     = 7;  // fila con sub-etiquetas (Pedido / Total)
-    const FILA_INICIO  = 8;  // primera fila de datos
-    const NCOLS        = 11; // A-K
-    const COLOR_HEADER = '1F4E79'; // azul oscuro
-    const COLOR_SUB    = '2E75B6'; // azul medio
+    const FILA_HEADER = 6;
+    const FILA_SUB    = 7;
+    const FILA_INICIO = 8;
+    const COLOR_HEADER = '1F4E79';
+    const COLOR_SUB    = '2E75B6';
     const COLOR_TEXTO  = 'FFFFFF';
     const fecha = new Date().toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: useBrandingStore().zonaHoraria });
+    const conProveedor = modalExcel.value.conProveedor;
     const wb = new ExcelJS.Workbook();
 
-    // columnas: REF | DESC | P.ACTIVO | MARCA | SECCION | %D1 | %D2 | PRECIO | STOCK | CANTIDAD | SUBTOTAL
-    const COL_PRECIO    = 8;
-    const COL_STOCK     = 9;
-    const COL_CANTIDAD  = 10;
-    const COL_SUBTOTAL  = 11;
+    // Columnas: Codigo | Cod/Barras | Descripción | PORTALPRV | Oferta | Precio F | Existen | Fecha/Lote | Unidades | Monto | [Proveedor] | Marca | Categoría | Oferta activa desde | P.Activo
+    const COL_PRECIO   = 6;  // F
+    const COL_UNIDADES = 9;  // I
+    const COL_MONTO    = 10; // J
+    const NCOLS = conProveedor ? 15 : 14;
 
-    const colWidths = [12, 50, 28, 18, 22, 11, 11, 13, 10, 12, 14];
-    const colHeaders = (dto: number) => [
-      'REFERENCIA', 'DESCRIPCION', 'PRINCIPIO ACTIVO',
-      'MARCA', 'SECCION',
-      '% DESC D1', '% DESC D2',
-      dto === 0 ? 'PRECIO ($)' : `PRECIO -${dto}% ($)`,
-      'STOCK', 'CANTIDAD', 'SUBTOTAL',
-    ];
+    const colWidths = conProveedor
+      ? [12, 14, 50, 12, 10, 13, 9, 14, 10, 14, 22, 18, 22, 20, 30]
+      : [12, 14, 50, 12, 10, 13, 9, 14, 10, 14, 18, 22, 20, 30];
+
+    const buildHeaders = (dto: number) => {
+      const h = ['Codigo', 'Cod/Barras', 'Descripción', 'PORTALPRV', 'Oferta',
+        dto === 0 ? 'Precio F' : `Precio F -${dto}%`,
+        'Existen', 'Fecha/Lote', 'Unidades', 'Monto'];
+      if (conProveedor) h.push('Proveedor');
+      h.push('Marca', 'Categoría', 'Oferta activa desde', 'P.Activo');
+      return h;
+    };
+
+    const buildRow = (p: any, precioConDto: number) => {
+      const r: any[] = [
+        p.REFPROVEEDOR ?? '', '', p.DESCRIPCION ?? '', '',
+        p.D2_PORCENTAJE ?? 0, precioConDto, p.STOCK_DISP ?? 0, '', 0, '',
+      ];
+      if (conProveedor) r.push(p.PROVEEDOR ?? '');
+      r.push(p.MARCA ?? '', p.SECCION ?? '', '', p.PRINCIPIOACTIVO ?? '');
+      return r;
+    };
 
     const aplicarEstiloCelda = (cell: any, bg: string, bold = true, size = 9) => {
       cell.font = { bold, color: { argb: COLOR_TEXTO }, size };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } };
       cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
       cell.border = {
-        top: { style: 'thin', color: { argb: 'FFFFFF' } },
-        left: { style: 'thin', color: { argb: 'FFFFFF' } },
+        top:    { style: 'thin', color: { argb: 'FFFFFF' } },
+        left:   { style: 'thin', color: { argb: 'FFFFFF' } },
         bottom: { style: 'thin', color: { argb: 'FFFFFF' } },
-        right: { style: 'thin', color: { argb: 'FFFFFF' } },
+        right:  { style: 'thin', color: { argb: 'FFFFFF' } },
       };
     };
 
+    const lastCol = String.fromCharCode(64 + NCOLS);
+    const bannerId = wb.addImage({ buffer: bannerBuffer, extension: 'png' });
+
     descuentos.forEach(dto => {
       const factor = 1 - dto / 100;
-      const ws = wb.addWorksheet(dto === 0 ? 'Sin descuento' : `Dto ${dto}%`);
+      const ws = wb.addWorksheet(dto === 0 ? 'Precios' : `Dto ${dto}%`);
       ws.columns = colWidths.map(w => ({ width: w }));
 
-      // --- Imagen (filas 1-4) ---
-      const imageId = wb.addImage({ buffer: logoBuffer, extension: 'png' });
-      ws.addImage(imageId, { tl: { col: 0, row: 0 }, ext: { width: 200, height: 60 } });
+      // Banner cabecera (filas 1-4, ancho completo) — 1600×201px → ~150pt alto total
+      ws.addImage(bannerId, { tl: { col: 0, row: 0 }, br: { col: NCOLS, row: 4 } });
+      for (let r = 1; r <= 4; r++) ws.getRow(r).height = 37.5;
 
-      // --- Fila de título empresa (fila 2, columnas E-K) ---
-      ws.mergeCells(2, 4, 2, NCOLS);
-      const titleCell = ws.getCell(2, 4);
-      titleCell.value = 'DROGUERIA INTERCONTINENTAL';
-      titleCell.font = { bold: true, size: 14, color: { argb: COLOR_HEADER } };
-      titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
-      ws.getRow(2).height = 22;
+      // Fila 5: fecha + segmento (texto pequeño bajo el banner)
+      ws.mergeCells(5, 1, 5, NCOLS);
+      const infoCell = ws.getCell(5, 1);
+      infoCell.value = dto === 0 ? `Lista de precios — ${fecha}` : `Descuento ${dto}% — ${fecha}`;
+      infoCell.font = { italic: true, size: 9, color: { argb: '555555' } };
+      infoCell.alignment = { horizontal: 'right', vertical: 'middle' };
+      ws.getRow(5).height = 14;
 
-      // --- Fila de segmento + fecha (fila 3, columnas E-K) ---
-      ws.mergeCells(3, 4, 3, NCOLS);
-      const subTitleCell = ws.getCell(3, 4);
-      subTitleCell.value = dto === 0 ? `Lista de precios — ${fecha}` : `Descuento ${dto}% — ${fecha}`;
-      subTitleCell.font = { italic: true, size: 10, color: { argb: '555555' } };
-      subTitleCell.alignment = { vertical: 'middle', horizontal: 'center' };
-      ws.getRow(3).height = 16;
-
-      // --- Fila de encabezados (fila FILA_HEADER) ---
+      // Encabezados (fila 6)
       ws.getRow(FILA_HEADER).height = 30;
-      const headers = colHeaders(dto);
-      headers.forEach((h, idx) => {
+      buildHeaders(dto).forEach((h, idx) => {
         const cell = ws.getCell(FILA_HEADER, idx + 1);
         cell.value = h;
         aplicarEstiloCelda(cell, COLOR_HEADER, true, 9);
       });
 
-      // --- Fila sub-etiqueta (fila FILA_SUB) ---
+      // Sub-etiquetas (fila 7)
       ws.getRow(FILA_SUB).height = 16;
       for (let c = 1; c <= NCOLS; c++) {
-        let label = '';
-        if (c === COL_CANTIDAD) label = 'Pedido';
-        if (c === COL_SUBTOTAL) label = 'Total';
         const cell = ws.getCell(FILA_SUB, c);
-        cell.value = label;
+        cell.value = c === COL_UNIDADES ? 'Pedido' : c === COL_MONTO ? 'Total' : '';
         aplicarEstiloCelda(cell, COLOR_SUB, false, 8);
       }
 
-      // --- AutoFilter en fila de encabezados ---
-      ws.autoFilter = `A${FILA_HEADER}:K${FILA_HEADER}`;
+      ws.autoFilter = `A${FILA_HEADER}:${lastCol}${FILA_HEADER}`;
 
-      // --- Filas de datos ---
+      // Datos con colores por tipo
       productos.forEach((p, i) => {
         const rowNum = FILA_INICIO + i;
         const row = ws.getRow(rowNum);
         const precioConDto = Number(p.PRECIO_BASE) * factor;
 
-        row.values = [
-          p.REFPROVEEDOR,
-          p.DESCRIPCION,
-          p.PRINCIPIOACTIVO ?? '',
-          p.MARCA ?? '',
-          p.SECCION ?? '',
-          dto,
-          p.D2_PORCENTAJE ?? 0,
-          precioConDto,
-          p.STOCK_DISP ?? 0,
-          0,
-          '',
-        ];
-
+        row.values = buildRow(p, precioConDto);
         row.getCell(COL_PRECIO).numFmt   = FORMATO_DOLAR;
-        row.getCell(COL_CANTIDAD).numFmt = '#,##0';
-        row.getCell(COL_SUBTOTAL).value  = { formula: `H${rowNum}*J${rowNum}` };
-        row.getCell(COL_SUBTOTAL).numFmt = FORMATO_DOLAR;
+        row.getCell(COL_UNIDADES).numFmt = '#,##0';
+        row.getCell(COL_MONTO).value     = { formula: `F${rowNum}*I${rowNum}` };
+        row.getCell(COL_MONTO).numFmt    = FORMATO_DOLAR;
 
-        // Zebra suave
-        if (i % 2 === 1) {
-          for (let c = 1; c <= NCOLS; c++) {
-            const cell = row.getCell(c);
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'DDEEFF' } };
-          }
+        const colorFila = getColorFila(p);
+        const fillColor = colorFila ?? (i % 2 === 1 ? COLOR_ZEBRA : null);
+        if (fillColor) {
+          for (let c = 1; c <= NCOLS; c++)
+            row.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillColor } };
         }
       });
 
-      // --- Congelar encabezados ---
       ws.views = [{ state: 'frozen', xSplit: 0, ySplit: FILA_INICIO - 1, topLeftCell: `A${FILA_INICIO}` }];
     });
 
@@ -512,7 +516,9 @@ const importarArticulosExcel = async (fileOrFiles: File | File[] | null) => {
     const data = new Uint8Array(e.target.result);
     const workbook = XLSX.read(data, { type: 'array' });
     const jsonData: any[] = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { range: 5 });
-    const itemsParaCargar = jsonData.filter(row => row['CANTIDAD'] && Number(row['CANTIDAD']) > 0);
+    const getCantidad = (row: any) => Number(row['Unidades'] ?? row['CANTIDAD'] ?? row['Cantidad'] ?? 0);
+    const getRef     = (row: any) => row['Codigo'] || row['REFERENCIA'] || row['Referencia'] || row['referencia'];
+    const itemsParaCargar = jsonData.filter(row => getCantidad(row) > 0);
 
     if (itemsParaCargar.length === 0) { lanzarAviso("No hay cantidades en el archivo", "warning"); return; }
     lanzarAviso(`Cargando ${itemsParaCargar.length} productos...`, "info");
@@ -520,13 +526,13 @@ const importarArticulosExcel = async (fileOrFiles: File | File[] | null) => {
     let agregados = 0;
     for (const item of itemsParaCargar) {
       try {
-        const ref = item['REFERENCIA'] || item['Referencia'] || item['referencia'];
+        const ref = getRef(item);
         const res = await axios.get(`${import.meta.env.VITE_API_URL}/products/get-products?articulo=${encodeURIComponent(ref)}`);
         if (res.data.success && res.data.data.length > 0) {
           const pBD = res.data.data[0];
           const stock = getStockTotal(pBD);
           if (stock > 0) {
-            carritoStore.agregarArticulo(pBD, Math.min(Number(item['CANTIDAD']), stock));
+            carritoStore.agregarArticulo(pBD, Math.min(getCantidad(item), stock));
             agregados++;
           }
         }

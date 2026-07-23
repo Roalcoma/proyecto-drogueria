@@ -204,7 +204,11 @@ export class ProductsService {
                     ISNULL(ACL.PRINCIPIOACTIVO, '') AS PRINCIPIOACTIVO,
                     ISNULL(M.DESCRIPCION, '') AS MARCA,
                     ISNULL(S.DESCRIPCION, '') AS SECCION,
+                    ISNULL(PR.NOMPROVEEDOR, '') AS PROVEEDOR,
                     PV.PNETO AS PRECIO_BASE,
+                    ISNULL(A.NODTOAPLICABLE, 0) AS NODTOAPLICABLE,
+                    ISNULL(ACL.DIASPROTECCION, 0) AS DIASPROTECCION,
+                    ISNULL(IMP.IVA, 0) AS PORCENTAJEIVA,
                     ${STOCK_DISPONIBLE_SQL} AS STOCK_DISP,
                     (
                         SELECT TOP 1 E.PORCENTAJE
@@ -224,9 +228,9 @@ export class ProductsService {
                     LEFT JOIN MARCA M WITH(NOLOCK) ON M.CODMARCA = A.MARCA
                     LEFT JOIN SECCIONES S WITH(NOLOCK) ON S.NUMDPTO = A.DPTO AND S.NUMSECCION = A.SECCION
                     LEFT JOIN PROVEEDORES PR WITH(NOLOCK) ON PR.CODPROVEEDOR = ACL.CODPROVEEDORICG
+                    LEFT JOIN IMPUESTOS IMP WITH(NOLOCK) ON IMP.TIPOIVA = A.TIPOIMPUESTO
                 WHERE A.TIPOARTICULO = 'A'
                     AND A.DESCATALOGADO = 'F'
-                    AND ISNULL(A.NODTOAPLICABLE, 0) <> 1
                     AND A.DPTO = 1
                     AND UPPER(ISNULL(S.DESCRIPCION, '')) NOT LIKE '%GASTO%'
                 ORDER BY ACL.DESCRIPCIONLARGA
