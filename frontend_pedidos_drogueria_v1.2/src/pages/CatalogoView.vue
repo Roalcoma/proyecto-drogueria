@@ -351,14 +351,12 @@ const seleccionarCliente = (cliente: any) => {
 
 // Colores de leyenda (orden de prioridad: condicionado > nuevo > IVA > normal)
 const COLOR_CONDICIONADO = 'FF81C784'; // verde
-const COLOR_NUEVO        = 'FF4DD0E1'; // teal
 const COLOR_IVA          = 'FFFFD54F'; // amarillo
 const COLOR_ZEBRA        = 'FFE3F2FD'; // azul muy claro (filas pares normales)
 
 const getColorFila = (p: any): string | null => {
-  if (p.NODTOAPLICABLE === 1) return COLOR_CONDICIONADO;
-  if (p.DIASPROTECCION > 0)   return COLOR_NUEVO;
-  if (p.PORCENTAJEIVA > 0)    return COLOR_IVA;
+  if (p.NODTOAPLICABLE)     return COLOR_CONDICIONADO;
+  if (p.PORCENTAJEIVA > 0)  return COLOR_IVA;
   return null;
 };
 
