@@ -268,17 +268,70 @@ export class FtpService {
         const tarifa      = cfg.tarifaBaseCatalogo;
         const almacen     = cfg.codAlmacen;
 
-        // Precios reales del sistema; ignoramos el precio del archivo
+        // Precios y descuentos del sistema; ignoramos precio del archivo
         const codigos = [...new Set(lineas.map(l => l.codarticulo))].join(',');
-        const preciosRes = await pool.request()
-            .input('TARIFA', mssql.Int, tarifa)
-            .query(`SELECT CODARTICULO, PNETO FROM PRECIOSVENTA WHERE IDTARIFAV = @TARIFA AND CODARTICULO IN (${codigos})`);
-        const preciosSistema = new Map<number, number>(
-            preciosRes.recordset.map((r: any) => [r.CODARTICULO, Number(r.PNETO)])
+
+        const [preciosRes, dtoCliRes, nodtoRes, promosRes] = await Promise.all([
+            pool.request()
+                .input('TARIFA', mssql.Int, tarifa)
+                .query(`SELECT CODARTICULO, PNETO FROM PRECIOSVENTA WHERE IDTARIFAV = @TARIFA AND CODARTICULO IN (${codigos})`),
+            pool.request()
+                .input('CLI', mssql.Int, CODCLIENTE)
+                .query(`SELECT ISNULL(TRY_CAST(D1 AS FLOAT),0) AS D1, ISNULL(TRY_CAST(D3 AS FLOAT),0) AS D3 FROM CLIENTESCAMPOSLIBRES WHERE CODCLIENTE = @CLI`),
+            pool.request()
+                .query(`SELECT CODARTICULO, ISNULL(NODTOAPLICABLE,0) AS NODTO FROM ARTICULOS WHERE CODARTICULO IN (${codigos})`),
+            pool.request()
+                .input('CLI', mssql.Int, CODCLIENTE)
+                .query(`
+                    SELECT A.CODARTICULO,
+                        ISNULL((SELECT TOP 1 E.PORCENTAJE FROM APP_PROMOCIONES P
+                            INNER JOIN APP_PROMOCIONES_GRUPOS_ARTICULOS GA ON GA.IDPROMO=P.ID AND GA.TIPO='INCLUIR'
+                            INNER JOIN APP_GRUPOS_ARTICULOS G ON G.ID=GA.IDGRUPO AND G.TIPO<>'CONDICION'
+                            INNER JOIN APP_GRUPOS_ARTICULOS_DETALLE D ON D.IDGRUPO=G.ID AND D.CODARTICULO=A.CODARTICULO
+                            INNER JOIN APP_PROMOCIONES_ESCALAS E ON E.IDPROMOCION=P.ID
+                            WHERE P.ACTIVO=1 AND ISNULL(P.SLOT_DESCUENTO,2)=2
+                              AND CAST(GETDATE() AS DATE) BETWEEN P.FECHAINICIO AND P.FECHAFIN
+                              AND (NOT EXISTS(SELECT 1 FROM APP_PROMOCIONES_GRUPOS_CLIENTES GC WHERE GC.IDPROMO=P.ID)
+                                   OR EXISTS(SELECT 1 FROM APP_PROMOCIONES_GRUPOS_CLIENTES GC
+                                             INNER JOIN APP_GRUPOS_CLIENTES_DETALLE GCD ON GCD.IDGRUPO=GC.IDGRUPO
+                                             WHERE GC.IDPROMO=P.ID AND GC.TIPO='INCLUIR' AND GCD.CODCLIENTE=@CLI))
+                            ORDER BY E.MINIMO
+                        ),0) AS SLOT2,
+                        ISNULL((SELECT TOP 1 E.PORCENTAJE FROM APP_PROMOCIONES P
+                            INNER JOIN APP_PROMOCIONES_GRUPOS_ARTICULOS GA ON GA.IDPROMO=P.ID AND GA.TIPO='INCLUIR'
+                            INNER JOIN APP_GRUPOS_ARTICULOS G ON G.ID=GA.IDGRUPO AND G.TIPO<>'CONDICION'
+                            INNER JOIN APP_GRUPOS_ARTICULOS_DETALLE D ON D.IDGRUPO=G.ID AND D.CODARTICULO=A.CODARTICULO
+                            INNER JOIN APP_PROMOCIONES_ESCALAS E ON E.IDPROMOCION=P.ID
+                            WHERE P.ACTIVO=1 AND ISNULL(P.SLOT_DESCUENTO,2)=3
+                              AND CAST(GETDATE() AS DATE) BETWEEN P.FECHAINICIO AND P.FECHAFIN
+                              AND (NOT EXISTS(SELECT 1 FROM APP_PROMOCIONES_GRUPOS_CLIENTES GC WHERE GC.IDPROMO=P.ID)
+                                   OR EXISTS(SELECT 1 FROM APP_PROMOCIONES_GRUPOS_CLIENTES GC
+                                             INNER JOIN APP_GRUPOS_CLIENTES_DETALLE GCD ON GCD.IDGRUPO=GC.IDGRUPO
+                                             WHERE GC.IDPROMO=P.ID AND GC.TIPO='INCLUIR' AND GCD.CODCLIENTE=@CLI))
+                            ORDER BY E.MINIMO
+                        ),0) AS SLOT3
+                    FROM ARTICULOS A WITH(NOLOCK) WHERE A.CODARTICULO IN (${codigos})
+                `),
+        ]);
+
+        const preciosSistema = new Map<number, number>(preciosRes.recordset.map((r: any) => [r.CODARTICULO, Number(r.PNETO)]));
+        const d1Cliente = Number(dtoCliRes.recordset[0]?.D1 ?? 0);
+        const cclD3     = Number(dtoCliRes.recordset[0]?.D3 ?? 0);
+        const nodtoMap  = new Map<number, boolean>(nodtoRes.recordset.map((r: any) => [Number(r.CODARTICULO), !!r.NODTO]));
+        const promoMap  = new Map<number, { d2: number; d3: number }>(
+            promosRes.recordset.map((r: any) => [Number(r.CODARTICULO), { d2: Number(r.SLOT2), d3: Number(r.SLOT3) }])
         );
+
         for (const l of lineas) {
-            l.precioUnit = preciosSistema.get(l.codarticulo) ?? 0;
-            l.precioTotal = l.precioUnit * l.cantidad;
+            const pneto = preciosSistema.get(l.codarticulo) ?? 0;
+            const nodto = nodtoMap.get(l.codarticulo) ?? false;
+            const promo = promoMap.get(l.codarticulo) ?? { d2: 0, d3: 0 };
+            l.precioUnit  = pneto;
+            l.d1          = nodto ? 0 : d1Cliente;
+            l.d2          = nodto ? 0 : promo.d2;
+            l.d3          = nodto ? 0 : (cclD3 > 0 ? cclD3 : promo.d3);
+            l.precioFinal = pneto * (1 - l.d1/100) * (1 - l.d2/100) * (1 - l.d3/100);
+            l.precioTotal = l.precioFinal * l.cantidad;
         }
         const totalChunks = maxLineas > 0 && lineas.length > maxLineas
             ? Math.ceil(lineas.length / maxLineas) : 1;
@@ -321,7 +374,9 @@ export class FtpService {
 
                 for (const l of chunk) {
                     tabla.rows.add(chunkId, l.codarticulo, '', almacen, tarifa,
-                        Math.round(l.cantidad), l.precioUnit, 0, 0, 0, 0, l.precioUnit, 0, 0);
+                        Math.round(l.cantidad), l.precioFinal ?? l.precioUnit,
+                        l.d1 ?? 0, l.d2 ?? 0, l.d3 ?? 0, 0,
+                        l.precioUnit, 0, 0);
                 }
                 await pool.request().bulk(tabla);
 
