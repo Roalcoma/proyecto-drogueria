@@ -386,6 +386,7 @@ const exportarCatalogoSegmentos = async () => {
 
     // Columnas: Codigo | Cod/Barras | Descripción | PORTALPRV | Oferta | Precio F | Existen | Fecha/Lote | Unidades | Monto | [Proveedor] | Marca | Categoría | Oferta activa desde | P.Activo
     const COL_PRECIO   = 6;  // F
+    const COL_FECHA    = 8;  // H
     const COL_UNIDADES = 9;  // I
     const COL_MONTO    = 10; // J
     const NCOLS = conProveedor ? 15 : 14;
@@ -404,9 +405,10 @@ const exportarCatalogoSegmentos = async () => {
     };
 
     const buildRow = (p: any, precioConDto: number) => {
+      const garantia = p.GARANTIACOMPRA ? new Date(p.GARANTIACOMPRA) : '';
       const r: any[] = [
-        p.REFPROVEEDOR ?? '', '', p.DESCRIPCION ?? '', '',
-        p.D2_PORCENTAJE ?? 0, precioConDto, p.STOCK_DISP ?? 0, '', 0, '',
+        p.CODARTICULO ?? '', p.REFPROVEEDOR ?? '', p.DESCRIPCION ?? '', '',
+        p.D2_PORCENTAJE ?? 0, precioConDto, p.STOCK_DISP ?? 0, garantia, 0, '',
       ];
       if (conProveedor) r.push(p.PROVEEDOR ?? '');
       r.push(p.MARCA ?? '', p.SECCION ?? '', '', p.PRINCIPIOACTIVO ?? '');
@@ -471,6 +473,7 @@ const exportarCatalogoSegmentos = async () => {
 
         row.values = buildRow(p, precioConDto);
         row.getCell(COL_PRECIO).numFmt   = FORMATO_DOLAR;
+        if (p.GARANTIACOMPRA) row.getCell(COL_FECHA).numFmt = 'dd/mm/yyyy';
         row.getCell(COL_UNIDADES).numFmt = '#,##0';
         row.getCell(COL_MONTO).value     = { formula: `F${rowNum}*I${rowNum}` };
         row.getCell(COL_MONTO).numFmt    = FORMATO_DOLAR;
@@ -515,7 +518,7 @@ const importarArticulosExcel = async (fileOrFiles: File | File[] | null) => {
     const workbook = XLSX.read(data, { type: 'array' });
     const jsonData: any[] = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { range: 5 });
     const getCantidad = (row: any) => Number(row['Unidades'] ?? row['CANTIDAD'] ?? row['Cantidad'] ?? 0);
-    const getRef     = (row: any) => row['Codigo'] || row['REFERENCIA'] || row['Referencia'] || row['referencia'];
+    const getRef     = (row: any) => row['Cod/Barras'] || row['Codigo'] || row['REFERENCIA'] || row['Referencia'] || row['referencia'];
     const itemsParaCargar = jsonData.filter(row => getCantidad(row) > 0);
 
     if (itemsParaCargar.length === 0) { lanzarAviso("No hay cantidades en el archivo", "warning"); return; }
