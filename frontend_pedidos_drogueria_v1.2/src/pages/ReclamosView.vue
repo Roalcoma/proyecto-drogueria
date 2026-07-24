@@ -179,15 +179,29 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import axios from 'axios';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { usePageSize } from '../utils/usePageSize';
 import { useAuthStore } from '../stores/useAuthStore';
+import logoSrc from '../assets/drogueria_logo.png';
 
 const API       = import.meta.env.VITE_API_URL;
 const authStore = useAuthStore();
+
+const logoBase64 = ref('');
+onMounted(async () => {
+  try {
+    const res  = await fetch(logoSrc);
+    const blob = await res.blob();
+    logoBase64.value = await new Promise<string>(resolve => {
+      const r = new FileReader();
+      r.onload = e => resolve(e.target!.result as string);
+      r.readAsDataURL(blob);
+    });
+  } catch {}
+});
 const aviso = ref({ mostrar: false, texto: '', color: 'success' });
 const lanzarAviso = (texto: string, color = 'success') => aviso.value = { mostrar: true, texto, color };
 
@@ -425,54 +439,38 @@ const generarPdf = (rec: any, lineas: any[]) => {
   const cw  = W - lm - rm;                        // content width = 186
 
   // ── EMPRESA (header) ──────────────────────────────────────────────────────
-  const empresa = {
-    nombre:    'DROGUERIA INTERCONTINENTAL, C.A.',
-    rif:       'J501590192',
-    direccion: 'AV CRUZ PERAZA LOCAL GALPON NRO 02 SECTOR LA CARBONERA MATURIN MONAGAS ZONA POSTAL 6201',
-  };
+  const direccion = 'AV CRUZ PERAZA LOCAL GALPON NRO 02 SECTOR LA CARBONERA MATURIN MONAGAS ZONA POSTAL 6201';
 
-  // Caja izquierda del logo (placeholder azul)
-  doc.setFillColor(0, 102, 153);
-  doc.rect(lm, 8, 28, 16, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(7);
-  doc.setFont('helvetica', 'bold');
-  doc.text('DROGUERIA', lm + 14, 14, { align: 'center' });
-  doc.text('INTERCONTINENTAL', lm + 14, 18, { align: 'center' });
+  // Logo (4875x1545 px → aspect 3.156:1 → 68mm × 21.5mm)
+  const logoW = 68, logoH = 21.5;
+  if (logoBase64.value) {
+    doc.addImage(logoBase64.value, 'PNG', lm, 6, logoW, logoH);
+  }
 
-  // Nombre empresa (centro)
+  // Dirección a la derecha del logo
   doc.setTextColor(0, 0, 0);
-  doc.setFontSize(14);
-  doc.setFont('helvetica', 'bold');
-  doc.text(empresa.nombre, lm + 32, 14, { maxWidth: 105 });
-
-  // RIF (derecha)
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`RIF: ${empresa.rif}`, W - rm, 14, { align: 'right' });
-
-  // Dirección bajo el nombre empresa
   doc.setFontSize(7);
   doc.setFont('helvetica', 'normal');
-  doc.text(empresa.direccion, lm + 32, 20, { maxWidth: 105 });
+  const dirX = lm + logoW + 4;
+  doc.text(direccion, dirX, 13, { maxWidth: W - rm - dirX });
 
   // Línea separadora
   doc.setDrawColor(0, 102, 153);
   doc.setLineWidth(0.8);
-  doc.line(lm, 27, W - rm, 27);
+  doc.line(lm, 30, W - rm, 30);
 
   // ── TÍTULO: Reclamo Nro / Fecha ──────────────────────────────────────────
   doc.setFontSize(13);
   doc.setFont('helvetica', 'bolditalic');
   doc.setTextColor(0, 0, 0);
-  doc.text(`Reclamo Nro. ${pad(rec.ID)}`, lm, 35);
+  doc.text(`Reclamo Nro. ${pad(rec.ID)}`, lm, 38);
   const fechaStr = fmtFecha(rec.FECHACREACION);
-  doc.text(`Fecha: ${fechaStr}`, W - rm, 35, { align: 'right' });
+  doc.text(`Fecha: ${fechaStr}`, W - rm, 38, { align: 'right' });
 
   // ── INFO CLIENTE ─────────────────────────────────────────────────────────
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  let y = 43;
+  let y = 46;
   const lb = (label: string, value: string | null | undefined, x2?: number) => {
     doc.setFont('helvetica', 'bold');
     doc.text(label, lm, y);
@@ -575,58 +573,6 @@ const generarPdf = (rec: any, lineas: any[]) => {
   const nota = 'Nota: Toda devolución debe venir bien embalada. La empresa no se hace responsable por productos que lleguen en mal estado.';
   const notaLines = doc.splitTextToSize(nota, cw);
   doc.text(notaLines, lm, finalY);
-  finalY += notaLines.length * 5 + 4;
-
-  // ── INDICACIONES ─────────────────────────────────────────────────────────
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.text('INDICACIONES:', lm, finalY); finalY += 5;
-  doc.text('a. Notificar mediante vía telefónica al asesor de venta.', lm + 3, finalY); finalY += 4;
-  doc.text('b. Realizar llenado de formato de reclamos y devoluciones:', lm + 3, finalY); finalY += 5;
-
-  const items = [
-    'Nombre del Cliente',
-    'Código otorgado por la droguería.',
-    'Número de factura asociada a la mercancía recibida.',
-    'Nombre de producto y descripción.',
-    'Número de lote.',
-    'Fecha de vencimiento.',
-    'Fecha de recepción del pedido.',
-    'Cantidad enviada.',
-    'Motivo de devolución.',
-    'Número de bultos.',
-  ];
-  for (const item of items) {
-    doc.setFillColor(0, 102, 153);
-    doc.rect(lm + 6, finalY - 3, 3.5, 3.5, 'F');
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(8);
-    doc.text(item, lm + 12, finalY);
-    finalY += 4.5;
-  }
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.text('c. Enviar formato PDF al asesor de venta', lm + 3, finalY); finalY += 10;
-
-  // ── FIRMAS ────────────────────────────────────────────────────────────────
-  const firmaY = Math.min(finalY + 5, 270);
-  doc.setLineWidth(0.3);
-  doc.setDrawColor(0);
-
-  // Firma 1
-  doc.line(lm, firmaY, lm + 65, firmaY);
-  doc.setFontSize(8);
-  doc.text('ENTREGADO POR (CLIENTE):', lm, firmaY + 4);
-
-  // Firma 2
-  doc.line(W - rm - 65, firmaY, W - rm, firmaY);
-  doc.text('ENTREGADO POR (CHOFER):', W - rm - 65, firmaY + 4);
-
-  // Firma 3 (centrada)
-  const f3x = (W - 65) / 2;
-  doc.line(f3x, firmaY + 16, f3x + 65, firmaY + 16);
-  doc.text('ANALISTA DE RECLAMOS:', f3x, firmaY + 20);
 
   doc.save(`Reclamo-${pad(rec.ID)}.pdf`);
 };
