@@ -322,16 +322,18 @@ export class FtpService {
             promosRes.recordset.map((r: any) => [Number(r.CODARTICULO), { d2: Number(r.SLOT2), d3: Number(r.SLOT3) }])
         );
 
+        const dtoMap = new Map<number, { d1: number; d2: number; d3: number; precioFinal: number }>();
         for (const l of lineas) {
             const pneto = preciosSistema.get(l.codarticulo) ?? 0;
             const nodto = nodtoMap.get(l.codarticulo) ?? false;
             const promo = promoMap.get(l.codarticulo) ?? { d2: 0, d3: 0 };
+            const d1 = nodto ? 0 : d1Cliente;
+            const d2 = nodto ? 0 : promo.d2;
+            const d3 = nodto ? 0 : (cclD3 > 0 ? cclD3 : promo.d3);
+            const precioFinal = pneto * (1 - d1/100) * (1 - d2/100) * (1 - d3/100);
             l.precioUnit  = pneto;
-            l.d1          = nodto ? 0 : d1Cliente;
-            l.d2          = nodto ? 0 : promo.d2;
-            l.d3          = nodto ? 0 : (cclD3 > 0 ? cclD3 : promo.d3);
-            l.precioFinal = pneto * (1 - l.d1/100) * (1 - l.d2/100) * (1 - l.d3/100);
-            l.precioTotal = l.precioFinal * l.cantidad;
+            l.precioTotal = precioFinal * l.cantidad;
+            dtoMap.set(l.codarticulo, { d1, d2, d3, precioFinal });
         }
         const totalChunks = maxLineas > 0 && lineas.length > maxLineas
             ? Math.ceil(lineas.length / maxLineas) : 1;
@@ -373,9 +375,10 @@ export class FtpService {
                 tabla.columns.add('MONTOIVA',       mssql.Float,         { nullable: true  });
 
                 for (const l of chunk) {
+                    const dto = dtoMap.get(l.codarticulo) ?? { d1: 0, d2: 0, d3: 0, precioFinal: l.precioUnit };
                     tabla.rows.add(chunkId, l.codarticulo, '', almacen, tarifa,
-                        Math.round(l.cantidad), l.precioFinal ?? l.precioUnit,
-                        l.d1 ?? 0, l.d2 ?? 0, l.d3 ?? 0, 0,
+                        Math.round(l.cantidad), dto.precioFinal,
+                        dto.d1, dto.d2, dto.d3, 0,
                         l.precioUnit, 0, 0);
                 }
                 await pool.request().bulk(tabla);
