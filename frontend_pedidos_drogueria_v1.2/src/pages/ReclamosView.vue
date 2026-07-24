@@ -404,8 +404,9 @@ const descargarPdf = async (id: number) => {
     const res = await axios.get(`${API}/reclamos/${id}`);
     if (!res.data.success) { lanzarAviso('No se pudo obtener el reclamo', 'error'); return; }
     generarPdf(res.data.reclamo, res.data.lineas);
-  } catch {
-    lanzarAviso('Error al generar el PDF', 'error');
+  } catch (err: any) {
+    console.error('[PDF error]', err);
+    lanzarAviso(`Error al generar el PDF: ${err?.message ?? err}`, 'error');
   } finally { pdfCargando.value = null; }
 };
 
@@ -472,12 +473,12 @@ const generarPdf = (rec: any, lineas: any[]) => {
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   let y = 43;
-  const lb = (label: string, value: string, x2?: number) => {
+  const lb = (label: string, value: string | null | undefined, x2?: number) => {
     doc.setFont('helvetica', 'bold');
     doc.text(label, lm, y);
     doc.setFont('helvetica', 'normal');
     const lw = doc.getTextWidth(label) + 2;
-    doc.text(value, lm + lw, y, { maxWidth: (x2 ?? cw) - lw });
+    doc.text(String(value ?? ''), lm + lw, y, { maxWidth: (x2 ?? cw) - lw });
   };
 
   lb('Cliente:', `(${rec.CODCLIENTE}) ${rec.NOMBRECLIENTE}`);
@@ -596,12 +597,8 @@ const generarPdf = (rec: any, lineas: any[]) => {
     'Número de bultos.',
   ];
   for (const item of items) {
-    // checkbox ☑
     doc.setFillColor(0, 102, 153);
     doc.rect(lm + 6, finalY - 3, 3.5, 3.5, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(6);
-    doc.text('✓', lm + 6.5, finalY - 0.2);
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(8);
     doc.text(item, lm + 12, finalY);

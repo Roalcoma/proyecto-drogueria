@@ -162,7 +162,7 @@ export class ReclamosService {
                        ISNULL(CL.TELEFONO1,'') AS TELEFONO,
                        ISNULL(CL.DIRECCION1,'') AS DIRECCION,
                        ISNULL(CLC.ZONA,'') AS CODZONA,
-                       ISNULL(RUT.NOMBRE, ISNULL(CLC.ZONA,'')) AS NOMBRERUTA
+                       ISNULL(RUT.DESCRIPCION, ISNULL(CLC.ZONA,'')) AS NOMBRERUTA
                 FROM APP_RECLAMOS R
                     LEFT JOIN CLIENTES CL ON CL.CODCLIENTE = R.CODCLIENTE
                     LEFT JOIN CLIENTESCAMPOSLIBRES CLC ON CLC.CODCLIENTE = R.CODCLIENTE
