@@ -237,6 +237,7 @@ export class ProductsService {
                     AND A.DESCATALOGADO = 'F'
                     AND A.DPTO = 1
                     AND UPPER(ISNULL(S.DESCRIPCION, '')) NOT LIKE '%GASTO%'
+                    AND ${STOCK_DISPONIBLE_SQL} > 0
                 ORDER BY ACL.DESCRIPCIONLARGA
             `);
         return result.recordset;
