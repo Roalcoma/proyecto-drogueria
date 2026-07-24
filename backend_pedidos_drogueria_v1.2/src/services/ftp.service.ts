@@ -203,15 +203,18 @@ export class FtpService {
         }
         const codCli    = match[1];
         const numPedido = match[2];
-        const orderId   = `FP-${codCli}-${numPedido}`;
+        // ORDERID ≤ 15 chars: FP + cli(5) + num(5) + tipo(0-2) + chunk(0-1)
+        const cliPart = codCli.replace(/^c/i, '').slice(-5).padStart(5, '0');
+        const numPart = numPedido.slice(-5).padStart(5, '0');
+        const baseId  = `FP${cliPart}${numPart}`;  // siempre 12 chars
 
         const pool = await connectDb();
 
         const dup = await pool.request()
-            .input('OID', mssql.VarChar(50), orderId)
-            .query(`SELECT 1 FROM ${esquema}.CABECERA_PED WHERE ORDERID = @OID`);
+            .input('BASE', mssql.VarChar(15), baseId)
+            .query(`SELECT 1 FROM ${esquema}.CABECERA_PED WHERE ORDERID LIKE @BASE + '%'`);
         if (dup.recordset.length > 0) {
-            await FtpService.registrarAuditoria(archivo, 'YA_PROCESADO', codCli, orderId);
+            await FtpService.registrarAuditoria(archivo, 'YA_PROCESADO', codCli, baseId);
             try { fs.renameSync(rutaCompleta, rutaCompleta.replace(/\.txt$/i, '.bak')); } catch {}
             return;
         }
@@ -226,7 +229,7 @@ export class FtpService {
                     WHERE CAST(CODCLIENTE AS NVARCHAR(50)) = @COD
                        OR CODCLIENTE = TRY_CAST(@COD AS INT)`);
         if (clienteRes.recordset.length === 0) {
-            await FtpService.registrarAuditoria(archivo, 'CLIENTE_NO_ENCONTRADO', codCli, orderId,
+            await FtpService.registrarAuditoria(archivo, 'CLIENTE_NO_ENCONTRADO', codCli, baseId,
                 `Cliente '${codCli}' no existe en el sistema`);
             return;
         }
@@ -236,7 +239,7 @@ export class FtpService {
         try {
             contenido = fs.readFileSync(rutaCompleta, 'latin1');
         } catch (err) {
-            await FtpService.registrarAuditoria(archivo, 'PARSE_ERROR', codCli, orderId, `Error leyendo archivo: ${err}`);
+            await FtpService.registrarAuditoria(archivo, 'PARSE_ERROR', codCli, baseId, `Error leyendo archivo: ${err}`);
             return;
         }
 
@@ -259,7 +262,7 @@ export class FtpService {
             .filter(l => l.codarticulo > 0 && l.cantidad > 0);
 
         if (lineas.length === 0) {
-            await FtpService.registrarAuditoria(archivo, 'PARSE_ERROR', codCli, orderId, 'Archivo sin líneas válidas');
+            await FtpService.registrarAuditoria(archivo, 'PARSE_ERROR', codCli, baseId, 'Archivo sin líneas válidas');
             return;
         }
 
@@ -271,7 +274,7 @@ export class FtpService {
         // Precios y descuentos del sistema; ignoramos precio del archivo
         const codigos = [...new Set(lineas.map(l => l.codarticulo))].join(',');
 
-        const [preciosRes, dtoCliRes, nodtoRes, promosRes] = await Promise.all([
+        const [preciosRes, dtoCliRes, artInfoRes, promosRes] = await Promise.all([
             pool.request()
                 .input('TARIFA', mssql.Int, tarifa)
                 .query(`SELECT CODARTICULO, PNETO FROM PRECIOSVENTA WHERE IDTARIFAV = @TARIFA AND CODARTICULO IN (${codigos})`),
@@ -279,7 +282,17 @@ export class FtpService {
                 .input('CLI', mssql.Int, CODCLIENTE)
                 .query(`SELECT ISNULL(TRY_CAST(D1 AS FLOAT),0) AS D1, ISNULL(TRY_CAST(D3 AS FLOAT),0) AS D3 FROM CLIENTESCAMPOSLIBRES WHERE CODCLIENTE = @CLI`),
             pool.request()
-                .query(`SELECT CODARTICULO, ISNULL(NODTOAPLICABLE,0) AS NODTO FROM ARTICULOS WHERE CODARTICULO IN (${codigos})`),
+                .input('dptoPsico', mssql.Int, getDbConfig().dptoPsicotropicos)
+                .query(`
+                    SELECT A.CODARTICULO,
+                        ISNULL(A.NODTOAPLICABLE,0) AS NODTO,
+                        CASE WHEN A.SECCION = @dptoPsico THEN 1 ELSE 0 END AS ES_PSICO,
+                        ISNULL(PCL.DIASPROTECCION,0) AS DIAS_PROT
+                    FROM ARTICULOS A WITH(NOLOCK)
+                    LEFT JOIN ARTICULOSCAMPOSLIBRES ACL WITH(NOLOCK) ON ACL.CODARTICULO = A.CODARTICULO
+                    LEFT JOIN PROVEEDORESCAMPOSLIBRES PCL WITH(NOLOCK) ON PCL.CODPROVEEDOR = ACL.CODPROVEEDORICG
+                    WHERE A.CODARTICULO IN (${codigos})
+                `),
             pool.request()
                 .input('CLI', mssql.Int, CODCLIENTE)
                 .query(`
@@ -315,17 +328,30 @@ export class FtpService {
         ]);
 
         const preciosSistema = new Map<number, number>(preciosRes.recordset.map((r: any) => [r.CODARTICULO, Number(r.PNETO)]));
-        const d1Cliente = Number(dtoCliRes.recordset[0]?.D1 ?? 0);
-        const cclD3     = Number(dtoCliRes.recordset[0]?.D3 ?? 0);
-        const nodtoMap  = new Map<number, boolean>(nodtoRes.recordset.map((r: any) => [Number(r.CODARTICULO), !!r.NODTO]));
-        const promoMap  = new Map<number, { d2: number; d3: number }>(
+        const d1Cliente  = Number(dtoCliRes.recordset[0]?.D1 ?? 0);
+        const cclD3      = Number(dtoCliRes.recordset[0]?.D3 ?? 0);
+        const artInfoMap = new Map<number, { nodto: boolean; esPsico: boolean; diasProt: number }>(
+            artInfoRes.recordset.map((r: any) => [
+                Number(r.CODARTICULO),
+                { nodto: !!r.NODTO, esPsico: !!r.ES_PSICO, diasProt: Number(r.DIAS_PROT) }
+            ])
+        );
+        const getTipo = (cod: number): string => {
+            const info = artInfoMap.get(cod);
+            if (!info)             return 'N';
+            if (info.esPsico)      return 'P';
+            if (info.nodto)        return 'SD';
+            if (info.diasProt > 0) return 'NI';
+            return 'N';
+        };
+        const promoMap = new Map<number, { d2: number; d3: number }>(
             promosRes.recordset.map((r: any) => [Number(r.CODARTICULO), { d2: Number(r.SLOT2), d3: Number(r.SLOT3) }])
         );
 
         const dtoMap = new Map<number, { d1: number; d2: number; d3: number; precioFinal: number }>();
         for (const l of lineas) {
             const pneto = preciosSistema.get(l.codarticulo) ?? 0;
-            const nodto = nodtoMap.get(l.codarticulo) ?? false;
+            const nodto = artInfoMap.get(l.codarticulo)?.nodto ?? false;
             const promo = promoMap.get(l.codarticulo) ?? { d2: 0, d3: 0 };
             const d1 = nodto ? 0 : d1Cliente;
             const d2 = nodto ? 0 : promo.d2;
@@ -335,64 +361,82 @@ export class FtpService {
             l.precioTotal = precioFinal * l.cantidad;
             dtoMap.set(l.codarticulo, { d1, d2, d3, precioFinal });
         }
-        const totalChunks = maxLineas > 0 && lineas.length > maxLineas
-            ? Math.ceil(lineas.length / maxLineas) : 1;
-        const chunks: typeof lineas[] = [];
-        for (let i = 0; i < lineas.length; i += (maxLineas > 0 ? maxLineas : lineas.length)) {
-            chunks.push(lineas.slice(i, maxLineas > 0 ? i + maxLineas : lineas.length));
+
+        // Agrupar por tipo: P (psicotrópicos), SD (sin descuento), NI (nuevos), N (normal)
+        const grupos = new Map<string, typeof lineas>();
+        for (const l of lineas) {
+            const tipo = getTipo(l.codarticulo);
+            if (!grupos.has(tipo)) grupos.set(tipo, []);
+            grupos.get(tipo)!.push(l);
         }
+
+        const step = maxLineas > 0 ? maxLineas : Infinity;
+        // ORDERID: baseId(12) + tipo(0-2) + chunk>1(0-1) → siempre ≤ 15 chars
+        const buildChunkId = (tipo: string, chunk: number): string => {
+            const typeSuf  = tipo === 'N' ? '' : tipo;
+            const chunkSuf = chunk > 1 ? String(Math.min(chunk, 9)) : '';
+            return baseId + typeSuf + chunkSuf;
+        };
 
         const orderIds: string[] = [];
         try {
-            for (let ci = 0; ci < chunks.length; ci++) {
-                const chunk      = chunks[ci];
-                const chunkId    = ci === 0 ? orderId : `${orderId}-${ci + 1}`;
-                const totalChunk = chunk.reduce((s, l) => s + l.precioTotal, 0);
-
-                await pool.request()
-                    .input('OID', mssql.NVarChar(50), chunkId)
-                    .input('CLI', mssql.Int, CODCLIENTE)
-                    .input('VND', mssql.Int, CODVENDEDOR)
-                    .input('TOT', mssql.Decimal(18, 2), totalChunk)
-                    .query(`INSERT INTO ${esquema}.CABECERA_PED (ORDERID, CLIENTEID, FECHA, ESTATUS, CODVENDEDOR, TOTALPRECIO)
-                            VALUES (@OID, @CLI, GETDATE(), 'PENDIENTE', @VND, @TOT)`);
-
-                const tabla = new mssql.Table(`${esquema}.LINEA_PED`);
-                tabla.create = false;
-                tabla.columns.add('ORDERID',        mssql.VarChar(50),  { nullable: false });
-                tabla.columns.add('CODARTICULO',    mssql.Int,           { nullable: false });
-                tabla.columns.add('REFERENCIA',     mssql.VarChar(50),  { nullable: true  });
-                tabla.columns.add('CODALMACEN',     mssql.VarChar(10),  { nullable: false });
-                tabla.columns.add('IDTARIFAV',      mssql.Int,           { nullable: false });
-                tabla.columns.add('PRODUCTCOUNT',   mssql.Int,           { nullable: false });
-                tabla.columns.add('PRECIOUNITARIO', mssql.Float,         { nullable: false });
-                tabla.columns.add('DESCUENTO1',     mssql.Float,         { nullable: true  });
-                tabla.columns.add('DESCUENTO2',     mssql.Float,         { nullable: true  });
-                tabla.columns.add('DESCUENTO3',     mssql.Float,         { nullable: true  });
-                tabla.columns.add('DESCUENTO4',     mssql.Float,         { nullable: true  });
-                tabla.columns.add('PRECIOBRUTO',    mssql.Float,         { nullable: true  });
-                tabla.columns.add('PORCENTAJEIVA',  mssql.Float,         { nullable: true  });
-                tabla.columns.add('MONTOIVA',       mssql.Float,         { nullable: true  });
-
-                for (const l of chunk) {
-                    const dto = dtoMap.get(l.codarticulo) ?? { d1: 0, d2: 0, d3: 0, precioFinal: l.precioUnit };
-                    tabla.rows.add(chunkId, l.codarticulo, '', almacen, tarifa,
-                        Math.round(l.cantidad), dto.precioFinal,
-                        dto.d1, dto.d2, dto.d3, 0,
-                        l.precioUnit, 0, 0);
+            for (const [tipo, artsTipo] of grupos) {
+                const tipoCh: (typeof lineas)[] = [];
+                const sz = step === Infinity ? artsTipo.length : step;
+                for (let i = 0; i < artsTipo.length; i += sz) {
+                    tipoCh.push(artsTipo.slice(i, i + sz));
                 }
-                await pool.request().bulk(tabla);
 
-                await pool.request()
-                    .input('OID', mssql.NVarChar(50), chunkId)
-                    .input('EST', mssql.NVarChar(50), 'PENDIENTE')
-                    .input('DET', mssql.NVarChar(500),
-                        `Pedido FTP importado desde ${archivo}. Cliente: ${codCli}. Parte ${ci + 1}/${totalChunks}.`)
-                    .query(`INSERT INTO ${esquema}.APP_PEDIDO_LOG (ORDERID, EST_ANTERIOR, EST_NUEVO, USUARIO, DETALLES)
-                            VALUES (@OID, NULL, @EST, 'FTP', @DET)`);
+                for (let ci = 0; ci < tipoCh.length; ci++) {
+                    const chunk      = tipoCh[ci];
+                    const chunkId    = buildChunkId(tipo, ci + 1);
+                    const totalChunk = chunk.reduce((s, l) => s + l.precioTotal, 0);
 
-                orderIds.push(chunkId);
-                console.log(`[FTP] ${archivo} → ${chunkId} (${chunk.length} líneas, parte ${ci + 1}/${totalChunks})`);
+                    await pool.request()
+                        .input('OID', mssql.NVarChar(15), chunkId)
+                        .input('CLI', mssql.Int, CODCLIENTE)
+                        .input('VND', mssql.Int, CODVENDEDOR)
+                        .input('TOT', mssql.Decimal(18, 2), totalChunk)
+                        .query(`INSERT INTO ${esquema}.CABECERA_PED (ORDERID, CLIENTEID, FECHA, ESTATUS, CODVENDEDOR, TOTALPRECIO)
+                                VALUES (@OID, @CLI, GETDATE(), 'PENDIENTE', @VND, @TOT)`);
+
+                    const tabla = new mssql.Table(`${esquema}.LINEA_PED`);
+                    tabla.create = false;
+                    tabla.columns.add('ORDERID',        mssql.VarChar(50),  { nullable: false });
+                    tabla.columns.add('CODARTICULO',    mssql.Int,           { nullable: false });
+                    tabla.columns.add('REFERENCIA',     mssql.VarChar(50),  { nullable: true  });
+                    tabla.columns.add('CODALMACEN',     mssql.VarChar(10),  { nullable: false });
+                    tabla.columns.add('IDTARIFAV',      mssql.Int,           { nullable: false });
+                    tabla.columns.add('PRODUCTCOUNT',   mssql.Int,           { nullable: false });
+                    tabla.columns.add('PRECIOUNITARIO', mssql.Float,         { nullable: false });
+                    tabla.columns.add('DESCUENTO1',     mssql.Float,         { nullable: true  });
+                    tabla.columns.add('DESCUENTO2',     mssql.Float,         { nullable: true  });
+                    tabla.columns.add('DESCUENTO3',     mssql.Float,         { nullable: true  });
+                    tabla.columns.add('DESCUENTO4',     mssql.Float,         { nullable: true  });
+                    tabla.columns.add('PRECIOBRUTO',    mssql.Float,         { nullable: true  });
+                    tabla.columns.add('PORCENTAJEIVA',  mssql.Float,         { nullable: true  });
+                    tabla.columns.add('MONTOIVA',       mssql.Float,         { nullable: true  });
+
+                    for (const l of chunk) {
+                        const dto = dtoMap.get(l.codarticulo) ?? { d1: 0, d2: 0, d3: 0, precioFinal: l.precioUnit };
+                        tabla.rows.add(chunkId, l.codarticulo, '', almacen, tarifa,
+                            Math.round(l.cantidad), dto.precioFinal,
+                            dto.d1, dto.d2, dto.d3, 0,
+                            l.precioUnit, 0, 0);
+                    }
+                    await pool.request().bulk(tabla);
+
+                    await pool.request()
+                        .input('OID', mssql.NVarChar(15), chunkId)
+                        .input('EST', mssql.NVarChar(50), 'PENDIENTE')
+                        .input('DET', mssql.NVarChar(500),
+                            `Pedido FTP desde ${archivo}. Tipo: ${tipo}. Parte ${ci + 1}/${tipoCh.length}.`)
+                        .query(`INSERT INTO ${esquema}.APP_PEDIDO_LOG (ORDERID, EST_ANTERIOR, EST_NUEVO, USUARIO, DETALLES)
+                                VALUES (@OID, NULL, @EST, 'FTP', @DET)`);
+
+                    orderIds.push(chunkId);
+                    console.log(`[FTP] ${archivo} → ${chunkId} (${chunk.length} líneas, tipo ${tipo}, parte ${ci + 1}/${tipoCh.length})`);
+                }
             }
 
             fs.renameSync(rutaCompleta, rutaCompleta.replace(/\.txt$/i, '.bak'));
@@ -400,8 +444,8 @@ export class FtpService {
                 `${lineas.length} línea(s) → ${orderIds.join(', ')}`);
 
         } catch (err) {
-            console.error(`[FTP] Error insertando ${orderId}:`, err);
-            await FtpService.registrarAuditoria(archivo, 'ERROR_INSERCION', codCli, orderId,
+            console.error(`[FTP] Error insertando ${baseId}:`, err);
+            await FtpService.registrarAuditoria(archivo, 'ERROR_INSERCION', codCli, baseId,
                 String(err).substring(0, 500));
         }
     }
