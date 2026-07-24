@@ -384,31 +384,36 @@ const exportarCatalogoSegmentos = async () => {
     const conProveedor = modalExcel.value.conProveedor;
     const wb = new ExcelJS.Workbook();
 
-    // Columnas: Codigo | Cod/Barras | Descripción | PORTALPRV | Oferta | Precio F | Existen | Fecha/Lote | Unidades | Monto | [Proveedor] | Marca | Categoría | Oferta activa desde | P.Activo
-    const COL_PRECIO   = 6;  // F
-    const COL_FECHA    = 8;  // H
-    const COL_UNIDADES = 9;  // I
-    const COL_MONTO    = 10; // J
-    const NCOLS = conProveedor ? 15 : 14;
+    // Columnas: Codigo | Cod/Barras | Descripción | PORTALPRV | Oferta 1 | Oferta 2 | Precio F | Existen | Fecha/Lote | Unidades | Monto | [Proveedor] | Marca | Categoría | Oferta activa desde | P.Activo
+    const COL_PORTALPRV = 4;  // D
+    const COL_PRECIO    = 7;  // G
+    const COL_FECHA     = 9;  // I
+    const COL_UNIDADES  = 10; // J
+    const COL_MONTO     = 11; // K
+    const NCOLS = conProveedor ? 16 : 15;
 
     const colWidths = conProveedor
-      ? [12, 14, 50, 12, 10, 13, 9, 14, 10, 14, 22, 18, 22, 20, 30]
-      : [12, 14, 50, 12, 10, 13, 9, 14, 10, 14, 18, 22, 20, 30];
+      ? [12, 14, 50, 13, 10, 10, 13, 9, 14, 10, 14, 22, 18, 22, 20, 30]
+      : [12, 14, 50, 13, 10, 10, 13, 9, 14, 10, 14, 18, 22, 20, 30];
 
-    const buildHeaders = (dto: number) => {
-      const h = ['Codigo', 'Cod/Barras', 'Descripción', 'PORTALPRV', 'Oferta',
-        dto === 0 ? 'Precio F' : `Precio F -${dto}%`,
+    const buildHeaders = () => {
+      const h = ['Codigo', 'Cod/Barras', 'Descripción', 'PORTALPRV', 'Oferta 1', 'Oferta 2', 'Precio F',
         'Existen', 'Fecha/Lote', 'Unidades', 'Monto'];
       if (conProveedor) h.push('Proveedor');
       h.push('Marca', 'Categoría', 'Oferta activa desde', 'P.Activo');
       return h;
     };
 
-    const buildRow = (p: any, precioConDto: number) => {
-      const garantia = p.GARANTIACOMPRA ? new Date(p.GARANTIACOMPRA) : '';
+    const buildRow = (p: any, dto: number) => {
+      const d2  = p.D2_PORCENTAJE ?? 0;
+      const base = Number(p.PRECIO_BASE);
+      const precioFinal = base * (1 - dto / 100) * (1 - d2 / 100);
+      const g = p.GARANTIACOMPRA;
+      const garantia = g instanceof Date ? g : (g ? new Date(g) : '');
       const r: any[] = [
-        p.CODARTICULO ?? '', p.REFPROVEEDOR ?? '', p.DESCRIPCION ?? '', '',
-        p.D2_PORCENTAJE ?? 0, precioConDto, p.STOCK_DISP ?? 0, garantia, 0, '',
+        p.CODARTICULO ?? '', p.REFPROVEEDOR ?? '', p.DESCRIPCION ?? '',
+        base, dto, d2, precioFinal,
+        p.STOCK_DISP ?? 0, garantia, 0, '',
       ];
       if (conProveedor) r.push(p.PROVEEDOR ?? '');
       r.push(p.MARCA ?? '', p.SECCION ?? '', '', p.PRINCIPIOACTIVO ?? '');
@@ -431,7 +436,6 @@ const exportarCatalogoSegmentos = async () => {
     const bannerId = wb.addImage({ buffer: bannerBuffer, extension: 'png' });
 
     descuentos.forEach(dto => {
-      const factor = 1 - dto / 100;
       const ws = wb.addWorksheet(dto === 0 ? 'Precios' : `Dto ${dto}%`);
       ws.columns = colWidths.map(w => ({ width: w }));
 
@@ -449,7 +453,7 @@ const exportarCatalogoSegmentos = async () => {
 
       // Encabezados (fila 6)
       ws.getRow(FILA_HEADER).height = 30;
-      buildHeaders(dto).forEach((h, idx) => {
+      buildHeaders().forEach((h, idx) => {
         const cell = ws.getCell(FILA_HEADER, idx + 1);
         cell.value = h;
         aplicarEstiloCelda(cell, COLOR_HEADER, true, 9);
@@ -469,14 +473,14 @@ const exportarCatalogoSegmentos = async () => {
       productos.forEach((p, i) => {
         const rowNum = FILA_INICIO + i;
         const row = ws.getRow(rowNum);
-        const precioConDto = Number(p.PRECIO_BASE) * factor;
 
-        row.values = buildRow(p, precioConDto);
-        row.getCell(COL_PRECIO).numFmt   = FORMATO_DOLAR;
+        row.values = buildRow(p, dto);
+        row.getCell(COL_PORTALPRV).numFmt = FORMATO_DOLAR;
+        row.getCell(COL_PRECIO).numFmt    = FORMATO_DOLAR;
         if (p.GARANTIACOMPRA) row.getCell(COL_FECHA).numFmt = 'dd/mm/yyyy';
-        row.getCell(COL_UNIDADES).numFmt = '#,##0';
-        row.getCell(COL_MONTO).value     = { formula: `F${rowNum}*I${rowNum}` };
-        row.getCell(COL_MONTO).numFmt    = FORMATO_DOLAR;
+        row.getCell(COL_UNIDADES).numFmt  = '#,##0';
+        row.getCell(COL_MONTO).value      = { formula: `G${rowNum}*J${rowNum}` };
+        row.getCell(COL_MONTO).numFmt     = FORMATO_DOLAR;
 
         const colorFila = getColorFila(p);
         const fillColor = colorFila ?? (i % 2 === 1 ? COLOR_ZEBRA : null);
