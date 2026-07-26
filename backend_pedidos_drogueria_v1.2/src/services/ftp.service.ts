@@ -203,10 +203,10 @@ export class FtpService {
         }
         const codCli    = match[1];
         const numPedido = match[2];
-        // ORDERID ≤ 15 chars: FP + cli(5) + num(5) + tipo(0-2) + chunk(0-1)
+        // ORDERID ≤ 15 chars: F + cli(5) + num(5) + tipo(0-2) + chunk(0-1) → max 14
         const cliPart = codCli.replace(/^c/i, '').slice(-5).padStart(5, '0');
         const numPart = numPedido.slice(-5).padStart(5, '0');
-        const baseId  = `FP${cliPart}${numPart}`;  // siempre 12 chars
+        const baseId  = `F${cliPart}${numPart}`;  // siempre 11 chars
 
         const pool = await connectDb();
 
