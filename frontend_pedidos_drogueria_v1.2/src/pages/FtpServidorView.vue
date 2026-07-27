@@ -109,6 +109,31 @@
       </v-row>
     </v-card>
 
+    <!-- IP para datos de conexión de clientes -->
+    <v-card rounded="xl" elevation="2" class="pa-6 mb-4">
+      <div class="text-subtitle-1 font-weight-bold mb-3">
+        <v-icon start color="primary">mdi-ip-network</v-icon>
+        Dirección para datos de conexión
+      </div>
+      <v-row align="center">
+        <v-col cols="12" sm="8">
+          <v-text-field
+            v-model="ipConexionClientes"
+            label="IP o dominio que ven los clientes"
+            variant="outlined"
+            density="compact"
+            placeholder="Ej: 186.167.68.54:58080"
+            hint="Se usa solo al generar el archivo de datos de conexión. No afecta al servidor FTP."
+            persistent-hint
+            hide-details="auto"
+          />
+        </v-col>
+        <v-col cols="12" sm="4" class="text-caption text-medium-emphasis">
+          Este valor aparece en el campo <strong>Dirección FTP</strong> del TXT que se entrega al cliente.
+        </v-col>
+      </v-row>
+    </v-card>
+
     <!-- Gestión de usuarios -->
     <v-card rounded="xl" elevation="2" class="pa-6">
       <div class="d-flex align-center mb-4">
@@ -342,6 +367,7 @@ const usuarioSeleccionado = ref<any>(null);
 const dialogConexion        = ref(false);
 const textoConexion         = ref('');
 const conexionTienePassword = ref(false);
+const ipConexionClientes    = ref(localStorage.getItem('ftp_ip_conexion') ?? '');
 
 const headersUsuarios = [
   { title: 'Usuario',  key: 'USUARIO',       sortable: false },
@@ -476,9 +502,8 @@ const eliminarUsuario = async () => {
 // ── Datos de conexión ─────────────────────────────────────────────────────────
 
 const abrirDatosConexion = (item: any) => {
-  const direccion = cfgServidor.value.ipExterna
-    ? `${cfgServidor.value.ipExterna}:${cfgServidor.value.puerto}`
-    : `<IP_SERVIDOR>:${cfgServidor.value.puerto}`;
+  localStorage.setItem('ftp_ip_conexion', ipConexionClientes.value);
+  const direccion = ipConexionClientes.value.trim() || '<completar dirección FTP>';
   const nombre = item.NOMBRE_CLIENTE || item.USUARIO;
   const clave  = item.PASSWORD_PLAIN || null;
   conexionTienePassword.value = !!clave;
