@@ -161,7 +161,7 @@
                   <td class="text-center">
                     <div class="d-flex align-center justify-center">
                       <v-btn icon="mdi-minus" size="x-small" variant="tonal" @click="linea.PRODUCTCOUNT > 1 ? linea.PRODUCTCOUNT-- : null" />
-                      <span class="mx-3 font-weight-black">{{ linea.PRODUCTCOUNT }}</span>
+                      <span class="mx-3 font-weight-black text-primary cursor-pointer" @click="abrirModalCantidad(linea)">{{ linea.PRODUCTCOUNT }}</span>
                       <v-btn icon="mdi-plus" size="x-small" variant="tonal" @click="linea.PRODUCTCOUNT++" />
                     </div>
                   </td>
@@ -289,6 +289,28 @@
         </v-card>
       </v-dialog>
 
+      <!-- Modal editar cantidad -->
+      <v-dialog v-model="modalCantidad.mostrar" max-width="300">
+        <v-card class="rounded-xl text-center pa-4">
+          <v-card-title class="font-weight-bold">Ajustar Cantidad</v-card-title>
+          <v-card-text>
+            <v-text-field
+              v-model.number="modalCantidad.nuevaCantidad"
+              type="number" variant="outlined" autofocus class="mt-2"
+              hide-details
+              @keyup.enter="guardarCantidad"
+            />
+          </v-card-text>
+          <v-card-actions>
+            <v-btn block color="primary" variant="elevated" rounded="pill"
+              :disabled="modalCantidad.nuevaCantidad < 1"
+              @click="guardarCantidad">
+              Guardar
+            </v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
+
       <!-- Confirmación eliminar línea -->
       <v-dialog v-model="confirmarEliminar.mostrar" max-width="360">
         <v-card class="rounded-xl">
@@ -390,8 +412,9 @@ const resultadosBusqueda   = ref<any[]>([]);
 const buscandoProducto     = ref(false);
 const agregandoProducto    = ref('');
 const notificacion     = ref({ show: false, text: '', color: '' });
-const modalDescuento   = ref({ mostrar: false, nuevoValor: 0, linea: null as any });
+const modalDescuento    = ref({ mostrar: false, nuevoValor: 0, linea: null as any });
 const confirmarEliminar = ref({ mostrar: false, index: -1, descripcion: '' });
+const modalCantidad     = ref({ mostrar: false, nuevaCantidad: 1, linea: null as any });
 
 const totalNuevo = computed(() =>
   lineasEditadas.value.reduce((acc, l) => acc + (l.PRECIOUNITARIO * l.PRODUCTCOUNT), 0)
@@ -482,6 +505,18 @@ const calcularPrecioConDescuentos = (linea: any): number => {
   let p = Number(linea.PRECIOBRUTO || linea.PRECIOUNITARIO);
   descuentosDeLinea(linea).forEach(d => { p = p * (1 - d / 100); });
   return p;
+};
+
+const abrirModalCantidad = (linea: any) => {
+  modalCantidad.value = { mostrar: true, nuevaCantidad: linea.PRODUCTCOUNT, linea };
+};
+
+const guardarCantidad = () => {
+  const { nuevaCantidad, linea } = modalCantidad.value;
+  if (nuevaCantidad >= 1) {
+    linea.PRODUCTCOUNT = Math.floor(nuevaCantidad);
+    modalCantidad.value.mostrar = false;
+  }
 };
 
 const abrirDescuento = (linea: any) => {
