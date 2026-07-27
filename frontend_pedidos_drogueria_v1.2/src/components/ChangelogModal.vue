@@ -173,7 +173,7 @@ const cargar = async () => {
   cargando.value = true;
   error.value = '';
   try {
-    const res = await axios.get(`${API}/changelog`);
+    const res = await axios.get(`${API}/api/changelog`);
     commits.value = res.data.data.map((c: any) => ({
       ...c,
       tipo: normalTipo(c.tipo),

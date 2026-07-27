@@ -123,4 +123,14 @@ export class FtpController {
         const resultados = await FtpService.importarUsuarios(filas);
         res.json({ success: true, resultados });
     }
+
+    static async sincronizarClaves(req: Request, res: Response): Promise<void> {
+        const { filas } = req.body;
+        if (!Array.isArray(filas) || filas.length === 0) {
+            res.status(400).json({ success: false, message: 'Sin filas para sincronizar' });
+            return;
+        }
+        const resultados = await FtpService.sincronizarClaves(filas);
+        res.json({ success: true, resultados });
+    }
 }

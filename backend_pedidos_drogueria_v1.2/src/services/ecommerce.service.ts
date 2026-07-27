@@ -375,20 +375,24 @@ export class EcommerceService {
         const lineas = lineasRes.recordset;
         if (lineas.length === 0) return { success: false, message: 'El pedido no tiene líneas' };
 
-        // 4. Buscar cliente por CODCLIENTE o CIF/RIF
+        // 4. Buscar cliente: primero por CODCLIENTE exacto, solo si no hay match buscar por CIF/RIF
         const codCli = String(ped.COD_CLIENTE ?? '').trim();
         const rifCli = String(ped.RIF ?? '').trim();
-        const clienteRes = await pool.request()
+        const baseSelect = `
+            SELECT C.CODCLIENTE,
+                   ISNULL(TRY_CAST(CCL.D1 AS FLOAT), 0) AS DESCUENTO_GLOBAL
+            FROM CLIENTES C WITH (NOLOCK)
+            LEFT JOIN CLIENTESCAMPOSLIBRES CCL WITH (NOLOCK) ON CCL.CODCLIENTE = C.CODCLIENTE
+        `;
+        let clienteRes = await pool.request()
             .input('COD', mssql.NVarChar(50), codCli)
-            .input('RIF', mssql.NVarChar(50), rifCli)
-            .query(`
-                SELECT C.CODCLIENTE,
-                       ISNULL(TRY_CAST(CCL.D1 AS FLOAT), 0) AS DESCUENTO_GLOBAL
-                FROM CLIENTES C WITH (NOLOCK)
-                LEFT JOIN CLIENTESCAMPOSLIBRES CCL WITH (NOLOCK) ON CCL.CODCLIENTE = C.CODCLIENTE
-                WHERE C.CODCLIENTE = TRY_CAST(@COD AS INT)
-                   OR C.CIF = @COD OR C.CIF = @RIF
-            `);
+            .query(`${baseSelect} WHERE C.CODCLIENTE = TRY_CAST(@COD AS INT)`);
+        if (clienteRes.recordset.length === 0) {
+            clienteRes = await pool.request()
+                .input('COD', mssql.NVarChar(50), codCli)
+                .input('RIF', mssql.NVarChar(50), rifCli)
+                .query(`${baseSelect} WHERE C.CIF = @COD OR C.CIF = @RIF`);
+        }
         const cliente = clienteRes.recordset[0];
         if (!cliente) return { success: false, message: `Cliente "${codCli}" no encontrado en el sistema` };
 

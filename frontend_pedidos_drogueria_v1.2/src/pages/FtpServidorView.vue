@@ -124,7 +124,12 @@
           :loading="importandoExcel" @click="seleccionarExcel">
           Importar Excel
         </v-btn>
-        <input ref="inputImportRef" type="file" accept=".xlsx,.xls" style="display:none" @change="importarExcel" />
+        <v-btn variant="tonal" color="orange-darken-2" prepend-icon="mdi-key-change" class="mr-2"
+          :loading="sincronizandoClaves" @click="seleccionarExcelClaves">
+          Sincronizar claves
+        </v-btn>
+        <input ref="inputImportRef"      type="file" accept=".xlsx,.xls" style="display:none" @change="importarExcel" />
+        <input ref="inputClavesRef"      type="file" accept=".xlsx,.xls" style="display:none" @change="sincronizarClaves" />
         <v-btn color="primary" variant="tonal" prepend-icon="mdi-account-plus" @click="abrirDialogNuevoUsuario">
           Nuevo usuario
         </v-btn>
@@ -147,6 +152,9 @@
           {{ item.FECHA_CREACION ? new Date(item.FECHA_CREACION).toLocaleDateString('es-VE', { timeZone: brandingStore.zonaHoraria }) : '—' }}
         </template>
         <template v-slot:item.acciones="{ item }">
+          <v-btn icon size="small" variant="text" color="teal-darken-1" title="Datos de conexión" @click="abrirDatosConexion(item)">
+            <v-icon>mdi-lan-connect</v-icon>
+          </v-btn>
           <v-btn icon size="small" variant="text" :color="item.ACTIVO === 'T' ? 'warning' : 'success'"
             :title="item.ACTIVO === 'T' ? 'Desactivar' : 'Activar'"
             @click="toggleUsuario(item)">
@@ -267,6 +275,32 @@
       </v-card>
     </v-dialog>
 
+    <!-- Dialog: Datos de conexión FTP -->
+    <v-dialog v-model="dialogConexion" max-width="460">
+      <v-card rounded="xl">
+        <v-card-title class="text-h6 font-weight-bold pa-5 pb-2">
+          <v-icon start color="teal-darken-1">mdi-lan-connect</v-icon>
+          Datos de conexión FTP
+        </v-card-title>
+        <v-card-text class="pa-5 pt-2">
+          <v-alert v-if="!conexionTienePassword" type="warning" variant="tonal" density="compact" class="mb-3">
+            La contraseña no está guardada para este usuario. Usá el botón <v-icon size="small">mdi-key</v-icon> para cambiarla y quedará disponible aquí.
+          </v-alert>
+          <pre class="conexion-txt pa-4 rounded-lg text-body-2">{{ textoConexion }}</pre>
+        </v-card-text>
+        <v-card-actions class="pa-5 pt-0 gap-2">
+          <v-btn variant="tonal" color="teal-darken-1" prepend-icon="mdi-content-copy" :disabled="!conexionTienePassword" @click="copiarConexion">
+            Copiar
+          </v-btn>
+          <v-btn variant="tonal" color="primary" prepend-icon="mdi-download" :disabled="!conexionTienePassword" @click="descargarConexion">
+            Descargar TXT
+          </v-btn>
+          <v-spacer />
+          <v-btn variant="text" @click="dialogConexion = false">Cerrar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-snackbar v-model="snack.show" :color="snack.color" rounded="pill">{{ snack.text }}</v-snackbar>
   </v-container>
 </template>
@@ -304,6 +338,10 @@ const guardandoPassword  = ref(false);
 const dialogEliminar     = ref(false);
 const eliminandoUsuario  = ref(false);
 const usuarioSeleccionado = ref<any>(null);
+
+const dialogConexion        = ref(false);
+const textoConexion         = ref('');
+const conexionTienePassword = ref(false);
 
 const headersUsuarios = [
   { title: 'Usuario',  key: 'USUARIO',       sortable: false },
@@ -435,10 +473,47 @@ const eliminarUsuario = async () => {
   finally { eliminandoUsuario.value = false; }
 };
 
+// ── Datos de conexión ─────────────────────────────────────────────────────────
+
+const abrirDatosConexion = (item: any) => {
+  const direccion = cfgServidor.value.ipExterna
+    ? `${cfgServidor.value.ipExterna}:${cfgServidor.value.puerto}`
+    : `<IP_SERVIDOR>:${cfgServidor.value.puerto}`;
+  const nombre = item.NOMBRE_CLIENTE || item.USUARIO;
+  const clave  = item.PASSWORD_PLAIN || null;
+  conexionTienePassword.value = !!clave;
+  textoConexion.value =
+`DATOS DE CONEXION
+
+${nombre}
+
+Dirección FTP: ${direccion}
+Usuario: ${item.USUARIO}
+Contraseña: ${clave ?? '(no disponible — resetear con el botón de llave)'}`;
+  dialogConexion.value = true;
+};
+
+const copiarConexion = () => {
+  navigator.clipboard.writeText(textoConexion.value);
+  mostrarSnack('Copiado al portapapeles', 'success');
+};
+
+const descargarConexion = () => {
+  const blob = new Blob([textoConexion.value], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const usuario = textoConexion.value.match(/Usuario: (.+)/)?.[1]?.trim() ?? 'conexion';
+  a.download = `datos_conexion_${usuario}.txt`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
 // ── Importación masiva por Excel ──────────────────────────────────────────────
 
 const inputImportRef    = ref<HTMLInputElement | null>(null);
+const inputClavesRef    = ref<HTMLInputElement | null>(null);
 const importandoExcel   = ref(false);
+const sincronizandoClaves = ref(false);
 const dialogResultados  = ref(false);
 const resultadosImport  = ref<{ fila: number; usuario: string; ok: boolean; error?: string }[]>([]);
 
@@ -490,7 +565,47 @@ const importarExcel = async (e: Event) => {
   }
 };
 
+const seleccionarExcelClaves = () => inputClavesRef.value?.click();
+
+const sincronizarClaves = async (e: Event) => {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  sincronizandoClaves.value = true;
+  try {
+    const buf  = await file.arrayBuffer();
+    const wb   = XLSX.read(buf, { type: 'array' });
+    const rows: any[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+    if (!rows.length) { mostrarSnack('El archivo no tiene datos', 'warning'); return; }
+    const filas = rows
+      .map((r: any) => ({
+        usuario:  String(r.USUARIO ?? '').trim(),
+        password: String(r.CLAVE   ?? '').trim(),
+      }))
+      .filter(f => f.usuario && f.password);
+    if (!filas.length) { mostrarSnack('No se encontraron filas válidas (columnas: USUARIO, CLAVE)', 'warning'); return; }
+    const res = await axios.post(`${API}/usuarios/sincronizar-claves`, { filas });
+    resultadosImport.value = res.data.resultados;
+    dialogResultados.value = true;
+    await cargarUsuarios();
+  } catch (err: any) {
+    mostrarSnack(err?.response?.data?.message ?? 'Error al sincronizar claves', 'error');
+  } finally {
+    sincronizandoClaves.value = false;
+    if (inputClavesRef.value) inputClavesRef.value.value = '';
+  }
+};
+
 onMounted(async () => {
   await Promise.all([cargarEstadoServidor(), cargarUsuarios()]);
 });
 </script>
+
+<style scoped>
+.conexion-txt {
+  background: rgb(var(--v-theme-surface-variant));
+  font-family: monospace;
+  white-space: pre;
+  line-height: 1.8;
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+</style>

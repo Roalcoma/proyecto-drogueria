@@ -29,6 +29,7 @@ ftpRouter.patch('/usuarios/:id/password',     adminMiddleware, FtpController.cam
 ftpRouter.post('/ciclo', adminMiddleware, FtpController.ejecutarCiclo);
 
 // Carga masiva de usuarios desde Excel
-ftpRouter.post('/usuarios/importar', adminMiddleware, FtpController.importarUsuarios);
+ftpRouter.post('/usuarios/importar',           adminMiddleware, FtpController.importarUsuarios);
+ftpRouter.post('/usuarios/sincronizar-claves', adminMiddleware, FtpController.sincronizarClaves);
 
 export default ftpRouter;

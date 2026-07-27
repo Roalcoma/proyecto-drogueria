@@ -611,45 +611,37 @@ export class PedidosServices {
                 .input('ORDERID', mssql.VarChar(50), orderId)
                 .query(`DELETE FROM ${esquema}.LINEA_PED WHERE ORDERID = @ORDERID`);
 
-            // 4. Preparar la tabla en memoria para la Inserción Masiva (Bulk) de las nuevas líneas
-            const tablaLineas = new mssql.Table(`${esquema}.LINEA_PED`);
-            tablaLineas.create = false;
-
-            tablaLineas.columns.add('ORDERID',       mssql.VarChar(50),    { nullable: false });
-            tablaLineas.columns.add('CODARTICULO',   mssql.Int,            { nullable: false });
-            tablaLineas.columns.add('REFERENCIA',    mssql.VarChar(50),    { nullable: true  });
-            tablaLineas.columns.add('CODALMACEN',    mssql.VarChar(10),    { nullable: false });
-            tablaLineas.columns.add('IDTARIFAV',     mssql.Int,            { nullable: false });
-            tablaLineas.columns.add('PRODUCTCOUNT',  mssql.Int,            { nullable: false });
-            tablaLineas.columns.add('PRECIOUNITARIO',mssql.Decimal(18, 2), { nullable: false });
-            tablaLineas.columns.add('DESCUENTO1',    mssql.Float,          { nullable: true  });
-            tablaLineas.columns.add('DESCUENTO2',    mssql.Float,          { nullable: true  });
-            tablaLineas.columns.add('DESCUENTO3',    mssql.Float,          { nullable: true  });
-            tablaLineas.columns.add('DESCUENTO4',    mssql.Float,          { nullable: true  });
-            tablaLineas.columns.add('PRECIOBRUTO',   mssql.Float,          { nullable: true  });
-
+            // 4. Re-insertar las líneas con INSERT parametrizados (más confiable que bulk dentro de transaction)
             for (let i = 0; i < lineas.length; i++) {
                 const { codarticulo, referencia, codalmacen, idtarifav, cantidad, precio,
-                        DESCUENTO1, DESCUENTO2, DESCUENTO3, DESCUENTO4, PRECIOBRUTO } = lineas[i];
-                tablaLineas.rows.add(
-                    orderId,
-                    codarticulo,
-                    referencia || '',
-                    codalmacen,
-                    idtarifav,
-                    cantidad,
-                    precio,
-                    DESCUENTO1 || 0,
-                    DESCUENTO2 || 0,
-                    DESCUENTO3 || 0,
-                    DESCUENTO4 || 0,
-                    PRECIOBRUTO || precio
-                );
+                        DESCUENTO1, DESCUENTO2, DESCUENTO3, DESCUENTO4, PRECIOBRUTO,
+                        PORCENTAJEIVA, MONTOIVA } = lineas[i];
+                const insReq = new mssql.Request(transaction);
+                insReq.input('ORDERID',        mssql.VarChar(50),    orderId);
+                insReq.input('CODARTICULO',    mssql.Int,            codarticulo);
+                insReq.input('REFERENCIA',     mssql.VarChar(50),    referencia || '');
+                insReq.input('CODALMACEN',     mssql.VarChar(10),    codalmacen);
+                insReq.input('IDTARIFAV',      mssql.Int,            idtarifav);
+                insReq.input('PRODUCTCOUNT',   mssql.Int,            cantidad);
+                insReq.input('PRECIOUNITARIO', mssql.Decimal(18, 2), precio);
+                insReq.input('D1',             mssql.Float,          Number(DESCUENTO1 ?? 0));
+                insReq.input('D2',             mssql.Float,          Number(DESCUENTO2 ?? 0));
+                insReq.input('D3',             mssql.Float,          Number(DESCUENTO3 ?? 0));
+                insReq.input('D4',             mssql.Float,          Number(DESCUENTO4 ?? 0));
+                insReq.input('PRECIOBRUTO',    mssql.Float,          Number(PRECIOBRUTO ?? precio));
+                insReq.input('PIVA',           mssql.Float,          Number(PORCENTAJEIVA ?? 0));
+                insReq.input('MIVA',           mssql.Float,          Number(MONTOIVA ?? 0));
+                await insReq.query(`
+                    INSERT INTO ${esquema}.LINEA_PED
+                        (ORDERID, CODARTICULO, REFERENCIA, CODALMACEN, IDTARIFAV, PRODUCTCOUNT,
+                         PRECIOUNITARIO, DESCUENTO1, DESCUENTO2, DESCUENTO3, DESCUENTO4,
+                         PRECIOBRUTO, PORCENTAJEIVA, MONTOIVA)
+                    VALUES
+                        (@ORDERID, @CODARTICULO, @REFERENCIA, @CODALMACEN, @IDTARIFAV, @PRODUCTCOUNT,
+                         @PRECIOUNITARIO, @D1, @D2, @D3, @D4,
+                         @PRECIOBRUTO, @PIVA, @MIVA)
+                `);
             }
-
-            // 5. Ejecutar la inserción masiva de las líneas bajo la misma transacción
-            const bulkReq = new mssql.Request(transaction);
-            await bulkReq.bulk(tablaLineas);
 
             // 6. Si todo salió perfecto, confirmamos los cambios en la base de datos
             await transaction.commit();

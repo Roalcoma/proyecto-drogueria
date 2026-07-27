@@ -461,7 +461,12 @@ export class FtpService {
     static async getUsuarios(): Promise<any[]> {
         const pool = await connectDb();
         const res = await pool.request().query(
-            `SELECT ID, USUARIO, PASSWORD_PLAIN, COD_CLIENTE, ACTIVO, FECHA_CREACION FROM APP_FTP_USUARIOS ORDER BY ID`
+            `SELECT u.ID, u.USUARIO, u.PASSWORD_PLAIN, u.COD_CLIENTE,
+                    ISNULL(c.NOMBRECLIENTE, '') AS NOMBRE_CLIENTE,
+                    u.ACTIVO, u.FECHA_CREACION
+             FROM APP_FTP_USUARIOS u
+             LEFT JOIN CLIENTES c WITH (NOLOCK) ON c.CODCLIENTE = TRY_CAST(u.COD_CLIENTE AS INT)
+             ORDER BY u.ID`
         );
         return res.recordset;
     }
@@ -475,6 +480,28 @@ export class FtpService {
             .input('PLAIN', mssql.NVarChar(100), password)
             .input('COD',   mssql.NVarChar(50),  codCliente.trim() || null)
             .query(`INSERT INTO APP_FTP_USUARIOS (USUARIO, PASSWORD_HASH, PASSWORD_PLAIN, COD_CLIENTE) VALUES (@USR, @HASH, @PLAIN, @COD)`);
+    }
+
+    static async sincronizarClaves(filas: { usuario: string; password: string }[]): Promise<{ fila: number; usuario: string; ok: boolean; error?: string }[]> {
+        const pool = await connectDb();
+        const resultados: { fila: number; usuario: string; ok: boolean; error?: string }[] = [];
+        for (let i = 0; i < filas.length; i++) {
+            const { usuario, password } = filas[i];
+            try {
+                if (!usuario?.trim() || !password?.trim()) throw new Error('Usuario y clave requeridos');
+                const hash = await bcrypt.hash(password.trim(), 10);
+                const r = await pool.request()
+                    .input('USR',   mssql.NVarChar(100), usuario.trim())
+                    .input('HASH',  mssql.NVarChar(255), hash)
+                    .input('PLAIN', mssql.NVarChar(100), password.trim())
+                    .query(`UPDATE APP_FTP_USUARIOS SET PASSWORD_HASH = @HASH, PASSWORD_PLAIN = @PLAIN WHERE USUARIO = @USR`);
+                const actualizado = (r.rowsAffected[0] ?? 0) > 0;
+                resultados.push({ fila: i + 2, usuario: usuario.trim(), ok: actualizado, error: actualizado ? undefined : 'Usuario no encontrado' });
+            } catch (err: any) {
+                resultados.push({ fila: i + 2, usuario: usuario?.trim() ?? '', ok: false, error: err.message ?? 'Error' });
+            }
+        }
+        return resultados;
     }
 
     static async importarUsuarios(filas: { codCliente: string; usuario: string; password: string }[]): Promise<{ fila: number; usuario: string; ok: boolean; error?: string }[]> {
