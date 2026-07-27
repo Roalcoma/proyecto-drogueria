@@ -45,6 +45,29 @@ app.get('/', (_req, res) => {
 
 app.post('/api/eventos', (_req, res) => res.status(200).send('OK'));
 
+app.get('/api/changelog', (_req, res) => {
+    try {
+        const { spawnSync } = require('child_process');
+        const repoDir = require('path').resolve(process.cwd(), '..');
+        const result = spawnSync('git', [
+            'log', '--pretty=format:%h\x01%cd\x01%s', '--date=short', '--no-merges'
+        ], { cwd: repoDir, encoding: 'utf8' });
+        if (result.error) throw result.error;
+        const out: string = result.stdout || '';
+        const commits = out.trim().split('\n').filter(Boolean).map((line: string) => {
+            const [hash, date, ...rest] = line.split('\x01');
+            const subject = rest.join('|||');
+            const typeMatch = subject.match(/^(feat|fix|improve|refactor|chore|docs|style|test)(\(.+?\))?:\s*/i);
+            const tipo = typeMatch ? typeMatch[1].toLowerCase() : 'other';
+            const texto = typeMatch ? subject.slice(typeMatch[0].length) : subject;
+            return { hash, date, tipo, texto };
+        });
+        res.json({ success: true, data: commits });
+    } catch (e: any) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
 app.get('/api/branding', (_req, res) => {
     res.json({ success: true, data: { ...BrandingService.get(), zonaHoraria: getDbConfig().zonaHoraria } });
 });

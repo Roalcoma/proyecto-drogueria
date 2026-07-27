@@ -8,10 +8,15 @@
         <span class="text-caption text-medium-emphasis">Gestión de visibilidad por usuario — sistema de bits</span>
       </div>
       <v-spacer />
+      <v-btn color="secondary" variant="tonal" prepend-icon="mdi-history" class="mr-2" @click="modalChangelog = true">
+        Changelog
+      </v-btn>
       <v-btn color="warning" variant="elevated" prepend-icon="mdi-database-sync" :loading="inicializandoBD" @click="confirmarInicializarBD">
         Inicializar Base de Datos
       </v-btn>
     </div>
+
+    <ChangelogModal v-model="modalChangelog" />
 
     <!-- Referencia de bits -->
     <v-card variant="tonal" color="info" class="mb-6 pa-4" rounded="lg">
@@ -626,6 +631,9 @@
 import { ref, computed, onMounted } from 'vue';
 import axios from 'axios';
 import { useBrandingStore } from '../stores/useBrandingStore';
+import ChangelogModal from '../components/ChangelogModal.vue';
+
+const modalChangelog = ref(false);
 
 const API = `${import.meta.env.VITE_API_URL}/auth`;
 
