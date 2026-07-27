@@ -4,12 +4,13 @@ export interface VersionEntry {
   desde: string; // commits desde esta fecha pertenecen a esta versión
 }
 
-export const APP_VERSION = '1.2.5';
+export const APP_VERSION = '1.2.6';
 
 // Ordenadas de más nueva a más antigua.
 // Un commit pertenece a la versión cuyo "desde" sea <= fecha del commit
 // y sea la más reciente que cumpla esa condición.
 export const VERSIONES: VersionEntry[] = [
+  { version: '1.2.6', fecha: '2026-07-27', desde: '2026-07-27' },
   { version: '1.2.5', fecha: '2026-07-27', desde: '2026-07-25' },
   { version: '1.2.4', fecha: '2026-07-24', desde: '2026-07-20' },
   { version: '1.2.3', fecha: '2026-07-19', desde: '2026-07-13' },
