@@ -45,17 +45,7 @@
 
       <!-- Lista de commits -->
       <v-card-text class="pa-0" style="max-height: 500px; overflow-y: auto;">
-
-        <div v-if="cargando" class="d-flex justify-center align-center py-10">
-          <v-progress-circular indeterminate color="primary" />
-        </div>
-
-        <div v-else-if="error" class="text-center text-error py-8">
-          <v-icon size="36" class="mb-2">mdi-alert-circle</v-icon>
-          <div>{{ error }}</div>
-        </div>
-
-        <template v-else>
+        <template>
           <div v-for="(grupo, gIdx) in commitsFiltrados" :key="grupo.version">
             <!-- Encabezado de versión -->
             <div class="d-flex align-center px-5 py-2 sticky-header">
@@ -109,18 +99,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
-import axios from 'axios';
-import { VERSIONES, APP_VERSION } from '../data/changelog';
+import { ref, computed } from 'vue';
+import { VERSIONES, COMMITS, APP_VERSION } from '../data/changelog';
 
 const open = defineModel<boolean>({ default: false });
 
-const API = import.meta.env.VITE_API_URL;
-
-interface Commit { hash: string; date: string; tipo: string; texto: string; }
-const commits   = ref<Commit[]>([]);
-const cargando  = ref(false);
-const error     = ref('');
 const filtroVersion = ref<string | null>(null);
 const filtroTipo    = ref<string | null>(null);
 
@@ -135,7 +118,13 @@ const tipoColor = (t: string) => TIPOS.find(x => x.key === t)?.color ?? 'grey';
 const tipoIcono = (t: string) => TIPOS.find(x => x.key === t)?.icon ?? 'mdi-circle-outline';
 const tipoLabel = (t: string) => TIPOS.find(x => x.key === t)?.label ?? t;
 
-// Asigna versión a cada commit por rango de fechas
+const normalTipo = (t: string) => {
+  if (t === 'feat')                        return 'feat';
+  if (t === 'fix')                         return 'fix';
+  if (t === 'improve' || t === 'refactor') return 'improve';
+  return 'other';
+};
+
 const versionDeCommit = (date: string): string => {
   for (const v of VERSIONES) {
     if (date >= v.desde) return v.version;
@@ -143,13 +132,10 @@ const versionDeCommit = (date: string): string => {
   return VERSIONES[VERSIONES.length - 1].version;
 };
 
-// Agrupa commits por versión, respetando filtros
 const commitsFiltrados = computed(() => {
-  const base = commits.value.filter(c => {
-    if (filtroTipo.value && normalTipo(c.tipo) !== filtroTipo.value) return false;
-    return true;
-  });
-
+  const base = COMMITS.filter(c =>
+    !filtroTipo.value || normalTipo(c.tipo) === filtroTipo.value
+  );
   return VERSIONES
     .filter(v => !filtroVersion.value || v.version === filtroVersion.value)
     .map(v => ({
@@ -160,32 +146,6 @@ const commitsFiltrados = computed(() => {
     .filter(g => g.commits.length > 0);
 });
 
-// Normaliza tipos similares: refactor/improve → 'improve', rest → 'other'
-const normalTipo = (t: string) => {
-  if (['feat'].includes(t))                return 'feat';
-  if (['fix'].includes(t))                 return 'fix';
-  if (['improve', 'refactor'].includes(t)) return 'improve';
-  return 'other';
-};
-
-const cargar = async () => {
-  if (commits.value.length > 0) return;
-  cargando.value = true;
-  error.value = '';
-  try {
-    const res = await axios.get(`${API}/api/changelog`);
-    commits.value = res.data.data.map((c: any) => ({
-      ...c,
-      tipo: normalTipo(c.tipo),
-    }));
-  } catch {
-    error.value = 'No se pudo cargar el historial de git.';
-  } finally {
-    cargando.value = false;
-  }
-};
-
-watch(open, v => { if (v) cargar(); });
 </script>
 
 <style scoped>

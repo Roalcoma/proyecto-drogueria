@@ -1,14 +1,18 @@
 export interface VersionEntry {
   version: string;
   fecha: string;
-  desde: string; // commits desde esta fecha pertenecen a esta versión
+  desde: string;
+}
+
+export interface CommitEntry {
+  hash: string;
+  date: string;
+  tipo: string;
+  texto: string;
 }
 
 export const APP_VERSION = '1.2.6';
 
-// Ordenadas de más nueva a más antigua.
-// Un commit pertenece a la versión cuyo "desde" sea <= fecha del commit
-// y sea la más reciente que cumpla esa condición.
 export const VERSIONES: VersionEntry[] = [
   { version: '1.2.6', fecha: '2026-07-27', desde: '2026-07-27' },
   { version: '1.2.5', fecha: '2026-07-27', desde: '2026-07-25' },
@@ -17,4 +21,66 @@ export const VERSIONES: VersionEntry[] = [
   { version: '1.2.2', fecha: '2026-07-12', desde: '2026-07-06' },
   { version: '1.2.1', fecha: '2026-07-05', desde: '2026-06-20' },
   { version: '1.2.0', fecha: '2026-06-19', desde: '2020-01-01' },
+];
+
+export const COMMITS: CommitEntry[] = [
+  { hash: '64ec3f8', date: '2026-07-27', tipo: 'feat',    texto: 'FTP: campo de IP para datos de conexión de clientes' },
+  { hash: 'd690609', date: '2026-07-27', tipo: 'chore',   texto: 'bump version to 1.2.6' },
+  { hash: '7569588', date: '2026-07-27', tipo: 'fix',     texto: 'múltiples correcciones: descuentos en edición de pedidos, match cliente ICompras, datos conexión FTP, changelog URL' },
+  { hash: '9df9dd2', date: '2026-07-27', tipo: 'feat',    texto: 'modal historial de versiones en panel admin' },
+  { hash: 'e787fd8', date: '2026-07-26', tipo: 'fix',     texto: 'ORDERID FTP usa prefijo F en lugar de FP' },
+  { hash: '97f9b47', date: '2026-07-24', tipo: 'feat',    texto: 'logo en PDF de reclamos' },
+  { hash: '233b378', date: '2026-07-24', tipo: 'fix',     texto: 'reclamos PDF - RUTAS.DESCRIPCION y null-safety' },
+  { hash: '07fec0f', date: '2026-07-24', tipo: 'feat',    texto: 'reclamos: artículos por factura (ALBVENTACAB/ALBVENTALIN) y separación FTP por tipo' },
+  { hash: 'f1ccce3', date: '2026-07-24', tipo: 'fix',     texto: 'catálogo excluye artículos sin stock' },
+  { hash: '7ab81b1', date: '2026-07-24', tipo: 'feat',    texto: 'nuevo layout Excel catálogo + fix GARANTIACOMPRA' },
+  { hash: 'e808997', date: '2026-07-24', tipo: 'fix',     texto: 'error TS en ftp.service - usa dtoMap en lugar de props dinámicas' },
+  { hash: '457563b', date: '2026-07-23', tipo: 'fix',     texto: 'pedidos FTP aplican D1 cliente y promos slot 2/3' },
+  { hash: '84b42be', date: '2026-07-23', tipo: 'fix',     texto: 'catálogo - Codigo=CODARTICULO, Cod/Barras=REFPROVEEDOR, Fecha=GARANTIACOMPRA' },
+  { hash: '62c1427', date: '2026-07-23', tipo: 'fix',     texto: 'catálogo - colores BIT llega como boolean' },
+  { hash: '1a213d9', date: '2026-07-23', tipo: 'fix',     texto: 'DIASPROTECCION en getCatalogoSegmentos usa PROVEEDORESCAMPOSLIBRES' },
+  { hash: 'd501855', date: '2026-07-23', tipo: 'feat',    texto: 'catálogo: nuevo formato xlsx con banner, leyenda de colores y columna Proveedor' },
+  { hash: 'ff163a5', date: '2026-07-22', tipo: 'feat',    texto: 'promociones por proveedor/marca con escala agregada' },
+  { hash: '97c0920', date: '2026-07-22', tipo: 'fix',     texto: 'picking: Control de Ruteros muestra solo lo contado en picking' },
+  { hash: '3322e1e', date: '2026-07-22', tipo: 'feat',    texto: 'picking: PDF Control de Ruteros' },
+  { hash: '3f930dd', date: '2026-07-22', tipo: 'feat',    texto: 'carga masiva de usuarios FTP desde Excel' },
+  { hash: '62b0156', date: '2026-07-21', tipo: 'fix',     texto: 'corregir binding selección tabla Vuetify 4 (v-model:selected)' },
+  { hash: '6a5e555', date: '2026-07-21', tipo: 'feat',    texto: 'total seleccionados y filtro estatus múltiple en seguimiento de órdenes' },
+  { hash: 'aa35414', date: '2026-07-21', tipo: 'fix',     texto: 'pedidos FTP usan precio del sistema, no el del archivo' },
+  { hash: 'ff17a58', date: '2026-07-21', tipo: 'feat',    texto: 'FTP completo: inventario + facturas + ciclo, módulo FTP_SERVIDOR' },
+  { hash: '09a231d', date: '2026-07-20', tipo: 'fix',     texto: 'import ftp-srv dinámico para no tumbar el backend si no está instalado' },
+  { hash: '52c31d1', date: '2026-07-20', tipo: 'fix',     texto: 'filtro de fecha enviaba un día menos por conversión UTC de mssql.Date' },
+  { hash: 'dca3b11', date: '2026-07-20', tipo: 'feat',    texto: 'servidor FTP embebido con gestión de usuarios' },
+  { hash: '3f98e9c', date: '2026-07-20', tipo: 'fix',     texto: 'corregir desfase de 4 horas en fechas/horas del aplicativo' },
+  { hash: '70c0a77', date: '2026-07-20', tipo: 'fix',     texto: 'quitar días de protección del PDF en facturas no indexadas' },
+  { hash: '694a84d', date: '2026-07-20', tipo: 'fix',     texto: 'PDF de psicotrópicos muestra solo la fecha en el firmante' },
+  { hash: 'c39ad37', date: '2026-07-20', tipo: 'fix',     texto: 'PDF de pedido muestra solo la fecha, sin la hora' },
+  { hash: '9c44dba', date: '2026-07-20', tipo: 'feat',    texto: 'zona horaria configurable en administración' },
+  { hash: 'c51ef5f', date: '2026-07-20', tipo: 'feat',    texto: 'importación automática de pedidos desde servidor FTP' },
+  { hash: '012e383', date: '2026-07-18', tipo: 'feat',    texto: 'pedidos: aplicar maxLineasPorPedido al dividir grupos del frontend' },
+  { hash: 'dcb5e08', date: '2026-07-18', tipo: 'fix',     texto: 'ecommerce: aplicar maxLineasPorPedido al dividir grupos iCompras' },
+  { hash: '3fd6ea8', date: '2026-07-18', tipo: 'improve', texto: 'persistir tamaño de página por sesión en todas las tablas' },
+  { hash: '7172c28', date: '2026-07-18', tipo: 'fix',     texto: 'ecommerce: corregir zona horaria en timestamps de pedidos e iCompras' },
+  { hash: 'f2e67da', date: '2026-07-18', tipo: 'feat',    texto: 'ecommerce: trazabilidad completa del procesamiento de archivos iCompras' },
+  { hash: '751bfec', date: '2026-07-18', tipo: 'fix',     texto: 'iCompras: solo marcar .done tras aprobación confirmada' },
+  { hash: '7cb6a8a', date: '2026-07-18', tipo: 'fix',     texto: 'PDF: sinDesc oculta solo el descuento de cabecera, no la columna completa' },
+  { hash: 'b686126', date: '2026-07-18', tipo: 'fix',     texto: 'iCompras: eliminar lookup por CODBARRAS (ese campo almacena lote, no EAN)' },
+  { hash: '29448c0', date: '2026-07-18', tipo: 'feat',    texto: 'grupos: agregar CODPROVEEDORICG y CODPROVEEDOR al allowlist de condiciones' },
+  { hash: 'f4088e3', date: '2026-07-18', tipo: 'fix',     texto: 'iCompras: priorizar CODARTICULO directo sobre barcode' },
+  { hash: '507fd43', date: '2026-07-17', tipo: 'feat',    texto: 'PDF en pestaña, filtro por usuario, fix filtro psicotrópico' },
+  { hash: '616dfbe', date: '2026-07-17', tipo: 'fix',     texto: 'bloquear artículos con condición en edición de pedidos normales' },
+  { hash: 'f6fedb8', date: '2026-07-17', tipo: 'fix',     texto: 'usar cotización VED para convertir Bs a USD en cálculos de riesgo' },
+  { hash: '4f16f31', date: '2026-07-17', tipo: 'fix',     texto: 'usar process.env.USD en riesgo dentro de getPedidos' },
+  { hash: 'bd2e170', date: '2026-07-17', tipo: 'feat',    texto: 'campo D3 editable en pestaña de clientes' },
+  { hash: 'b015534', date: '2026-07-17', tipo: 'feat',    texto: 'rutero: audit logging y wrapping de dirección en PDF' },
+  { hash: 'fadf51e', date: '2026-07-17', tipo: 'fix',     texto: 'fondo blanco en logo PDF para evitar transparencia negra en JPEG' },
+  { hash: '11c50d2', date: '2026-07-17', tipo: 'feat',    texto: 'restricción de slots D2/D3 en promociones y D4 solo manual' },
+  { hash: 'bfe3fca', date: '2026-07-17', tipo: 'improve', texto: 'reducir peso de PDFs comprimiendo el logo antes de incrustar' },
+  { hash: 'c512fd4', date: '2026-07-17', tipo: 'fix',     texto: 'usar CLIENTESENVIO.DIRECCION1 como dirección de envío en todos los PDFs' },
+  { hash: 'bf2ed0a', date: '2026-07-17', tipo: 'fix',     texto: 'eliminar opción page-size ilimitada, máximo 200; fix reset al cambiar tamaño' },
+  { hash: 'd8ca09e', date: '2026-07-17', tipo: 'fix',     texto: 'opciones de slot de promo D2/D3/D4 — D1 reservado para descuento de cliente' },
+  { hash: '5cf9480', date: '2026-07-17', tipo: 'feat',    texto: 'selector de slot de promo, PROMO_NOMBRE en CABECERA_PED, toggle sinDesc en PDF' },
+  { hash: '2e7cf4c', date: '2026-07-16', tipo: 'feat',    texto: 'DESCUENTO_LINEA puede editar pedidos APROBACION PSICOTROPICOS y descuentos' },
+  { hash: '519ac71', date: '2026-07-16', tipo: 'feat',    texto: 'código de aprobación editable, riesgo en moneda CXC, condición en edición' },
+  { hash: '26db30c', date: '2026-07-16', tipo: 'fix',     texto: 'backoffice: corregir acceso total a 8191 (suma real de bits de módulos)' },
 ];
