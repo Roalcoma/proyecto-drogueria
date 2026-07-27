@@ -45,53 +45,53 @@
 
       <!-- Lista de commits -->
       <v-card-text class="pa-0" style="max-height: 500px; overflow-y: auto;">
-        <template>
-          <div v-for="(grupo, gIdx) in commitsFiltrados" :key="grupo.version">
-            <!-- Encabezado de versión -->
-            <div class="d-flex align-center px-5 py-2 sticky-header">
-              <v-chip
-                :color="grupo.version === APP_VERSION ? 'primary' : 'grey'"
-                variant="tonal" size="small" class="font-weight-bold mr-2"
-              >
-                v{{ grupo.version }}
-              </v-chip>
-              <v-chip v-if="grupo.version === APP_VERSION" color="success" size="x-small" variant="tonal" class="mr-2">actual</v-chip>
-              <span class="text-caption text-medium-emphasis">{{ grupo.fecha }}</span>
-              <v-chip size="x-small" variant="tonal" color="grey" class="ml-2">{{ grupo.commits.length }} commits</v-chip>
-            </div>
-            <v-divider />
 
-            <!-- Commits de esta versión -->
-            <div
-              v-for="c in grupo.commits" :key="c.hash"
-              class="d-flex align-start px-5 py-2 commit-row"
+        <div v-for="(grupo, gIdx) in commitsFiltrados" :key="grupo.version">
+          <!-- Encabezado de versión -->
+          <div class="d-flex align-center px-5 py-2 sticky-header">
+            <v-chip
+              :color="grupo.version === APP_VERSION ? 'primary' : 'grey'"
+              variant="tonal" size="small" class="font-weight-bold mr-2"
             >
-              <v-chip
-                :color="tipoColor(c.tipo)" variant="tonal" size="x-small"
-                :prepend-icon="tipoIcono(c.tipo)"
-                class="mr-3 flex-shrink-0 mt-0_5 font-weight-medium"
-                style="min-width:80px; justify-content:center;"
-              >
-                {{ tipoLabel(c.tipo) }}
-              </v-chip>
-              <span class="text-body-2 flex-grow-1" style="line-height:1.5;">{{ c.texto }}</span>
-              <a
-                :href="`https://github.com/Roalcoma/proyecto-drogueria/commit/${c.hash}`"
-                target="_blank" rel="noopener"
-                class="text-caption text-medium-emphasis ml-3 flex-shrink-0 font-weight-medium"
-                style="font-family:monospace; text-decoration:none;"
-                :title="c.hash"
-              >{{ c.hash }}</a>
-              <span class="text-caption text-disabled ml-2 flex-shrink-0">{{ c.date }}</span>
-            </div>
+              v{{ grupo.version }}
+            </v-chip>
+            <v-chip v-if="grupo.version === APP_VERSION" color="success" size="x-small" variant="tonal" class="mr-2">actual</v-chip>
+            <span class="text-caption text-medium-emphasis">{{ grupo.fecha }}</span>
+            <v-chip size="x-small" variant="tonal" color="grey" class="ml-2">{{ grupo.commits.length }} commits</v-chip>
+          </div>
+          <v-divider />
 
-            <v-divider v-if="gIdx < commitsFiltrados.length - 1" />
+          <!-- Commits de esta versión -->
+          <div
+            v-for="c in grupo.commits" :key="c.hash"
+            class="d-flex align-start px-5 py-2 commit-row"
+          >
+            <v-chip
+              :color="tipoColor(c.tipo)" variant="tonal" size="x-small"
+              :prepend-icon="tipoIcono(c.tipo)"
+              class="mr-3 flex-shrink-0 mt-0_5 font-weight-medium"
+              style="min-width:80px; justify-content:center;"
+            >
+              {{ tipoLabel(c.tipo) }}
+            </v-chip>
+            <span class="text-body-2 flex-grow-1" style="line-height:1.5;">{{ c.texto }}</span>
+            <a
+              :href="`https://github.com/Roalcoma/proyecto-drogueria/commit/${c.hash}`"
+              target="_blank" rel="noopener"
+              class="text-caption text-medium-emphasis ml-3 flex-shrink-0 font-weight-medium"
+              style="font-family:monospace; text-decoration:none;"
+              :title="c.hash"
+            >{{ c.hash }}</a>
+            <span class="text-caption text-disabled ml-2 flex-shrink-0">{{ c.date }}</span>
           </div>
 
-          <div v-if="commitsFiltrados.length === 0" class="text-center text-medium-emphasis py-8">
-            Sin resultados para el filtro seleccionado.
-          </div>
-        </template>
+          <v-divider v-if="gIdx < commitsFiltrados.length - 1" />
+        </div>
+
+        <div v-if="commitsFiltrados.length === 0" class="text-center text-medium-emphasis py-8">
+          Sin resultados para el filtro seleccionado.
+        </div>
+
       </v-card-text>
 
     </v-card>
