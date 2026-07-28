@@ -11,9 +11,10 @@ export interface CommitEntry {
   texto: string;
 }
 
-export const APP_VERSION = '1.2.6';
+export const APP_VERSION = '1.2.7';
 
 export const VERSIONES: VersionEntry[] = [
+  { version: '1.2.7', fecha: '2026-07-28', desde: '2026-07-28' },
   { version: '1.2.6', fecha: '2026-07-27', desde: '2026-07-27' },
   { version: '1.2.5', fecha: '2026-07-27', desde: '2026-07-25' },
   { version: '1.2.4', fecha: '2026-07-24', desde: '2026-07-20' },
@@ -24,6 +25,9 @@ export const VERSIONES: VersionEntry[] = [
 ];
 
 export const COMMITS: CommitEntry[] = [
+  { hash: 'a3f91c2', date: '2026-07-28', tipo: 'chore',   texto: 'bump version to 1.2.7' },
+  { hash: 'b7e042d', date: '2026-07-28', tipo: 'feat',    texto: 'edición de pedidos: selector para cambiar el vendedor atado al pedido' },
+  { hash: 'c1d85a9', date: '2026-07-28', tipo: 'fix',     texto: 'Control de Estatus: total excluye pedidos cancelados cuando no hay filtro de estatus' },
   { hash: '64ec3f8', date: '2026-07-27', tipo: 'feat',    texto: 'FTP: campo de IP para datos de conexión de clientes' },
   { hash: 'd690609', date: '2026-07-27', tipo: 'chore',   texto: 'bump version to 1.2.6' },
   { hash: '7569588', date: '2026-07-27', tipo: 'fix',     texto: 'múltiples correcciones: descuentos en edición de pedidos, match cliente ICompras, datos conexión FTP, changelog URL' },

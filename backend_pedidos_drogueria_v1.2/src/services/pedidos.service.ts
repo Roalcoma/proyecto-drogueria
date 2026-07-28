@@ -285,6 +285,11 @@ export class PedidosServices {
             const pool = await connectDb();
             const estatusClause  = buildEstatusClause(estatus, 'CP.ESTATUS');
             const estatusClause2 = buildEstatusClause(estatus, 'CP.ESTATUS');
+            // Incluir CANCELADO en el total solo cuando el filtro lo pide explícitamente
+            const incluirCancelado = !!(estatus && estatus.split(',').map(s => s.trim()).includes('CANCELADO'));
+            const sumaUSD = incluirCancelado
+                ? 'ISNULL(SUM(CP.TOTALPRECIO), 0)'
+                : "ISNULL(SUM(CASE WHEN CP.ESTATUS != 'CANCELADO' THEN CP.TOTALPRECIO ELSE 0 END), 0)";
             const req = pool.request()
                 .input('OFFSET',         mssql.Int,         offset)
                 .input('LIMIT',          mssql.Int,         validLimit)
@@ -373,7 +378,7 @@ export class PedidosServices {
                 .input('USUARIO2',         mssql.VarChar(100),  usuario ? `%${usuario}%` : null);
 
             const countResult = await countReq.query(`
-                SELECT COUNT(*) AS TOTAL, ISNULL(SUM(CP.TOTALPRECIO), 0) AS TOTAL_USD
+                SELECT COUNT(*) AS TOTAL, ${sumaUSD} AS TOTAL_USD
                 FROM ${esquema}.CABECERA_PED CP WITH (NOLOCK)
                 LEFT JOIN CLIENTES CL2 WITH (NOLOCK) ON CL2.CODCLIENTE = CP.CLIENTEID
                 LEFT JOIN CLIENTESCAMPOSLIBRES CLC WITH (NOLOCK) ON CLC.CODCLIENTE = CP.CLIENTEID

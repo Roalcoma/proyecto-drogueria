@@ -194,6 +194,19 @@
               <span class="text-grey">ID Cliente:</span>
               <span class="font-weight-bold">{{ pedidoOriginal.CLIENTEID }}</span>
             </div>
+            <div class="mb-3">
+              <v-autocomplete
+                v-model="codVendedorEditado"
+                :items="vendedores"
+                item-title="USUARIO"
+                item-value="ID"
+                label="Vendedor"
+                variant="outlined"
+                density="compact"
+                hide-details
+                clearable
+              />
+            </div>
             <div class="d-flex justify-space-between mb-2">
               <span class="text-grey">Total original:</span>
               <span class="text-grey">$ {{ Number(pedidoOriginal.TOTALPRECIO).toFixed(2) }}</span>
@@ -402,10 +415,12 @@ const seleccionarPedido = async (orderId: string) => {
 // ----------------------------------------------------------------
 // Estado del EDITOR
 // ----------------------------------------------------------------
-const pedidoOriginal   = ref<any>(null);
-const lineasEditadas   = ref<any[]>([]);
-const loadingPedido    = ref(false);
-const guardando        = ref(false);
+const pedidoOriginal      = ref<any>(null);
+const lineasEditadas      = ref<any[]>([]);
+const loadingPedido       = ref(false);
+const guardando           = ref(false);
+const vendedores          = ref<any[]>([]);
+const codVendedorEditado  = ref<number | null>(null);
 const modalBusqueda        = ref(false);
 const busquedaProducto     = ref('');
 const resultadosBusqueda   = ref<any[]>([]);
@@ -420,13 +435,25 @@ const totalNuevo = computed(() =>
   lineasEditadas.value.reduce((acc, l) => acc + (l.PRECIOUNITARIO * l.PRODUCTCOUNT), 0)
 );
 
+const cargarVendedores = async () => {
+  if (vendedores.value.length) return;
+  try {
+    const res = await axios.get(`${API}/auth/usuarios`);
+    vendedores.value = res.data.usuarios ?? [];
+  } catch {
+    // non-critical, selector queda vacío
+  }
+};
+
 const cargarPedido = async (id: string) => {
   loadingPedido.value = true;
+  cargarVendedores();
   try {
     const res = await axios.get(`${API}/pedidos?orderId=${id}`);
     if (res.data.success) {
       pedidoOriginal.value = res.data.data;
       lineasEditadas.value = JSON.parse(JSON.stringify(res.data.data.lineas));
+      codVendedorEditado.value = res.data.data.CODVENDEDOR ?? null;
     } else {
       lanzarNotificacion('No se encontró el pedido', 'error');
     }
@@ -445,7 +472,7 @@ const guardarCambios = async () => {
     const payload = {
       pedidos: {
         clienteId:  pedidoOriginal.value.CLIENTEID,
-        codVendedor: pedidoOriginal.value.CODVENDEDOR || 1,
+        codVendedor: codVendedorEditado.value ?? pedidoOriginal.value.CODVENDEDOR ?? 1,
         orderId:    id,
         totalPed:   totalNuevo.value,
         lineas: lineasEditadas.value.map(l => ({
