@@ -7,7 +7,7 @@ import { EcommerceService }  from "../services/ecommerce.service";
 import { getDbConfigPublica, guardarDbConfig } from "../services/dbconfig.service";
 import { reconectarDb, probarConexion }        from "../db/db.conection";
 import { reconectarDbGeneral }                 from "../db/db.general.conection";
-import { ejecutarActualizacion }               from "../services/actualizador.service";
+import { ejecutarActualizacion, listarBackups, ejecutarRollback } from "../services/actualizador.service";
 
 export class SistemaController {
 
@@ -183,13 +183,34 @@ export class SistemaController {
             const resultado = await ejecutarActualizacion();
             res.status(resultado.success ? 200 : 500).json(resultado);
         } catch (error) {
-            // No debería llegar aquí — ejecutarActualizacion ya captura sus errores internamente
             res.status(500).json({
                 success: false,
                 mensaje: 'Error inesperado al ejecutar la actualización',
                 error: error instanceof Error ? error.message : 'Error desconocido',
                 log: [],
             });
+        }
+    }
+
+    static async getBackups(_req: Request, res: Response): Promise<void> {
+        try {
+            res.json({ success: true, backups: listarBackups() });
+        } catch (error) {
+            res.status(500).json({ success: false, mensaje: 'Error al listar backups' });
+        }
+    }
+
+    static async rollback(req: Request, res: Response): Promise<void> {
+        const { filename } = req.body;
+        if (!filename) {
+            res.status(400).json({ success: false, mensaje: 'filename es requerido' });
+            return;
+        }
+        try {
+            const resultado = await ejecutarRollback(filename);
+            res.status(resultado.success ? 200 : 500).json(resultado);
+        } catch (error) {
+            res.status(500).json({ success: false, mensaje: 'Error inesperado en rollback', log: [] });
         }
     }
 }

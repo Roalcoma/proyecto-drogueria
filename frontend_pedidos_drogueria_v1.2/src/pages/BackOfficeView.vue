@@ -8,6 +8,9 @@
         <span class="text-caption text-medium-emphasis">Gestión de visibilidad por usuario — sistema de bits</span>
       </div>
       <v-spacer />
+      <v-btn color="info" variant="tonal" prepend-icon="mdi-restore" class="mr-2" @click="abrirRollback">
+        Versiones
+      </v-btn>
       <v-btn color="secondary" variant="tonal" prepend-icon="mdi-history" class="mr-2" @click="modalChangelog = true">
         Changelog
       </v-btn>
@@ -17,6 +20,75 @@
     </div>
 
     <ChangelogModal v-model="modalChangelog" />
+
+    <!-- Modal rollback -->
+    <v-dialog v-model="modalRollback" max-width="600">
+      <v-card rounded="xl">
+        <v-card-title class="pa-5 pb-2 d-flex align-center">
+          <v-icon class="mr-2" color="info">mdi-restore</v-icon>
+          <span>Restaurar versión anterior</span>
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" density="compact" @click="modalRollback = false" />
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-4">
+          <p class="text-caption text-grey mb-4">
+            Se guardan automáticamente las últimas 5 versiones antes de cada actualización.
+            Restaurar reemplaza los archivos del servidor y reinicia los servicios.
+          </p>
+          <div v-if="cargandoBackups" class="d-flex justify-center pa-6">
+            <v-progress-circular indeterminate color="info" />
+          </div>
+          <div v-else-if="backups.length === 0" class="text-center text-medium-emphasis pa-6">
+            <v-icon size="40" class="mb-2">mdi-folder-off-outline</v-icon>
+            <div>No hay backups disponibles aún.</div>
+            <div class="text-caption">Se crean automáticamente al actualizar.</div>
+          </div>
+          <v-list v-else lines="two" class="pa-0">
+            <v-list-item
+              v-for="b in backups"
+              :key="b.filename"
+              rounded="lg"
+              class="mb-2 px-4"
+              style="border: 1px solid rgba(128,128,128,0.15);"
+            >
+              <template #prepend>
+                <v-icon color="info" size="28" class="mr-1">mdi-folder-zip-outline</v-icon>
+              </template>
+              <v-list-item-title class="font-weight-bold">v{{ b.version }}</v-list-item-title>
+              <v-list-item-subtitle>{{ formatFecha(b.fecha) }} · {{ formatTamaño(b.tamaño) }}</v-list-item-subtitle>
+              <template #append>
+                <v-btn color="warning" variant="tonal" size="small" prepend-icon="mdi-restore" @click="pedirConfirmacion(b)">
+                  Restaurar
+                </v-btn>
+              </template>
+            </v-list-item>
+          </v-list>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
+    <!-- Confirmar rollback -->
+    <v-dialog v-model="confirmRestore.show" max-width="420" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="pa-5 pb-2 d-flex align-center">
+          <v-icon class="mr-2" color="warning">mdi-alert</v-icon>
+          <span>Confirmar restauración</span>
+        </v-card-title>
+        <v-card-text class="pa-5 pt-2">
+          ¿Restaurar la versión <strong>{{ confirmRestore.version }}</strong>?
+          Los archivos actuales serán reemplazados y el sistema se reiniciará automáticamente.
+        </v-card-text>
+        <v-divider />
+        <v-card-actions class="pa-4">
+          <v-btn variant="text" :disabled="restaurando" @click="confirmRestore.show = false">Cancelar</v-btn>
+          <v-spacer />
+          <v-btn color="warning" variant="elevated" :loading="restaurando" @click="ejecutarRollbackFn">
+            Restaurar
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <!-- Referencia de bits -->
     <v-card variant="tonal" color="info" class="mb-6 pa-4" rounded="lg">
@@ -1057,6 +1129,50 @@ const actualizarApp = async () => {
     };
   } finally { actualizando.value = false; }
 };
+
+// ─── Rollback ─────────────────────────────────────────────────
+interface Backup { filename: string; fecha: string; version: string; tamaño: number; }
+
+const modalRollback   = ref(false);
+const backups         = ref<Backup[]>([]);
+const cargandoBackups = ref(false);
+const restaurando     = ref(false);
+const confirmRestore  = ref({ show: false, filename: '', version: '' });
+
+const abrirRollback = async () => {
+  modalRollback.value   = true;
+  cargandoBackups.value = true;
+  try {
+    const res = await axios.get(`${API_SIS}/backups`);
+    backups.value = res.data.backups ?? [];
+  } catch { backups.value = []; }
+  finally { cargandoBackups.value = false; }
+};
+
+const pedirConfirmacion = (b: Backup) => {
+  confirmRestore.value = { show: true, filename: b.filename, version: b.version };
+};
+
+const ejecutarRollbackFn = async () => {
+  restaurando.value = true;
+  try {
+    await axios.post(`${API_SIS}/rollback`, { filename: confirmRestore.value.filename });
+    confirmRestore.value.show = false;
+    modalRollback.value = false;
+    mostrarSnack('Rollback completado. El sistema se reiniciará en breve.', 'success');
+  } catch (e: any) {
+    mostrarSnack(e.response?.data?.mensaje ?? 'Error al restaurar', 'error');
+  } finally { restaurando.value = false; }
+};
+
+const formatFecha = (iso: string) => {
+  if (!iso) return '';
+  try { return new Date(iso).toLocaleString('es', { dateStyle: 'medium', timeStyle: 'short' }); }
+  catch { return iso; }
+};
+
+const formatTamaño = (bytes: number) =>
+  bytes > 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${(bytes / 1024).toFixed(0)} KB`;
 
 // ─── Apariencia del sistema ───────────────────────────────────
 const brandingStore   = useBrandingStore();

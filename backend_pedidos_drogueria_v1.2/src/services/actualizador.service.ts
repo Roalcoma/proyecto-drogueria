@@ -10,16 +10,20 @@ const ROOT        = path.resolve(process.cwd(), '..'); // raíz del repo
 const ZIP_URL     = 'https://github.com/Roalcoma/proyecto-drogueria/archive/refs/heads/main.zip';
 const ZIP_TMP     = path.join(ROOT, '_update_tmp.zip');
 const EXTRACT_TMP = path.join(ROOT, '_update_tmp');
+const BACKUPS_DIR = path.join(ROOT, '_backups');
+const RESTORE_TMP = path.join(ROOT, '_restore_tmp');
 
-// Rutas que nunca se tocan al copiar
+// Rutas que nunca se tocan al copiar (forward slashes para comparación consistente en Windows)
 const PROTEGIDOS = [
     'node_modules',
     'dist',
     '.env',
     '.env.production',
-    path.join('config', 'connections.json'),
+    'config/connections.json',
     '_update_tmp.zip',
     '_update_tmp',
+    '_backups',
+    '_restore_tmp',
     '.git',
 ];
 
@@ -85,10 +89,163 @@ export interface ResultadoActualizacion {
     archivosCopiados:  number;
     reiniciando:       boolean;
     mensaje:           string;
-    log:               string[];  // Pasos detallados para diagnosticar fallos
+    log:               string[];
+}
+
+export interface InfoBackup {
+    filename: string;
+    fecha:    string;
+    version:  string;
+    tamaño:   number;
+}
+
+export interface ResultadoRollback {
+    success: boolean;
+    mensaje: string;
+    log:     string[];
 }
 
 function ts() { return new Date().toISOString().slice(11, 23); } // HH:MM:SS.mmm
+
+function protegido(rel: string) {
+    return PROTEGIDOS.some(p => rel === p || rel.startsWith(p + '/'));
+}
+
+function leerVersionActual(): string {
+    try {
+        const p = path.join(ROOT, 'frontend_pedidos_drogueria_v1.2', 'src', 'data', 'changelog.ts');
+        const m = fs.readFileSync(p, 'utf-8').match(/APP_VERSION\s*=\s*['"]([^'"]+)['"]/);
+        return m ? m[1] : '?';
+    } catch { return '?'; }
+}
+
+function crearBackup() {
+    fs.mkdirSync(BACKUPS_DIR, { recursive: true });
+    const version = leerVersionActual();
+    const iso     = new Date().toISOString();
+    const stamp   = iso.slice(0, 10).replace(/-/g, '') + '_' + iso.slice(11, 19).replace(/:/g, '');
+    const destino = path.join(BACKUPS_DIR, `backup_${stamp}_v${version}.zip`);
+
+    const zip = new AdmZip();
+    const agregar = (dir: string, dirRel = '') => {
+        for (const entry of fs.readdirSync(dir)) {
+            const relRuta = dirRel ? `${dirRel}/${entry}` : entry;
+            if (protegido(relRuta)) continue;
+            const full = path.join(dir, entry);
+            if (fs.statSync(full).isDirectory()) {
+                agregar(full, relRuta);
+            } else {
+                zip.addLocalFile(full, dirRel);
+            }
+        }
+    };
+    agregar(ROOT);
+    zip.writeZip(destino);
+
+    // Conservar solo los últimos 5
+    const todos = fs.readdirSync(BACKUPS_DIR)
+        .filter(f => f.startsWith('backup_') && f.endsWith('.zip'))
+        .sort();
+    if (todos.length > 5) {
+        todos.slice(0, todos.length - 5).forEach(f =>
+            fs.rmSync(path.join(BACKUPS_DIR, f), { force: true })
+        );
+    }
+}
+
+export function listarBackups(): InfoBackup[] {
+    if (!fs.existsSync(BACKUPS_DIR)) return [];
+    return fs.readdirSync(BACKUPS_DIR)
+        .filter(f => f.startsWith('backup_') && f.endsWith('.zip'))
+        .sort().reverse().slice(0, 5)
+        .map(filename => {
+            const m = filename.match(/^backup_(\d{8})_(\d{6})_v(.+)\.zip$/);
+            let fecha = '', version = '?';
+            if (m) {
+                const [, d, t, v] = m;
+                fecha   = `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}T${t.slice(0,2)}:${t.slice(2,4)}:${t.slice(4,6)}`;
+                version = v;
+            }
+            const tamaño = fs.statSync(path.join(BACKUPS_DIR, filename)).size;
+            return { filename, fecha, version, tamaño };
+        });
+}
+
+export async function ejecutarRollback(filename: string): Promise<ResultadoRollback> {
+    const log: string[] = [];
+    const paso = (msg: string) => { log.push(`[${ts()}] ${msg}`); console.log('[Rollback]', msg); };
+
+    if (!filename || !filename.startsWith('backup_') || !filename.endsWith('.zip')
+        || filename.includes('/') || filename.includes('\\') || filename.includes('..')) {
+        return { success: false, mensaje: 'Nombre de backup inválido', log };
+    }
+
+    const backupPath = path.join(BACKUPS_DIR, filename);
+    if (!fs.existsSync(backupPath)) {
+        return { success: false, mensaje: `Backup no encontrado: ${filename}`, log };
+    }
+
+    paso(`Iniciando rollback: ${filename}`);
+    try { fs.rmSync(RESTORE_TMP, { recursive: true, force: true }); } catch {}
+
+    try {
+        paso('Extrayendo backup...');
+        fs.mkdirSync(RESTORE_TMP, { recursive: true });
+        new AdmZip(backupPath).extractAllTo(RESTORE_TMP, true);
+        paso('Backup extraído.');
+    } catch (err: any) {
+        return { success: false, mensaje: `Error al extraer backup: ${err.message}`, log };
+    }
+
+    let archivosCopiados = 0;
+    try {
+        paso('Restaurando archivos...');
+        const copiar = (origen: string, destino: string, rel = '') => {
+            for (const entrada of fs.readdirSync(origen)) {
+                const relRuta = rel ? `${rel}/${entrada}` : entrada;
+                if (protegido(relRuta)) continue;
+                const src = path.join(origen, entrada);
+                const dst = path.join(destino, entrada);
+                if (fs.statSync(src).isDirectory()) {
+                    fs.mkdirSync(dst, { recursive: true });
+                    copiar(src, dst, relRuta);
+                } else {
+                    fs.copyFileSync(src, dst);
+                    archivosCopiados++;
+                }
+            }
+        };
+        copiar(RESTORE_TMP, ROOT);
+        paso(`${archivosCopiados} archivos restaurados.`);
+    } catch (err: any) {
+        try { fs.rmSync(RESTORE_TMP, { recursive: true, force: true }); } catch {}
+        return { success: false, mensaje: `Error al restaurar: ${err.message}`, log };
+    }
+
+    try { fs.rmSync(RESTORE_TMP, { recursive: true, force: true }); } catch {}
+    paso('Temporales eliminados.');
+
+    const cfg = getDbConfig() as any;
+    const servicioBackend  = (cfg.nssmServicioBackend  || '').trim();
+    const servicioFrontend = (cfg.nssmServicioFrontend || '').trim();
+
+    if (servicioBackend || servicioFrontend) {
+        paso('Programando reinicio NSSM en 2.5s...');
+        setTimeout(async () => {
+            if (servicioBackend) {
+                const out = await run(`nssm restart "${servicioBackend}"`, ROOT).catch((e: any) => e.message);
+                console.log('[Rollback][NSSM backend]', out);
+            }
+            if (servicioFrontend) {
+                const out = await run(`nssm restart "${servicioFrontend}"`, ROOT).catch((e: any) => e.message);
+                console.log('[Rollback][NSSM frontend]', out);
+            }
+        }, 2500);
+        return { success: true, mensaje: `Rollback completado: ${archivosCopiados} archivos restaurados. Reiniciando servicios.`, log };
+    }
+
+    return { success: true, mensaje: `Rollback completado: ${archivosCopiados} archivos restaurados. Reinicia el backend manualmente.`, log };
+}
 
 export async function ejecutarActualizacion(): Promise<ResultadoActualizacion> {
     const log: string[] = [];
@@ -100,6 +257,15 @@ export async function ejecutarActualizacion(): Promise<ResultadoActualizacion> {
 
     limpiar();
     paso('Archivos temporales anteriores limpiados.');
+
+    // Backup de la versión actual antes de actualizar
+    try {
+        paso('Creando backup de la versión actual...');
+        crearBackup();
+        paso('Backup creado correctamente.');
+    } catch (err: any) {
+        paso(`ADVERTENCIA: No se pudo crear backup: ${err.message}. Continuando de todas formas.`);
+    }
 
     // 1. Descargar ZIP
     try {

@@ -22,3 +22,9 @@ logs/
 # OS
 Thumbs.db
 .DS_Store
+
+# Actualizador / rollback
+_backups/
+_restore_tmp/
+_update_tmp/
+_update_tmp.zip
