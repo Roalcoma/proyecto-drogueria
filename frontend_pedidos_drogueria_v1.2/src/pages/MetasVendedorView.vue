@@ -109,15 +109,20 @@
         <v-card-text class="pt-0">
           <v-row dense>
             <v-col cols="12">
-              <v-select
+              <v-autocomplete
                 v-model="form.codVendedor"
                 :items="vendedores"
                 :item-title="v => `${v.CODVENDEDOR} — ${v.NOMVENDEDOR}`"
                 item-value="CODVENDEDOR"
+                :custom-filter="(_, query, item) => {
+                  const q = query.toLowerCase();
+                  return String(item.raw.CODVENDEDOR).includes(q) || item.raw.NOMVENDEDOR.toLowerCase().includes(q);
+                }"
                 label="Vendedor *"
                 variant="outlined"
                 density="compact"
                 :disabled="editando"
+                clearable
               />
             </v-col>
             <v-col cols="6">
