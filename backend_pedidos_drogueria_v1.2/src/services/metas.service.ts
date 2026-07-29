@@ -58,29 +58,67 @@ export class MetasService {
             .input('MES',  mssql.Int,           mes)
             .input('META', mssql.Decimal(18,6), meta);
 
-        const res = await req.query(`
+        await req.query(`
             MERGE APP_METAS_VENDEDOR AS T
             USING (SELECT @COD AS C, @ANIO AS A, @MES AS M) AS S
             ON (T.CODVENDEDOR = S.C AND T.ANIO = S.A AND T.MES = S.M)
             WHEN MATCHED THEN UPDATE SET T.META = @META, T.FECHACARGA = GETDATE()
             WHEN NOT MATCHED THEN INSERT (CODVENDEDOR, ANIO, MES, META) VALUES (@COD, @ANIO, @MES, @META);
-            SELECT SCOPE_IDENTITY() AS ID;
 
             MERGE [RIP].[METAS_VENDEDORES] AS T
             USING (SELECT @COD AS C, @ANIO AS A, @MES AS M) AS S
             ON (T.CODVENDEDOR = S.C AND T.ANYO = S.A AND T.MES = S.M)
             WHEN MATCHED THEN UPDATE SET T.META = @META
             WHEN NOT MATCHED THEN INSERT (CODVENDEDOR, ANYO, MES, META) VALUES (@COD, @ANIO, @MES, @META);
+
+            -- Auto-sync CUMPLIDA tras cambiar la meta
+            UPDATE M
+            SET M.CUMPLIDA = CASE WHEN ISNULL((
+                SELECT SUM(CASE WHEN CP.ESTATUS != 'CANCELADO' THEN CP.TOTALPRECIO ELSE 0 END)
+                FROM CABECERA_PED CP
+                WHERE CP.CODVENDEDOR = @COD
+                  AND YEAR(CP.FECHA) = @ANIO
+                  AND MONTH(CP.FECHA) = @MES
+            ), 0) >= M.META THEN 1 ELSE 0 END
+            FROM APP_METAS_VENDEDOR M
+            WHERE M.CODVENDEDOR = @COD AND M.ANIO = @ANIO AND M.MES = @MES;
         `);
-        return res.recordset[0]?.ID ?? 0;
+        const idRes = await pool.request()
+            .input('COD',  mssql.Int, codVendedor)
+            .input('ANIO', mssql.Int, anio)
+            .input('MES',  mssql.Int, mes)
+            .query(`SELECT ID FROM APP_METAS_VENDEDOR WHERE CODVENDEDOR = @COD AND ANIO = @ANIO AND MES = @MES`);
+        return idRes.recordset[0]?.ID ?? 0;
     }
 
     static async getProgreso(anio: number, mes: number): Promise<any[]> {
         const pool = await connectDb();
-        const res  = await pool.request()
+        const req  = pool.request()
             .input('ANIO', mssql.Int, anio)
-            .input('MES',  mssql.Int, mes)
-            .query(`
+            .input('MES',  mssql.Int, mes);
+
+        // Auto-sync CUMPLIDA: si las ventas superan la meta se marca, si no, se desmarca
+        await req.query(`
+            WITH Ventas AS (
+                SELECT
+                    M.ID,
+                    M.META,
+                    ISNULL(SUM(CASE WHEN CP.ESTATUS != 'CANCELADO' THEN CP.TOTALPRECIO ELSE 0 END), 0) AS VENTA_TOTAL
+                FROM APP_METAS_VENDEDOR M
+                LEFT JOIN CABECERA_PED CP
+                    ON  CP.CODVENDEDOR = M.CODVENDEDOR
+                    AND YEAR(CP.FECHA)  = @ANIO
+                    AND MONTH(CP.FECHA) = @MES
+                WHERE M.ANIO = @ANIO AND M.MES = @MES
+                GROUP BY M.ID, M.META
+            )
+            UPDATE M
+            SET M.CUMPLIDA = CASE WHEN V.VENTA_TOTAL >= V.META THEN 1 ELSE 0 END
+            FROM APP_METAS_VENDEDOR M
+            INNER JOIN Ventas V ON V.ID = M.ID
+        `);
+
+        const res = await req.query(`
                 SELECT
                     M.ID,
                     M.CODVENDEDOR,
@@ -100,7 +138,7 @@ export class MetasService {
                 WHERE M.ANIO = @ANIO AND M.MES = @MES
                 GROUP BY M.ID, M.CODVENDEDOR, V.NOMVENDEDOR, M.META, M.CUMPLIDA
                 ORDER BY VENTA_TOTAL DESC
-            `);
+        `);
         return res.recordset;
     }
 

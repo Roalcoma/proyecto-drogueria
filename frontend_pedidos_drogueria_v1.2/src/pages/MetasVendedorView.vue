@@ -1,40 +1,42 @@
 <template>
-  <v-container fluid class="pa-4">
+  <v-container fluid class="metas-dashboard pa-4">
 
-    <!-- Header + filtros globales -->
-    <v-row align="center" class="mb-4">
-      <v-col>
-        <div class="text-h6 font-weight-bold">Metas de Vendedores</div>
-        <div class="text-caption text-medium-emphasis">Progreso, rankings y gestión de metas mensuales</div>
-      </v-col>
-      <v-col cols="auto" class="d-flex gap-2 align-center">
-        <v-select
-          v-model="filtroAnio"
-          :items="aniosDisponibles"
-          label="Año"
-          density="compact"
-          variant="outlined"
-          hide-details
-          style="width:100px"
-          @update:model-value="recargar"
-        />
-        <v-select
-          v-model="filtroMes"
-          :items="meses"
-          item-title="label"
-          item-value="valor"
-          label="Mes"
-          density="compact"
-          variant="outlined"
-          hide-details
-          style="width:130px"
-          @update:model-value="recargar"
-        />
-      </v-col>
-    </v-row>
+    <!-- ── Header ── -->
+    <div class="dash-header mb-4">
+      <div class="d-flex justify-space-between align-center flex-wrap gap-3">
+        <div>
+          <div class="dash-title">Metas de Vendedores</div>
+          <div class="dash-subtitle">Progreso, rankings y gestión de metas mensuales</div>
+        </div>
+        <div class="d-flex gap-2 align-center">
+          <v-select
+            v-model="filtroAnio"
+            :items="aniosDisponibles"
+            label="Año"
+            density="compact"
+            variant="outlined"
+            hide-details
+            style="width:100px"
+            @update:model-value="recargar"
+          />
+          <v-select
+            v-model="filtroMes"
+            :items="meses"
+            item-title="label"
+            item-value="valor"
+            label="Mes"
+            density="compact"
+            variant="outlined"
+            hide-details
+            style="width:140px"
+            @update:model-value="recargar"
+          />
+        </div>
+      </div>
+    </div>
 
-    <!-- Tabs -->
-    <v-tabs v-model="tab" color="primary" class="mb-1">
+    <!-- ── Tabs ── -->
+    <v-tabs v-model="tab" color="primary" class="dash-tabs mb-1">
       <v-tab value="progreso" prepend-icon="mdi-chart-line">Progreso</v-tab>
       <v-tab value="rankings" prepend-icon="mdi-trophy">Rankings</v-tab>
       <v-tab value="gestion"  prepend-icon="mdi-table-edit">Gestión</v-tab>
@@ -60,38 +62,42 @@
           </v-col>
         </v-row>
 
-        <!-- KPI chips -->
+        <!-- KPI cards -->
         <v-row class="mb-4" dense>
           <v-col cols="12" sm="6" md="3">
-            <v-card variant="tonal" color="primary" rounded="lg" class="pa-3">
-              <div class="text-caption text-medium-emphasis">Vendedores con meta</div>
-              <div class="text-h5 font-weight-bold">{{ progreso.length }}</div>
-            </v-card>
+            <div class="kpi-card kpi-primary">
+              <div class="kpi-icon-wrap"><v-icon size="20" color="white">mdi-account-group</v-icon></div>
+              <div class="kpi-number">{{ progreso.length }}</div>
+              <div class="kpi-label">Vendedores con meta</div>
+            </div>
           </v-col>
           <v-col cols="12" sm="6" md="3">
-            <v-card variant="tonal" color="success" rounded="lg" class="pa-3">
-              <div class="text-caption text-medium-emphasis">Cumplimiento promedio</div>
-              <div class="text-h5 font-weight-bold">{{ promedioGeneral }}%</div>
-            </v-card>
+            <div class="kpi-card kpi-success">
+              <div class="kpi-icon-wrap"><v-icon size="20" color="white">mdi-percent-circle</v-icon></div>
+              <div class="kpi-number">{{ promedioGeneral }}%</div>
+              <div class="kpi-label">Cumplimiento promedio</div>
+            </div>
           </v-col>
           <v-col cols="12" sm="6" md="3">
-            <v-card variant="tonal" color="warning" rounded="lg" class="pa-3">
-              <div class="text-caption text-medium-emphasis">Total vendido</div>
-              <div class="text-h5 font-weight-bold">$ {{ fmt(totalVendido) }}</div>
-            </v-card>
+            <div class="kpi-card kpi-accent">
+              <div class="kpi-icon-wrap"><v-icon size="20" color="white">mdi-currency-usd</v-icon></div>
+              <div class="kpi-number kpi-money">$ {{ fmt(totalVendido) }}</div>
+              <div class="kpi-label">Total vendido</div>
+            </div>
           </v-col>
           <v-col cols="12" sm="6" md="3">
-            <v-card variant="tonal" color="deep-orange" rounded="lg" class="pa-3">
-              <div class="text-caption text-medium-emphasis">Total meta del mes</div>
-              <div class="text-h5 font-weight-bold">$ {{ fmt(totalMeta) }}</div>
-            </v-card>
+            <div class="kpi-card kpi-muted">
+              <div class="kpi-icon-wrap kpi-icon-dark"><v-icon size="20" color="white">mdi-target</v-icon></div>
+              <div class="kpi-number kpi-money kpi-dark">$ {{ fmt(totalMeta) }}</div>
+              <div class="kpi-label">Total meta del mes</div>
+            </div>
           </v-col>
         </v-row>
 
         <!-- Tarjetas de progreso por vendedor -->
         <v-row v-if="cargandoProgreso">
-          <v-col v-for="i in 3" :key="i" cols="12">
-            <v-skeleton-loader type="card" />
+          <v-col v-for="i in 4" :key="i" cols="12">
+            <v-skeleton-loader type="list-item-two-line" />
           </v-col>
         </v-row>
 
@@ -101,53 +107,51 @@
           </v-col>
         </v-row>
 
-        <v-row v-else dense>
-          <v-col v-for="item in progresoOrdenado" :key="item.ID" cols="12">
-            <v-card variant="outlined" rounded="lg" class="pa-4">
-              <v-row align="center" no-gutters>
-                <!-- Posición + nombre -->
-                <v-col cols="12" sm="4">
-                  <div class="d-flex align-center gap-3">
-                    <v-avatar :color="colorPct(pct(item))" size="38">
-                      <span class="text-caption font-weight-bold white--text">{{ pct(item) }}%</span>
-                    </v-avatar>
-                    <div>
-                      <div class="font-weight-bold">{{ item.NOMVENDEDOR }}</div>
-                      <div class="text-caption text-medium-emphasis">Cód. {{ item.CODVENDEDOR }} · {{ pedidoLabel(item) }}</div>
-                    </div>
-                    <v-chip v-if="item.CUMPLIDA" color="success" size="x-small" variant="flat" class="ml-1">✓ Cumplida</v-chip>
-                  </div>
-                </v-col>
+        <div v-else class="progress-list">
+          <div
+            v-for="(item, idx) in progresoOrdenado"
+            :key="item.ID"
+            class="progress-card"
+            :class="borderColorClass(pct(item))"
+          >
+            <!-- rank + nombre + chip -->
+            <div class="d-flex align-center gap-3">
+              <span class="rank-badge" :class="rankClass(idx)">{{ idx + 1 }}</span>
+              <div class="flex-grow-1">
+                <div class="d-flex align-center gap-2 flex-wrap">
+                  <span class="prog-name">{{ item.NOMVENDEDOR }}</span>
+                  <v-chip v-if="item.CUMPLIDA" color="success" size="x-small" variant="flat">✓ Cumplida</v-chip>
+                </div>
+                <div class="prog-sub">Cód. {{ item.CODVENDEDOR }} · {{ pedidoLabel(item) }} pedido(s)</div>
+              </div>
+              <div class="text-right">
+                <div class="prog-pct" :class="pctColorClass(pct(item))">{{ pct(item) }}%</div>
+                <div class="prog-falta" v-if="pct(item) < 100">
+                  Falta&nbsp;<span class="mono">$ {{ fmt(Math.max(0, item.META - ventaModo(item))) }}</span>
+                </div>
+                <div class="prog-sobre text-success" v-else>
+                  +$ {{ fmt(ventaModo(item) - item.META) }}
+                </div>
+              </div>
+            </div>
 
-                <!-- Barra de progreso -->
-                <v-col cols="12" sm="5" class="px-4">
-                  <div class="d-flex justify-space-between text-caption mb-1">
-                    <span>$ {{ fmt(ventaModo(item)) }}</span>
-                    <span class="text-medium-emphasis">Meta: $ {{ fmt(item.META) }}</span>
-                  </div>
-                  <v-progress-linear
-                    :model-value="Math.min(pct(item), 100)"
-                    :color="colorPct(pct(item))"
-                    bg-color="grey-lighten-3"
-                    height="12"
-                    rounded
-                  />
-                  <div v-if="pct(item) > 100" class="text-caption text-success mt-1">
-                    +$ {{ fmt(ventaModo(item) - item.META) }} sobre la meta
-                  </div>
-                </v-col>
+            <!-- barra -->
+            <div class="prog-bar-row mt-2">
+              <div class="d-flex justify-space-between text-caption mb-1">
+                <span class="mono font-weight-medium">$ {{ fmt(ventaModo(item)) }}</span>
+                <span class="prog-meta">Meta&nbsp;<span class="mono">$ {{ fmt(item.META) }}</span></span>
+              </div>
+              <v-progress-linear
+                :model-value="Math.min(pct(item), 100)"
+                :color="colorPct(pct(item))"
+                bg-color="#E9EEF6"
+                height="8"
+                rounded
+              />
+            </div>
+          </div>
+        </div>
 
-                <!-- Números -->
-                <v-col cols="12" sm="3" class="text-right">
-                  <div class="text-h6 font-weight-bold" :class="`text-${colorPct(pct(item))}`">{{ pct(item) }}%</div>
-                  <div class="text-caption text-medium-emphasis">
-                    Falta: $ {{ fmt(Math.max(0, item.META - ventaModo(item))) }}
-                  </div>
-                </v-col>
-              </v-row>
-            </v-card>
-          </v-col>
-        </v-row>
       </v-tabs-window-item>
 
       <!-- ══════════════ TAB RANKINGS ══════════════ -->
@@ -157,191 +161,198 @@
         </v-row>
 
         <v-row v-else>
-          <!-- Podio top 3 por % meta -->
+          <!-- Podio top 3 -->
           <v-col cols="12">
-            <div class="text-subtitle-1 font-weight-bold mb-3">
-              <v-icon start>mdi-trophy</v-icon> Podio — % de meta alcanzada
+            <div class="section-label mb-3">
+              <v-icon start size="16">mdi-trophy</v-icon> Podio — % de meta alcanzada
             </div>
-            <v-row justify="center" align="end" class="mb-6" dense>
+            <div class="podium-row mb-6">
               <!-- 2do lugar -->
-              <v-col cols="4" sm="3" class="text-center" v-if="top3[1]">
-                <v-avatar color="blue-grey" size="52" class="mb-2">
-                  <v-icon size="28" color="white">mdi-medal</v-icon>
-                </v-avatar>
-                <div class="text-body-2 font-weight-medium">{{ top3[1].NOMVENDEDOR }}</div>
-                <div class="text-caption text-medium-emphasis">{{ pct(top3[1]) }}%</div>
-                <div class="mt-2 rounded-t-lg" :style="`background:var(--v-theme-primary);opacity:.5;height:60px`" />
-              </v-col>
+              <div v-if="top3[1]" class="podium-slot podium-2">
+                <div class="podium-avatar podium-silver">
+                  <v-icon size="22" color="white">mdi-medal</v-icon>
+                </div>
+                <div class="podium-name">{{ top3[1].NOMVENDEDOR }}</div>
+                <div class="podium-pct">{{ pct(top3[1]) }}%</div>
+                <div class="podium-bar" style="height:60px;background:#CBD5E1" />
+              </div>
               <!-- 1er lugar -->
-              <v-col cols="4" sm="3" class="text-center" v-if="top3[0]">
-                <v-avatar color="amber-darken-2" size="64" class="mb-2">
-                  <v-icon size="36" color="white">mdi-crown</v-icon>
-                </v-avatar>
-                <div class="text-body-1 font-weight-bold">{{ top3[0].NOMVENDEDOR }}</div>
-                <div class="text-caption">{{ pct(top3[0]) }}%</div>
-                <div class="mt-2 rounded-t-lg" style="background:#F59E0B;height:90px" />
-              </v-col>
+              <div v-if="top3[0]" class="podium-slot podium-1">
+                <div class="podium-crown">
+                  <v-icon size="18" color="#D97706">mdi-crown</v-icon>
+                </div>
+                <div class="podium-avatar podium-gold">
+                  <v-icon size="28" color="white">mdi-trophy</v-icon>
+                </div>
+                <div class="podium-name font-weight-bold">{{ top3[0].NOMVENDEDOR }}</div>
+                <div class="podium-pct podium-pct-gold">{{ pct(top3[0]) }}%</div>
+                <div class="podium-bar" style="height:90px;background:#D97706" />
+              </div>
               <!-- 3er lugar -->
-              <v-col cols="4" sm="3" class="text-center" v-if="top3[2]">
-                <v-avatar color="orange-darken-1" size="44" class="mb-2">
-                  <v-icon size="24" color="white">mdi-medal-outline</v-icon>
-                </v-avatar>
-                <div class="text-body-2 font-weight-medium">{{ top3[2].NOMVENDEDOR }}</div>
-                <div class="text-caption text-medium-emphasis">{{ pct(top3[2]) }}%</div>
-                <div class="mt-2 rounded-t-lg" :style="`background:var(--v-theme-primary);opacity:.35;height:45px`" />
-              </v-col>
-            </v-row>
+              <div v-if="top3[2]" class="podium-slot podium-3">
+                <div class="podium-avatar podium-bronze">
+                  <v-icon size="18" color="white">mdi-medal-outline</v-icon>
+                </div>
+                <div class="podium-name">{{ top3[2].NOMVENDEDOR }}</div>
+                <div class="podium-pct">{{ pct(top3[2]) }}%</div>
+                <div class="podium-bar" style="height:42px;background:#B45309" />
+              </div>
+            </div>
           </v-col>
 
-          <!-- Ranking completo por % meta -->
+          <!-- Ranking por % -->
           <v-col cols="12" md="6">
-            <v-card variant="outlined" rounded="lg">
-              <v-card-title class="text-subtitle-2 pa-3 pb-0">
-                <v-icon start size="18" color="primary">mdi-percent</v-icon>
+            <div class="rank-card">
+              <div class="rank-card-title">
+                <v-icon size="15" color="#1E40AF">mdi-percent</v-icon>
                 Ranking por % de meta
-              </v-card-title>
-              <v-list density="compact">
-                <v-list-item
-                  v-for="(item, i) in rankingPct"
-                  :key="item.ID"
-                  :subtitle="`$ ${fmt(ventaModo(item))} / $ ${fmt(item.META)}`"
-                >
-                  <template #prepend>
-                    <span class="text-h6 font-weight-black mr-3 text-medium-emphasis" style="min-width:28px">{{ i+1 }}</span>
-                  </template>
-                  <template #title>
-                    <span class="font-weight-medium">{{ item.NOMVENDEDOR }}</span>
-                  </template>
-                  <template #append>
-                    <v-chip :color="colorPct(pct(item))" size="x-small" variant="flat">{{ pct(item) }}%</v-chip>
-                  </template>
-                </v-list-item>
-              </v-list>
-            </v-card>
+              </div>
+              <div
+                v-for="(item, i) in rankingPct"
+                :key="item.ID"
+                class="rank-row"
+              >
+                <span class="rank-num" :class="rankClass(i)">{{ i+1 }}</span>
+                <div class="flex-grow-1">
+                  <div class="rank-vend">{{ item.NOMVENDEDOR }}</div>
+                  <div class="rank-detail mono">$ {{ fmt(ventaModo(item)) }} / $ {{ fmt(item.META) }}</div>
+                </div>
+                <v-chip :color="colorPct(pct(item))" size="x-small" variant="flat">{{ pct(item) }}%</v-chip>
+              </div>
+            </div>
           </v-col>
 
-          <!-- Ranking por venta absoluta -->
+          <!-- Ranking por monto -->
           <v-col cols="12" md="6">
-            <v-card variant="outlined" rounded="lg">
-              <v-card-title class="text-subtitle-2 pa-3 pb-0">
-                <v-icon start size="18" color="success">mdi-currency-usd</v-icon>
+            <div class="rank-card">
+              <div class="rank-card-title">
+                <v-icon size="15" color="#059669">mdi-currency-usd</v-icon>
                 Ranking por monto vendido
-              </v-card-title>
-              <v-list density="compact">
-                <v-list-item
-                  v-for="(item, i) in rankingMonto"
-                  :key="item.ID"
-                  :subtitle="`${pedidoLabel(item)} pedido(s)`"
-                >
-                  <template #prepend>
-                    <span class="text-h6 font-weight-black mr-3 text-medium-emphasis" style="min-width:28px">{{ i+1 }}</span>
-                  </template>
-                  <template #title>
-                    <span class="font-weight-medium">{{ item.NOMVENDEDOR }}</span>
-                  </template>
-                  <template #append>
-                    <span class="text-body-2 font-weight-bold text-success">$ {{ fmt(ventaModo(item)) }}</span>
-                  </template>
-                </v-list-item>
-              </v-list>
-            </v-card>
+              </div>
+              <div
+                v-for="(item, i) in rankingMonto"
+                :key="item.ID"
+                class="rank-row"
+              >
+                <span class="rank-num" :class="rankClass(i)">{{ i+1 }}</span>
+                <div class="flex-grow-1">
+                  <div class="rank-vend">{{ item.NOMVENDEDOR }}</div>
+                  <div class="rank-detail">{{ pedidoLabel(item) }} pedido(s)</div>
+                </div>
+                <span class="mono font-weight-bold" style="color:#059669">$ {{ fmt(ventaModo(item)) }}</span>
+              </div>
+            </div>
           </v-col>
 
-          <!-- Ranking por número de pedidos -->
+          <!-- Ranking por pedidos -->
           <v-col cols="12" md="6">
-            <v-card variant="outlined" rounded="lg">
-              <v-card-title class="text-subtitle-2 pa-3 pb-0">
-                <v-icon start size="18" color="deep-orange">mdi-cart-arrow-right</v-icon>
+            <div class="rank-card">
+              <div class="rank-card-title">
+                <v-icon size="15" color="#D97706">mdi-cart-arrow-right</v-icon>
                 Ranking por cantidad de pedidos
-              </v-card-title>
-              <v-list density="compact">
-                <v-list-item
-                  v-for="(item, i) in rankingPedidos"
-                  :key="item.ID"
-                  :subtitle="`$ ${fmt(ventaModo(item))} vendido`"
-                >
-                  <template #prepend>
-                    <span class="text-h6 font-weight-black mr-3 text-medium-emphasis" style="min-width:28px">{{ i+1 }}</span>
-                  </template>
-                  <template #title>
-                    <span class="font-weight-medium">{{ item.NOMVENDEDOR }}</span>
-                  </template>
-                  <template #append>
-                    <v-chip color="deep-orange" size="x-small" variant="flat">{{ pedidoLabel(item) }} ped.</v-chip>
-                  </template>
-                </v-list-item>
-              </v-list>
-            </v-card>
+              </div>
+              <div
+                v-for="(item, i) in rankingPedidos"
+                :key="item.ID"
+                class="rank-row"
+              >
+                <span class="rank-num" :class="rankClass(i)">{{ i+1 }}</span>
+                <div class="flex-grow-1">
+                  <div class="rank-vend">{{ item.NOMVENDEDOR }}</div>
+                  <div class="rank-detail mono">$ {{ fmt(ventaModo(item)) }} vendido</div>
+                </div>
+                <v-chip color="warning" size="x-small" variant="flat">{{ pedidoLabel(item) }} ped.</v-chip>
+              </div>
+            </div>
           </v-col>
 
-          <!-- Tabla sin meta (si hay vendedores sin meta ese mes) -->
+          <!-- Distancia a la meta -->
           <v-col cols="12" md="6">
-            <v-card variant="outlined" rounded="lg">
-              <v-card-title class="text-subtitle-2 pa-3 pb-0">
-                <v-icon start size="18" color="warning">mdi-alert-circle-outline</v-icon>
+            <div class="rank-card">
+              <div class="rank-card-title">
+                <v-icon size="15" color="#DC2626">mdi-flag-checkered</v-icon>
                 Distancia a la meta
-              </v-card-title>
-              <v-list density="compact">
-                <v-list-item
-                  v-for="item in rankingDistancia"
-                  :key="item.ID"
-                  :subtitle="item.META > ventaModo(item) ? `Falta $ ${fmt(item.META - ventaModo(item))}` : 'Meta superada'"
-                >
-                  <template #title>
-                    <span class="font-weight-medium">{{ item.NOMVENDEDOR }}</span>
-                  </template>
-                  <template #append>
-                    <v-chip :color="item.META <= ventaModo(item) ? 'success' : 'warning'" size="x-small" variant="flat">
-                      {{ item.META <= ventaModo(item) ? '✓' : `$ ${fmt(item.META - ventaModo(item))}` }}
-                    </v-chip>
-                  </template>
-                </v-list-item>
-              </v-list>
-            </v-card>
+              </div>
+              <div
+                v-for="item in rankingDistancia"
+                :key="item.ID"
+                class="rank-row"
+              >
+                <div class="flex-grow-1">
+                  <div class="rank-vend">{{ item.NOMVENDEDOR }}</div>
+                  <div class="rank-detail">
+                    {{ item.META > ventaModo(item) ? `Falta $ ${fmt(item.META - ventaModo(item))}` : 'Meta superada' }}
+                  </div>
+                </div>
+                <v-chip :color="item.META <= ventaModo(item) ? 'success' : 'error'" size="x-small" variant="flat">
+                  {{ item.META <= ventaModo(item) ? '✓' : `$ ${fmt(item.META - ventaModo(item))}` }}
+                </v-chip>
+              </div>
+            </div>
           </v-col>
         </v-row>
       </v-tabs-window-item>
 
       <!-- ══════════════ TAB GESTIÓN ══════════════ -->
       <v-tabs-window-item value="gestion">
-        <v-row class="mb-3" align="center">
-          <v-col>
-            <v-row dense>
-              <v-col cols="12" sm="4">
-                <v-select
-                  v-model="filtroVendedor"
-                  :items="vendedores"
-                  :item-title="v => `${v.CODVENDEDOR} — ${v.NOMVENDEDOR}`"
-                  item-value="CODVENDEDOR"
-                  label="Vendedor"
-                  density="compact"
-                  variant="outlined"
-                  hide-details
-                  clearable
-                  @update:model-value="cargarMetas"
-                />
-              </v-col>
-            </v-row>
-          </v-col>
-          <v-col cols="auto">
-            <v-btn color="primary" prepend-icon="mdi-plus" @click="abrirNueva">Nueva Meta</v-btn>
-          </v-col>
-        </v-row>
+        <!-- Toolbar -->
+        <div class="gestion-toolbar mb-4">
+          <div class="d-flex align-center gap-3 flex-wrap">
+            <v-icon color="#1E40AF" size="18">mdi-filter-variant</v-icon>
+            <v-autocomplete
+              v-model="filtroVendedor"
+              :items="vendedores"
+              :item-title="v => `${v.CODVENDEDOR} — ${v.NOMVENDEDOR}`"
+              item-value="CODVENDEDOR"
+              :custom-filter="(_, query, item) => {
+                const q = query.toLowerCase();
+                return String(item.raw.CODVENDEDOR).includes(q) || item.raw.NOMVENDEDOR.toLowerCase().includes(q);
+              }"
+              label="Filtrar por vendedor"
+              density="compact"
+              variant="outlined"
+              hide-details
+              clearable
+              style="max-width:320px"
+              @update:model-value="cargarMetas"
+            />
+            <v-spacer />
+            <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" @click="abrirNueva">
+              Nueva Meta
+            </v-btn>
+          </div>
+        </div>
 
-        <v-card variant="outlined">
+        <!-- Tabla -->
+        <div class="gestion-table-wrap">
           <v-data-table
             :headers="headers"
             :items="metas"
             :loading="cargandoMetas"
-            density="compact"
-            no-data-text="No hay metas registradas"
+            density="comfortable"
+            no-data-text="No hay metas registradas para este período"
             items-per-page-text="Por página"
+            class="gestion-table"
           >
+            <template #item.NOMVENDEDOR="{ item }">
+              <span class="gestion-vend-name">{{ item.NOMVENDEDOR }}</span>
+              <span class="gestion-vend-cod"> · {{ item.CODVENDEDOR }}</span>
+            </template>
             <template #item.MES="{ item }">{{ meses.find(m => m.valor === item.MES)?.label ?? item.MES }}</template>
-            <template #item.META="{ item }">$ {{ fmt(item.META) }}</template>
+            <template #item.META="{ item }">
+              <span class="mono font-weight-medium">$ {{ fmt(item.META) }}</span>
+            </template>
             <template #item.CUMPLIDA="{ item }">
-              <v-chip :color="item.CUMPLIDA ? 'success' : 'default'" size="x-small" variant="flat">
-                {{ item.CUMPLIDA ? 'Sí' : 'No' }}
+              <v-chip
+                :color="item.CUMPLIDA ? 'success' : 'default'"
+                :variant="item.CUMPLIDA ? 'flat' : 'outlined'"
+                size="small"
+                :loading="toggling === item.ID"
+                style="cursor:pointer"
+                @click="toggleCumplida(item)"
+              >
+                <v-icon start size="14">{{ item.CUMPLIDA ? 'mdi-check-circle' : 'mdi-circle-outline' }}</v-icon>
+                {{ item.CUMPLIDA ? 'Cumplida' : 'Pendiente' }}
               </v-chip>
             </template>
             <template #item.acciones="{ item }">
@@ -349,7 +360,7 @@
               <v-btn icon="mdi-delete" variant="text" size="small" density="compact" color="error" @click="confirmarEliminar(item)" />
             </template>
           </v-data-table>
-        </v-card>
+        </div>
       </v-tabs-window-item>
     </v-tabs-window>
 
@@ -455,6 +466,7 @@ const editando      = ref(false);
 const dialogEliminar = ref(false);
 const itemAEliminar  = ref<any>(null);
 const guardando      = ref(false);
+const toggling       = ref<number | null>(null);
 const form = ref({ codVendedor: null as number | null, anio: anioActual, mes: mesActual, meta: 0, cumplida: false, id: null as number | null });
 const snack = ref({ show: false, text: '', color: 'success' });
 
@@ -489,6 +501,24 @@ function colorPct(p: number): string {
   if (p >= 75)  return 'warning';
   if (p >= 50)  return 'orange';
   return 'error';
+}
+function borderColorClass(p: number): string {
+  if (p >= 100) return 'border-success';
+  if (p >= 75)  return 'border-warning';
+  if (p >= 50)  return 'border-orange';
+  return 'border-error';
+}
+function pctColorClass(p: number): string {
+  if (p >= 100) return 'pct-success';
+  if (p >= 75)  return 'pct-warning';
+  if (p >= 50)  return 'pct-orange';
+  return 'pct-error';
+}
+function rankClass(i: number): string {
+  if (i === 0) return 'rank-gold';
+  if (i === 1) return 'rank-silver';
+  if (i === 2) return 'rank-bronze';
+  return '';
 }
 
 // ── Computed para progreso ──
@@ -561,6 +591,16 @@ async function guardar() {
   } catch { mostrarSnack('Error al guardar la meta', 'error'); }
   finally { guardando.value = false; }
 }
+async function toggleCumplida(item: any) {
+  toggling.value = item.ID;
+  try {
+    const nueva = !item.CUMPLIDA;
+    await axios.patch(`${API}/${item.ID}/cumplida`, { cumplida: nueva });
+    item.CUMPLIDA = nueva;
+    mostrarSnack(nueva ? 'Meta marcada como cumplida' : 'Meta desmarcada');
+  } catch { mostrarSnack('Error al actualizar la meta', 'error'); }
+  finally { toggling.value = null; }
+}
 function confirmarEliminar(item: any) { itemAEliminar.value = item; dialogEliminar.value = true; }
 async function eliminar() {
   await axios.delete(`${API}/${itemAEliminar.value.ID}`);
@@ -574,3 +614,313 @@ onMounted(async () => {
   await recargar();
 });
 </script>
+
+<style scoped>
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Fira+Sans:wght@400;500;600;700&display=swap');
+
+/* ── Design tokens ── */
+.metas-dashboard {
+  --c-primary:  #1E40AF;
+  --c-accent:   #D97706;
+  --c-success:  #059669;
+  --c-warning:  #D97706;
+  --c-danger:   #DC2626;
+  --c-orange:   #EA580C;
+  --c-muted:    #E9EEF6;
+  --c-bg:       #F8FAFC;
+  --c-border:   #E2E8F0;
+  --c-text:     #0F172A;
+  --c-sub:      #64748B;
+  font-family: 'Fira Sans', 'Segoe UI', sans-serif;
+}
+
+/* ── Header ── */
+.dash-header {
+  border-left: 4px solid var(--c-primary);
+  padding-left: 12px;
+}
+.dash-title {
+  font-family: 'Fira Sans', sans-serif;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--c-primary);
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+.dash-subtitle {
+  font-size: 0.8rem;
+  color: var(--c-sub);
+  margin-top: 2px;
+}
+
+/* ── KPI cards ── */
+.kpi-card {
+  border-radius: 10px;
+  padding: 14px 16px;
+  position: relative;
+  overflow: hidden;
+  transition: transform 150ms ease, box-shadow 150ms ease;
+  cursor: default;
+}
+.kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+}
+.kpi-primary { background: var(--c-primary); }
+.kpi-success { background: var(--c-success); }
+.kpi-accent  { background: var(--c-accent);  }
+.kpi-muted   { background: #334155;          }
+
+.kpi-icon-wrap {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  opacity: 0.6;
+}
+.kpi-number {
+  font-family: 'Fira Code', monospace;
+  font-size: 2rem;
+  font-weight: 600;
+  color: white;
+  line-height: 1.1;
+  margin-top: 20px;
+}
+.kpi-money { font-size: 1.35rem; }
+.kpi-label {
+  font-size: 0.72rem;
+  color: rgba(255,255,255,0.75);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 4px;
+}
+
+/* ── Progress list ── */
+.progress-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.progress-card {
+  background: white;
+  border: 1px solid var(--c-border);
+  border-left-width: 4px;
+  border-radius: 8px;
+  padding: 12px 16px;
+  transition: background 150ms, box-shadow 150ms;
+}
+.progress-card:hover {
+  background: var(--c-bg);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.border-success { border-left-color: var(--c-success) !important; }
+.border-warning { border-left-color: var(--c-warning) !important; }
+.border-orange  { border-left-color: var(--c-orange)  !important; }
+.border-error   { border-left-color: var(--c-danger)  !important; }
+
+.rank-badge {
+  font-family: 'Fira Code', monospace;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #CBD5E1;
+  min-width: 36px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.rank-gold   { color: #D97706; }
+.rank-silver { color: #64748B; }
+.rank-bronze { color: #B45309; }
+
+.prog-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--c-text);
+}
+.prog-sub {
+  font-size: 0.75rem;
+  color: var(--c-sub);
+  margin-top: 1px;
+}
+.prog-pct {
+  font-family: 'Fira Code', monospace;
+  font-size: 1.4rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.pct-success { color: var(--c-success); }
+.pct-warning { color: var(--c-warning); }
+.pct-orange  { color: var(--c-orange);  }
+.pct-error   { color: var(--c-danger);  }
+
+.prog-falta, .prog-sobre {
+  font-size: 0.7rem;
+  color: var(--c-sub);
+  white-space: nowrap;
+}
+.prog-sobre { color: var(--c-success) !important; }
+.prog-meta {
+  font-size: 0.75rem;
+  color: var(--c-sub);
+}
+.prog-bar-row { padding-top: 4px; }
+
+/* ── Section label ── */
+.section-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--c-sub);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── Podium ── */
+.podium-row {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 8px;
+}
+.podium-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 0 0 120px;
+}
+.podium-1 { flex-basis: 140px; }
+
+.podium-crown {
+  margin-bottom: 4px;
+}
+.podium-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+.podium-1 .podium-avatar { width: 64px; height: 64px; }
+.podium-gold   { background: #D97706; }
+.podium-silver { background: #94A3B8; }
+.podium-bronze { background: #B45309; }
+
+.podium-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: center;
+  color: var(--c-text);
+  line-height: 1.3;
+}
+.podium-pct {
+  font-family: 'Fira Code', monospace;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--c-sub);
+  margin: 2px 0 6px;
+}
+.podium-pct-gold { color: #D97706; }
+.podium-bar {
+  width: 100%;
+  border-radius: 4px 4px 0 0;
+}
+
+/* ── Ranking cards ── */
+.rank-card {
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: white;
+}
+.rank-card-title {
+  padding: 10px 14px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--c-sub);
+  background: var(--c-bg);
+  border-bottom: 1px solid var(--c-border);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.rank-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  border-bottom: 1px solid #F1F5F9;
+  transition: background 150ms;
+}
+.rank-row:last-child { border-bottom: none; }
+.rank-row:hover { background: var(--c-bg); }
+
+.rank-num {
+  font-family: 'Fira Code', monospace;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #CBD5E1;
+  min-width: 24px;
+  text-align: center;
+}
+.rank-vend {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--c-text);
+}
+.rank-detail {
+  font-size: 0.72rem;
+  color: var(--c-sub);
+}
+
+/* ── Gestión tab ── */
+.gestion-toolbar {
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  padding: 12px 16px;
+}
+.gestion-table-wrap {
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.gestion-table :deep(thead tr th) {
+  font-family: 'Fira Sans', sans-serif;
+  font-size: 0.72rem !important;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--c-sub) !important;
+  background: var(--c-bg) !important;
+  border-bottom: 1px solid var(--c-border) !important;
+}
+.gestion-table :deep(tbody tr:hover td) {
+  background: var(--c-bg);
+}
+.gestion-table :deep(tbody tr td) {
+  border-bottom: 1px solid #F1F5F9 !important;
+  font-size: 0.85rem;
+}
+.gestion-vend-name {
+  font-weight: 600;
+  color: var(--c-text);
+}
+.gestion-vend-cod {
+  font-family: 'Fira Code', monospace;
+  font-size: 0.75rem;
+  color: var(--c-sub);
+}
+.gestion-cumplida-label {
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+/* ── Misc ── */
+.mono {
+  font-family: 'Fira Code', monospace;
+}
+</style>
