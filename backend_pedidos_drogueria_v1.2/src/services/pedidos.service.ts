@@ -286,42 +286,57 @@ export class PedidosServices {
             const pool = await connectDb();
             const estatusClause  = buildEstatusClause(estatus, 'CP.ESTATUS');
             const estatusClause2 = buildEstatusClause(estatus, 'CP.ESTATUS');
-            // Incluir CANCELADO en el total solo cuando el filtro lo pide explícitamente
             const incluirCancelado = !!(estatus && estatus.split(',').map(s => s.trim()).includes('CANCELADO'));
             const sumaUSD = incluirCancelado
                 ? 'ISNULL(SUM(CP.TOTALPRECIO), 0)'
                 : "ISNULL(SUM(CASE WHEN CP.ESTATUS != 'CANCELADO' THEN CP.TOTALPRECIO ELSE 0 END), 0)";
+
+            // Pre-lookup por nroFactura: query tiny sobre ALBVENTACAB+PEDVENTACAB para obtener
+            // los ORDERIDs correspondientes. Evita joins+COLLATE en el query principal.
+            let preIds: string[] = [];
+            let orderIdClause = '';
+            if (nroFactura) {
+                const preRes = await pool.request()
+                    .input('NRO', mssql.Int, Number(nroFactura))
+                    .query(`
+                        SELECT DISTINCT RTRIM(LTRIM(PVC.SUPEDIDO)) AS ORDERID
+                        FROM ALBVENTACAB AVC WITH(NOLOCK)
+                        INNER JOIN PEDVENTACAB PVC WITH(NOLOCK)
+                            ON PVC.SERIEALBARAN = AVC.NUMSERIE
+                            AND PVC.NUMEROALBARAN = AVC.NUMALBARAN
+                            AND PVC.NALBARAN = AVC.N
+                        WHERE AVC.NUMFAC = @NRO AND AVC.FACTURADO = 'T'
+                    `);
+                preIds = preRes.recordset.map((r: any) => String(r.ORDERID).trim());
+                if (preIds.length === 0) {
+                    return { success: true, message: 'Pedidos obtenidos correctamente', data: [], total: 0, totalUSD: 0 };
+                }
+                orderIdClause = `AND CP.ORDERID IN (${preIds.map((_, i) => `@PRE${i}`).join(',')})`;
+            }
+
             const req = pool.request()
-                .input('OFFSET',         mssql.Int,         offset)
-                .input('LIMIT',          mssql.Int,         validLimit)
-                .input('BUSCAR_ID',      mssql.VarChar(50), buscarId   ? `%${buscarId}%`   : null)
-                .input('CLIENTE_ID',     mssql.Int,         clienteId  ? Number(clienteId)  : null)
-                .input('COD_VENDEDOR',   mssql.Int,         codVendedor ? Number(codVendedor) : null)
-                .input('RIESGO',         mssql.VarChar(20), riesgo     || null)
-                .input('CODRUTA',        mssql.Int,         codruta    ? Number(codruta)    : null)
-                .input('FECHA_DESDE',    mssql.VarChar(10), fechaDesde || null)
-                .input('FECHA_HASTA',    mssql.VarChar(10), fechaHasta || null)
-                .input('PSICO',          mssql.Bit,         esPsicotropico ? 1 : null)
+                .input('OFFSET',         mssql.Int,           offset)
+                .input('LIMIT',          mssql.Int,           validLimit)
+                .input('BUSCAR_ID',      mssql.VarChar(50),   buscarId      ? `%${buscarId}%`      : null)
+                .input('CLIENTE_ID',     mssql.Int,           clienteId     ? Number(clienteId)     : null)
+                .input('COD_VENDEDOR',   mssql.Int,           codVendedor   ? Number(codVendedor)   : null)
+                .input('RIESGO',         mssql.VarChar(20),   riesgo        || null)
+                .input('CODRUTA',        mssql.Int,           codruta       ? Number(codruta)       : null)
+                .input('FECHA_DESDE',    mssql.VarChar(10),   fechaDesde    || null)
+                .input('FECHA_HASTA',    mssql.VarChar(10),   fechaHasta    || null)
+                .input('PSICO',          mssql.Bit,           esPsicotropico ? 1 : null)
                 .input('NOMBRE_CLIENTE', mssql.NVarChar(200), nombreCliente ? `%${nombreCliente}%` : null)
-                .input('SOLO_FACTURADO', mssql.Bit,         soloFacturado  ? 1 : null)
-                .input('USD_CODE',       mssql.Int,         usdCode)
-                .input('VED_CODE',       mssql.Int,         vedCode)
-                .input('USUARIO',        mssql.VarChar(100), usuario ? `%${usuario}%` : null)
-                .input('NROFACTURA',     mssql.VarChar(50),  nroFactura || null);
+                .input('SOLO_FACTURADO', mssql.Bit,           soloFacturado  ? 1 : null)
+                .input('USD_CODE',       mssql.Int,           usdCode)
+                .input('VED_CODE',       mssql.Int,           vedCode)
+                .input('USUARIO',        mssql.VarChar(100),  usuario       ? `%${usuario}%`       : null);
+            preIds.forEach((id, i) => req.input(`PRE${i}`, mssql.VarChar(50), id));
 
             const result = await req.query(`
                 SELECT
                     CP.ORDERID, CP.CLIENTEID, CP.FECHA, CP.ESTATUS, CP.CODVENDEDOR, CP.TOTALPRECIO,
                     CP.OBSERVACIONES, CP.PROMO_NOMBRE, LG.USUARIO AS CREADO_POR,
-                    (SELECT TOP 1 AVC.FACTURADO FROM PEDVENTACAB PVC WITH(NOLOCK)
-                     LEFT JOIN ALBVENTACAB AVC WITH(NOLOCK) ON AVC.NUMSERIE = PVC.SERIEALBARAN AND AVC.NUMALBARAN = PVC.NUMEROALBARAN AND AVC.N = PVC.NALBARAN
-                     WHERE PVC.SUPEDIDO COLLATE DATABASE_DEFAULT = CP.ORDERID COLLATE DATABASE_DEFAULT) AS FACTURADO,
-                    (SELECT TOP 1 AVC.NUMSERIEFAC FROM PEDVENTACAB PVC WITH(NOLOCK)
-                     LEFT JOIN ALBVENTACAB AVC WITH(NOLOCK) ON AVC.NUMSERIE = PVC.SERIEALBARAN AND AVC.NUMALBARAN = PVC.NUMEROALBARAN AND AVC.N = PVC.NALBARAN
-                     WHERE PVC.SUPEDIDO COLLATE DATABASE_DEFAULT = CP.ORDERID COLLATE DATABASE_DEFAULT AND AVC.FACTURADO = 'T') AS SERIE_FAC,
-                    (SELECT TOP 1 AVC.NUMFAC FROM PEDVENTACAB PVC WITH(NOLOCK)
-                     LEFT JOIN ALBVENTACAB AVC WITH(NOLOCK) ON AVC.NUMSERIE = PVC.SERIEALBARAN AND AVC.NUMALBARAN = PVC.NUMEROALBARAN AND AVC.N = PVC.NALBARAN
-                     WHERE PVC.SUPEDIDO COLLATE DATABASE_DEFAULT = CP.ORDERID COLLATE DATABASE_DEFAULT AND AVC.FACTURADO = 'T') AS NROFAC,
+                    FAC.FACTURADO, FAC.SERIE_FAC, FAC.NROFAC,
                     CL.NOMBRECLIENTE, ISNULL(CL.NOMBRECOMERCIAL, '') AS NOMBRECOMERCIAL, CL.CIF, ISNULL(CL.NIF20, '') AS NIF20, CL.DIRECCION1, ISNULL(CE.DIRECCION1, CL.DIRECCION1) AS DIRECCION_ENVIO,
                     ISNULL(RUT.DESCRIPCION, '') AS RUTA,
                     V.NOMVENDEDOR,
@@ -335,6 +350,12 @@ export class PedidosServices {
                     LEFT JOIN CLIENTESCAMPOSLIBRES CLC WITH (NOLOCK) ON CLC.CODCLIENTE = CP.CLIENTEID
                     LEFT JOIN RUTAS RUT WITH (NOLOCK) ON RUT.CODRUTA = TRY_CAST(CLC.ZONA AS INT)
                     LEFT JOIN ${esquema}.APP_PEDIDO_LOG LG WITH (NOLOCK) ON LG.ORDERID = CP.ORDERID AND LG.EST_ANTERIOR IS NULL
+                    OUTER APPLY (
+                        SELECT TOP 1 AVC.FACTURADO, AVC.NUMSERIEFAC AS SERIE_FAC, AVC.NUMFAC AS NROFAC
+                        FROM PEDVENTACAB PVC WITH(NOLOCK)
+                        LEFT JOIN ALBVENTACAB AVC WITH(NOLOCK) ON AVC.NUMSERIE = PVC.SERIEALBARAN AND AVC.NUMALBARAN = PVC.NUMEROALBARAN AND AVC.N = PVC.NALBARAN
+                        WHERE PVC.SUPEDIDO COLLATE DATABASE_DEFAULT = CP.ORDERID COLLATE DATABASE_DEFAULT
+                    ) FAC
                     LEFT JOIN (
                         SELECT CL.CODCLIENTE,
                             CASE
@@ -366,11 +387,7 @@ export class PedidosServices {
                         INNER JOIN ALBVENTACAB AVC2 WITH(NOLOCK) ON AVC2.NUMSERIE = PVC2.SERIEALBARAN AND AVC2.NUMALBARAN = PVC2.NUMEROALBARAN AND AVC2.N = PVC2.NALBARAN
                         WHERE PVC2.SUPEDIDO COLLATE DATABASE_DEFAULT = CP.ORDERID COLLATE DATABASE_DEFAULT AND AVC2.FACTURADO = 'T'
                     ))
-                    AND (@NROFACTURA IS NULL OR EXISTS (
-                        SELECT 1 FROM PEDVENTACAB PVC3 WITH(NOLOCK)
-                        INNER JOIN ALBVENTACAB AVC3 WITH(NOLOCK) ON AVC3.NUMSERIE = PVC3.SERIEALBARAN AND AVC3.NUMALBARAN = PVC3.NUMEROALBARAN AND AVC3.N = PVC3.NALBARAN
-                        WHERE PVC3.SUPEDIDO COLLATE DATABASE_DEFAULT = CP.ORDERID COLLATE DATABASE_DEFAULT AND AVC3.FACTURADO = 'T' AND CAST(AVC3.NUMFAC AS VARCHAR) LIKE '%' + @NROFACTURA + '%'
-                    ))
+                    ${orderIdClause}
                 ORDER BY
                     CP.FECHA DESC
                 OFFSET @OFFSET ROWS
@@ -378,17 +395,21 @@ export class PedidosServices {
             `);
 
             const countReq = pool.request()
-                .input('BUSCAR_ID2',       mssql.VarChar(50),   buscarId   ? `%${buscarId}%`   : null)
-                .input('CLIENTE_ID2',      mssql.Int,           clienteId  ? Number(clienteId)  : null)
-                .input('COD_VENDEDOR2',    mssql.Int,           codVendedor ? Number(codVendedor) : null)
-                .input('RIESGO2',          mssql.VarChar(20),   riesgo     || null)
-                .input('CODRUTA2',         mssql.Int,           codruta    ? Number(codruta)    : null)
-                .input('FECHA_DESDE2',     mssql.VarChar(10),   fechaDesde || null)
-                .input('FECHA_HASTA2',     mssql.VarChar(10),   fechaHasta || null)
+                .input('BUSCAR_ID2',       mssql.VarChar(50),   buscarId      ? `%${buscarId}%`      : null)
+                .input('CLIENTE_ID2',      mssql.Int,           clienteId     ? Number(clienteId)     : null)
+                .input('COD_VENDEDOR2',    mssql.Int,           codVendedor   ? Number(codVendedor)   : null)
+                .input('RIESGO2',          mssql.VarChar(20),   riesgo        || null)
+                .input('CODRUTA2',         mssql.Int,           codruta       ? Number(codruta)       : null)
+                .input('FECHA_DESDE2',     mssql.VarChar(10),   fechaDesde    || null)
+                .input('FECHA_HASTA2',     mssql.VarChar(10),   fechaHasta    || null)
                 .input('PSICO2',           mssql.Bit,           esPsicotropico ? 1 : null)
                 .input('NOMBRE_CLIENTE2',  mssql.NVarChar(200), nombreCliente ? `%${nombreCliente}%` : null)
                 .input('SOLO_FACTURADO2',  mssql.Bit,           soloFacturado  ? 1 : null)
-                .input('USUARIO2',         mssql.VarChar(100),  usuario ? `%${usuario}%` : null);
+                .input('USUARIO2',         mssql.VarChar(100),  usuario       ? `%${usuario}%`       : null);
+            preIds.forEach((id, i) => countReq.input(`CPRE${i}`, mssql.VarChar(50), id));
+            const countOrderIdClause = preIds.length
+                ? `AND CP.ORDERID IN (${preIds.map((_, i) => `@CPRE${i}`).join(',')})`
+                : '';
 
             const countResult = await countReq.query(`
                 SELECT COUNT(*) AS TOTAL, ${sumaUSD} AS TOTAL_USD
@@ -426,6 +447,7 @@ export class PedidosServices {
                         INNER JOIN ALBVENTACAB AVC2 WITH(NOLOCK) ON AVC2.NUMSERIE = PVC2.SERIEALBARAN AND AVC2.NUMALBARAN = PVC2.NUMEROALBARAN AND AVC2.N = PVC2.NALBARAN
                         WHERE PVC2.SUPEDIDO COLLATE DATABASE_DEFAULT = CP.ORDERID COLLATE DATABASE_DEFAULT AND AVC2.FACTURADO = 'T'
                     ))
+                    ${countOrderIdClause}
             `);
 
             return {
