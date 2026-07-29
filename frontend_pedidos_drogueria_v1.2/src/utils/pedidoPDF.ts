@@ -32,6 +32,8 @@ export interface ConteoPDFData {
     lineas: LineaConteoPDF[];
 }
 
+export type FormatoPDF = 'completo' | 'sin_precios' | 'sin_desc' | 'sin_desc_cab'
+
 export interface PedidoPDFData {
     numeroOrden: string;
     fecha?: string;
@@ -47,8 +49,11 @@ export interface PedidoPDFData {
     lineas: LineaPDF[];
     totalUSD: number;
     totalIVA?: number;
+    formatoPDF?: FormatoPDF;
+    /** @deprecated usar formatoPDF */
     ocultarPrecios?: boolean;
     esPsicotropico?: boolean;
+    /** @deprecated usar formatoPDF */
     sinDesc?: boolean;
     firmante?: { usuario: string; fecha: string };
     conteo?: ConteoPDFData;
@@ -140,15 +145,19 @@ export async function generarPedidoPDF(data: PedidoPDFData): Promise<void> {
         30, datosFin - 1
     );
 
-    // --- Tabla de líneas ---
-    const sinPrecios = data.ocultarPrecios === true;
+    // --- Derivar flags de formatoPDF (o compat con booleans legacy) ---
+    const fmt = data.formatoPDF ?? (data.ocultarPrecios ? 'sin_precios' : data.sinDesc ? 'sin_desc_cab' : 'completo');
+    const sinPrecios      = fmt === 'sin_precios';
+    const sinDescCab      = fmt === 'sin_desc_cab';   // oculta solo el desc de cabecera
+    const ocultarDescuentos = fmt === 'sin_desc';      // oculta todos los descuentos, mantiene precios
 
+    // --- Tabla de líneas ---
     let headCols: string[];
     const filas: any[][] = isPsico
         ? data.lineas.map(l => {
             if (sinPrecios) return [l.codigo, (l.descripcion || '') + (l.esControlado ? ' (CONTROLADO)' : ''),
                 l.cantidad, l.lote || '', l.fechaVencimiento || ''];
-            const descs = (l.descuentos ?? []).slice(data.sinDesc ? 1 : 0);
+            const descs = ocultarDescuentos ? [] : (l.descuentos ?? []).slice(sinDescCab ? 1 : 0);
             const descPct = (!l.sinDescuento && descs.length) ? `${descs.join('%+')}%` : '';
             const pct = l.porcentajeIva ?? 0;
             return [l.codigo, (l.descripcion || '') + (l.esControlado ? ' (CONTROLADO)' : ''),
@@ -157,7 +166,7 @@ export async function generarPedidoPDF(data: PedidoPDFData): Promise<void> {
                 l.lote || '', l.fechaVencimiento || ''];
         })
         : data.lineas.map(l => {
-            const descs = (l.descuentos ?? []).slice(data.sinDesc ? 1 : 0);
+            const descs = ocultarDescuentos ? [] : (l.descuentos ?? []).slice(sinDescCab ? 1 : 0);
             const descPct = (!sinPrecios && !l.sinDescuento && descs.length) ? `${descs.join('%+')}%` : '';
             const pct = l.porcentajeIva ?? 0;
             const ivaTag = (!sinPrecios && pct > 0) ? `+${pct}%` : '';

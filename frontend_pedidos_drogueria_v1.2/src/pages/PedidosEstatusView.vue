@@ -38,11 +38,16 @@
         >
           Refrescar
         </v-btn>
-        <v-checkbox
-          v-model="sinDescPDF"
-          label="PDF sin DESC"
-          hide-details
+        <v-select
+          v-model="formatoPDF"
+          :items="FORMATOS_PDF"
+          item-title="label"
+          item-value="value"
+          label="Formato PDF"
           density="compact"
+          variant="outlined"
+          hide-details
+          style="min-width:220px"
           class="mr-2"
         />
         <v-btn
@@ -592,7 +597,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { usePageSize } from '../utils/usePageSize';
 import axios from 'axios';
 import { useRouter } from 'vue-router';
-import { generarPedidoPDF, type ConteoPDFData } from '../utils/pedidoPDF';
+import { generarPedidoPDF, type ConteoPDFData, type FormatoPDF } from '../utils/pedidoPDF';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useCarritoStore } from '../stores/useCarritoStore';
 import MontoDisplay from '../components/MontoDisplay.vue';
@@ -609,7 +614,13 @@ const puedeAutorizar = computed(() => (vis.value & BIT_AUTORIZADOR) !== 0 || (vi
 const puedeEditar    = computed(() => (vis.value & BIT_EDICION)     !== 0 || (vis.value & BIT_BACKOFFICE) !== 0);
 const pedidos      = ref<any[]>([]);
 const pdfCargando  = ref<string | null>(null);
-const sinDescPDF   = ref(false);
+const formatoPDF   = ref<FormatoPDF>('completo');
+const FORMATOS_PDF = [
+    { value: 'completo',      label: 'Con descuentos, PVP y totales' },
+    { value: 'sin_desc_cab',  label: 'Sin desc. cabecera, con desc. lab.' },
+    { value: 'sin_desc',      label: 'Sin descuentos, con precios y totales' },
+    { value: 'sin_precios',   label: 'Sin precios ni totales' },
+] as const;
 const totalPedidos = ref(0);
 const pedidosSeleccionados = ref<any[]>([]);
 const pdfMultipleCargando  = ref(false);
@@ -897,7 +908,7 @@ const imprimirPDF = async (item: any) => {
       fecha: item.FECHA,
       estatus: item.ESTATUS,
       esPsicotropico: String(item.ORDERID ?? '').endsWith('P'),
-      sinDesc: sinDescPDF.value,
+      formatoPDF: formatoPDF.value,
       cliente: {
         codcliente: item.CLIENTEID,
         nombrecliente: cliente?.NOMBRECLIENTE || `Cliente ${item.CLIENTEID}`,
@@ -959,7 +970,7 @@ const imprimirPDFMultiple = async () => {
       await generarPedidoPDF({
         numeroOrden: item.ORDERID, fecha: item.FECHA, estatus: item.ESTATUS,
         esPsicotropico: String(item.ORDERID ?? '').endsWith('P'),
-        sinDesc: sinDescPDF.value,
+        formatoPDF: formatoPDF.value,
         cliente: { codcliente: item.CLIENTEID, nombrecliente: cliente?.NOMBRECLIENTE || `Cliente ${item.CLIENTEID}`, nombrecomercial: item.NOMBRECOMERCIAL || '', nit: item.NIF20 || item.CIF || '', direccionFiscal: item.DIRECCION1 || '', direccionEnvio: item.DIRECCION_ENVIO || '' },
         lineas: lineas.map((l: any) => ({ codigo: l.CODARTICULO, descripcion: l.DESCRIPCION || '', cantidad: Number(l.PRODUCTCOUNT), precioUnitario: Number(l.PRECIOUNITARIO), descuentos: [l.DESCUENTO1, l.DESCUENTO2, l.DESCUENTO3, l.DESCUENTO4].map(Number).filter(d => d > 0), sinDescuento: !!l.NODTOAPLICABLE, diasProteccion: Number(l.DIASPROTECCION ?? 0), porcentajeIva: Number(l.PORCENTAJEIVA ?? 0), lote: l.LOTE || '', fechaVencimiento: l.FECHA_VENCIMIENTO || '' })),
         totalUSD: lineas.reduce((s: number, l: any) => s + Number(l.PRECIOUNITARIO) * Number(l.PRODUCTCOUNT), 0),
