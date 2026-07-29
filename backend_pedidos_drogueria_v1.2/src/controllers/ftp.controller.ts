@@ -62,11 +62,13 @@ export class FtpController {
 
     static async iniciarServidor(_req: Request, res: Response): Promise<void> {
         const result = await FtpService.iniciarServidor();
+        if (result.ok) guardarDbConfig({ ftpHabilitado: true } as any);
         res.json({ success: result.ok, message: result.message });
     }
 
     static async detenerServidor(_req: Request, res: Response): Promise<void> {
         const result = await FtpService.detenerServidor();
+        if (result.ok) guardarDbConfig({ ftpHabilitado: false } as any);
         res.json({ success: result.ok, message: result.message });
     }
 
