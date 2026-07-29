@@ -52,19 +52,26 @@ export class MetasService {
 
     static async upsert(codVendedor: number, anio: number, mes: number, meta: number): Promise<number> {
         const pool = await connectDb();
-        const res  = await pool.request()
-            .input('COD',  mssql.Int,          codVendedor)
-            .input('ANIO', mssql.Int,          anio)
-            .input('MES',  mssql.Int,          mes)
-            .input('META', mssql.Decimal(18,2), meta)
-            .query(`
-                MERGE APP_METAS_VENDEDOR AS T
-                USING (SELECT @COD AS C, @ANIO AS A, @MES AS M) AS S
-                ON (T.CODVENDEDOR = S.C AND T.ANIO = S.A AND T.MES = S.M)
-                WHEN MATCHED THEN UPDATE SET T.META = @META, T.FECHACARGA = GETDATE()
-                WHEN NOT MATCHED THEN INSERT (CODVENDEDOR, ANIO, MES, META) VALUES (@COD, @ANIO, @MES, @META);
-                SELECT SCOPE_IDENTITY() AS ID;
-            `);
+        const req  = pool.request()
+            .input('COD',  mssql.Int,           codVendedor)
+            .input('ANIO', mssql.Int,           anio)
+            .input('MES',  mssql.Int,           mes)
+            .input('META', mssql.Decimal(18,6), meta);
+
+        const res = await req.query(`
+            MERGE APP_METAS_VENDEDOR AS T
+            USING (SELECT @COD AS C, @ANIO AS A, @MES AS M) AS S
+            ON (T.CODVENDEDOR = S.C AND T.ANIO = S.A AND T.MES = S.M)
+            WHEN MATCHED THEN UPDATE SET T.META = @META, T.FECHACARGA = GETDATE()
+            WHEN NOT MATCHED THEN INSERT (CODVENDEDOR, ANIO, MES, META) VALUES (@COD, @ANIO, @MES, @META);
+            SELECT SCOPE_IDENTITY() AS ID;
+
+            MERGE [RIP].[METAS_VENDEDORES] AS T
+            USING (SELECT @COD AS C, @ANIO AS A, @MES AS M) AS S
+            ON (T.CODVENDEDOR = S.C AND T.ANYO = S.A AND T.MES = S.M)
+            WHEN MATCHED THEN UPDATE SET T.META = @META
+            WHEN NOT MATCHED THEN INSERT (CODVENDEDOR, ANYO, MES, META) VALUES (@COD, @ANIO, @MES, @META);
+        `);
         return res.recordset[0]?.ID ?? 0;
     }
 
@@ -78,8 +85,22 @@ export class MetasService {
 
     static async eliminar(id: number): Promise<void> {
         const pool = await connectDb();
+        // Obtener codvendedor/anio/mes antes de borrar para sincronizar RIP
+        const meta = await pool.request()
+            .input('ID', mssql.Int, id)
+            .query(`SELECT CODVENDEDOR, ANIO, MES FROM APP_METAS_VENDEDOR WHERE ID = @ID`);
+        const row = meta.recordset[0];
+
         await pool.request()
             .input('ID', mssql.Int, id)
             .query(`DELETE FROM APP_METAS_VENDEDOR WHERE ID = @ID`);
+
+        if (row) {
+            await pool.request()
+                .input('COD',  mssql.Int, row.CODVENDEDOR)
+                .input('ANIO', mssql.Int, row.ANIO)
+                .input('MES',  mssql.Int, row.MES)
+                .query(`DELETE FROM [RIP].[METAS_VENDEDORES] WHERE CODVENDEDOR = @COD AND ANYO = @ANIO AND MES = @MES`);
+        }
     }
 }
