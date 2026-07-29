@@ -35,8 +35,15 @@
               </v-chip>
             </template>
             <template v-slot:item.ACTIVO="{ item }">
-              <v-switch :model-value="!!item.ACTIVO" color="success" density="compact" hide-details
-                @update:model-value="(v: any) => toggleActivo(item, v)" />
+              <v-chip v-if="item.VIGENTE_HOY" color="success" size="x-small" variant="flat" prepend-icon="mdi-check-circle">
+                Vigente hoy
+              </v-chip>
+              <v-chip v-else-if="new Date(item.FECHAINICIO) > new Date()" color="blue" size="x-small" variant="flat" prepend-icon="mdi-clock-outline">
+                Próxima
+              </v-chip>
+              <v-chip v-else color="warning" size="x-small" variant="flat" prepend-icon="mdi-calendar-remove">
+                Expirada
+              </v-chip>
             </template>
             <template v-slot:item.acciones="{ item }">
               <v-btn icon="mdi-pencil" variant="text" size="small" @click="abrirEditarPromo(item)" />
@@ -270,7 +277,7 @@ const headersPromos = [
   { title: 'Grupo Artículos', key: 'NOMBREGRUPOARTICULOS' },
   { title: 'Base', key: 'BASE' },
   { title: 'Escalas', key: 'escalas', sortable: false },
-  { title: 'Activa', key: 'ACTIVO', sortable: false },
+  { title: 'Estado', key: 'ACTIVO', sortable: false },
   { title: '', key: 'acciones', sortable: false },
 ];
 const opcionesAlcance = [
@@ -292,14 +299,6 @@ const cargarPromociones = async () => {
 };
 const cargarPaginaPromos = (opt: any) => { paginaPromos.value = opt.page; itemsPerPagePromos.value = opt.itemsPerPage; cargarPromociones(); };
 
-const toggleActivo = async (item: any, activo: boolean) => {
-  try {
-    await axios.patch(`${API}/promociones/${item.ID}/activo`, { activo });
-    item.ACTIVO = activo;
-    lanzarAviso('Estado actualizado');
-    refrescarPromocionesGlobal();
-  } catch { lanzarAviso('Error al actualizar estado', 'error'); }
-};
 
 const emptyPromo = () => ({ mostrar: true, id: null, nombre: '', criterioTipo: 'ARTICULOS', idsGruposArticulosIncluir: [], idsGruposArticulosExcluir: [], proveedores: [], marcas: [], base: 'UNIDADES', alcanceCliente: 'TODOS', idsGruposClientesIncluir: [], idsGruposClientesExcluir: [], fechaInicio: '', fechaFin: '', escalas: [], slotDescuento: 2 });
 const modalPromo = ref<any>({ ...emptyPromo(), mostrar: false });

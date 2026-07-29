@@ -862,7 +862,8 @@ export class PromocionesService {
             .input('LIMIT', mssql.Int, safeLimit)
             .query(`
                 SELECT P.ID, P.NOMBRE, P.BASE, P.ALCANCE_CLIENTE, P.FECHAINICIO, P.FECHAFIN, P.ACTIVO, P.SLOT_DESCUENTO,
-                       ISNULL(P.CRITERIO_TIPO, 'ARTICULOS') AS CRITERIO_TIPO
+                       ISNULL(P.CRITERIO_TIPO, 'ARTICULOS') AS CRITERIO_TIPO,
+                       CASE WHEN CAST(GETDATE() AS DATE) BETWEEN P.FECHAINICIO AND P.FECHAFIN THEN 1 ELSE 0 END AS VIGENTE_HOY
                 FROM APP_PROMOCIONES P
                 WHERE P.NOMBRE LIKE @FILTRO
                 ORDER BY P.FECHACREACION DESC
@@ -1055,7 +1056,7 @@ export class PromocionesService {
                    ISNULL(P.SLOT_DESCUENTO, 2) AS SLOT_DESCUENTO,
                    ISNULL(P.CRITERIO_TIPO, 'ARTICULOS') AS CRITERIO_TIPO
             FROM APP_PROMOCIONES P
-            WHERE P.ACTIVO = 1 AND CAST(GETDATE() AS DATE) BETWEEN P.FECHAINICIO AND P.FECHAFIN
+            WHERE CAST(GETDATE() AS DATE) BETWEEN P.FECHAINICIO AND P.FECHAFIN
         `);
         const promos = result.recordset;
         if (promos.length === 0) return [];

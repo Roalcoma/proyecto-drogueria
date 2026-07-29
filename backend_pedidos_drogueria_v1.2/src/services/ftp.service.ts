@@ -7,6 +7,7 @@ import { FtpSrv } from 'ftp-srv';
 import { connectDb } from '../db/db.conection';
 import { getDbConfig } from './dbconfig.service';
 import { STOCK_DISPONIBLE_SQL } from './products.service';
+import { PromocionesService } from './promociones.service';
 
 const getLocalIp = (): string => {
     for (const ifaces of Object.values(os.networkInterfaces())) {
@@ -274,7 +275,7 @@ export class FtpService {
         // Precios y descuentos del sistema; ignoramos precio del archivo
         const codigos = [...new Set(lineas.map(l => l.codarticulo))].join(',');
 
-        const [preciosRes, dtoCliRes, artInfoRes, promosRes] = await Promise.all([
+        const [preciosRes, dtoCliRes, artInfoRes, vigentesPromociones] = await Promise.all([
             pool.request()
                 .input('TARIFA', mssql.Int, tarifa)
                 .query(`SELECT CODARTICULO, PNETO FROM PRECIOSVENTA WHERE IDTARIFAV = @TARIFA AND CODARTICULO IN (${codigos})`),
@@ -293,38 +294,7 @@ export class FtpService {
                     LEFT JOIN PROVEEDORESCAMPOSLIBRES PCL WITH(NOLOCK) ON PCL.CODPROVEEDOR = ACL.CODPROVEEDORICG
                     WHERE A.CODARTICULO IN (${codigos})
                 `),
-            pool.request()
-                .input('CLI', mssql.Int, CODCLIENTE)
-                .query(`
-                    SELECT A.CODARTICULO,
-                        ISNULL((SELECT TOP 1 E.PORCENTAJE FROM APP_PROMOCIONES P
-                            INNER JOIN APP_PROMOCIONES_GRUPOS_ARTICULOS GA ON GA.IDPROMO=P.ID AND GA.TIPO='INCLUIR'
-                            INNER JOIN APP_GRUPOS_ARTICULOS G ON G.ID=GA.IDGRUPO AND G.TIPO<>'CONDICION'
-                            INNER JOIN APP_GRUPOS_ARTICULOS_DETALLE D ON D.IDGRUPO=G.ID AND D.CODARTICULO=A.CODARTICULO
-                            INNER JOIN APP_PROMOCIONES_ESCALAS E ON E.IDPROMOCION=P.ID
-                            WHERE P.ACTIVO=1 AND ISNULL(P.SLOT_DESCUENTO,2)=2
-                              AND CAST(GETDATE() AS DATE) BETWEEN P.FECHAINICIO AND P.FECHAFIN
-                              AND (NOT EXISTS(SELECT 1 FROM APP_PROMOCIONES_GRUPOS_CLIENTES GC WHERE GC.IDPROMO=P.ID)
-                                   OR EXISTS(SELECT 1 FROM APP_PROMOCIONES_GRUPOS_CLIENTES GC
-                                             INNER JOIN APP_GRUPOS_CLIENTES_DETALLE GCD ON GCD.IDGRUPO=GC.IDGRUPO
-                                             WHERE GC.IDPROMO=P.ID AND GC.TIPO='INCLUIR' AND GCD.CODCLIENTE=@CLI))
-                            ORDER BY E.MINIMO
-                        ),0) AS SLOT2,
-                        ISNULL((SELECT TOP 1 E.PORCENTAJE FROM APP_PROMOCIONES P
-                            INNER JOIN APP_PROMOCIONES_GRUPOS_ARTICULOS GA ON GA.IDPROMO=P.ID AND GA.TIPO='INCLUIR'
-                            INNER JOIN APP_GRUPOS_ARTICULOS G ON G.ID=GA.IDGRUPO AND G.TIPO<>'CONDICION'
-                            INNER JOIN APP_GRUPOS_ARTICULOS_DETALLE D ON D.IDGRUPO=G.ID AND D.CODARTICULO=A.CODARTICULO
-                            INNER JOIN APP_PROMOCIONES_ESCALAS E ON E.IDPROMOCION=P.ID
-                            WHERE P.ACTIVO=1 AND ISNULL(P.SLOT_DESCUENTO,2)=3
-                              AND CAST(GETDATE() AS DATE) BETWEEN P.FECHAINICIO AND P.FECHAFIN
-                              AND (NOT EXISTS(SELECT 1 FROM APP_PROMOCIONES_GRUPOS_CLIENTES GC WHERE GC.IDPROMO=P.ID)
-                                   OR EXISTS(SELECT 1 FROM APP_PROMOCIONES_GRUPOS_CLIENTES GC
-                                             INNER JOIN APP_GRUPOS_CLIENTES_DETALLE GCD ON GCD.IDGRUPO=GC.IDGRUPO
-                                             WHERE GC.IDPROMO=P.ID AND GC.TIPO='INCLUIR' AND GCD.CODCLIENTE=@CLI))
-                            ORDER BY E.MINIMO
-                        ),0) AS SLOT3
-                    FROM ARTICULOS A WITH(NOLOCK) WHERE A.CODARTICULO IN (${codigos})
-                `),
+            PromocionesService.getVigentes(),
         ]);
 
         const preciosSistema = new Map<number, number>(preciosRes.recordset.map((r: any) => [r.CODARTICULO, Number(r.PNETO)]));
@@ -344,9 +314,46 @@ export class FtpService {
             if (info.diasProt > 0) return 'NI';
             return 'N';
         };
-        const promoMap = new Map<number, { d2: number; d3: number }>(
-            promosRes.recordset.map((r: any) => [Number(r.CODARTICULO), { d2: Number(r.SLOT2), d3: Number(r.SLOT3) }])
-        );
+        const promoMap = new Map<number, { d2: number; d3: number }>();
+        for (const promo of vigentesPromociones) {
+            const slot = promo.slotDescuento ?? 2;
+            if (slot !== 2 && slot !== 3) continue;
+
+            const excluido = (promo.codigosClienteExcluir as number[]).includes(CODCLIENTE);
+            const califica = promo.alcanceCliente === 'TODOS'
+                ? !excluido
+                : (promo.codigosCliente as number[]).includes(CODCLIENTE) && !excluido;
+            if (!califica) continue;
+
+            const articulosEnPedido = lineas.filter(l => (promo.codigosArticulo as number[]).includes(l.codarticulo));
+            if (articulosEnPedido.length === 0) continue;
+
+            if (promo.criterioTipo === 'PROVEEDOR_MARCA') {
+                const baseTotal = promo.base === 'UNIDADES'
+                    ? articulosEnPedido.reduce((s, l) => s + l.cantidad, 0)
+                    : articulosEnPedido.reduce((s, l) => s + (preciosSistema.get(l.codarticulo) ?? 0) * l.cantidad, 0);
+                const tramo = promo.escalas.find(e => baseTotal >= e.minimo && (e.maximo === null || baseTotal <= e.maximo));
+                if (!tramo || tramo.porcentaje <= 0) continue;
+                for (const l of articulosEnPedido) {
+                    const d = promoMap.get(l.codarticulo) ?? { d2: 0, d3: 0 };
+                    if (slot === 2 && d.d2 === 0) d.d2 = tramo.porcentaje;
+                    if (slot === 3 && d.d3 === 0) d.d3 = tramo.porcentaje;
+                    promoMap.set(l.codarticulo, d);
+                }
+            } else {
+                for (const l of articulosEnPedido) {
+                    const base = promo.base === 'UNIDADES'
+                        ? l.cantidad
+                        : (preciosSistema.get(l.codarticulo) ?? 0) * l.cantidad;
+                    const tramo = promo.escalas.find(e => base >= e.minimo && (e.maximo === null || base <= e.maximo));
+                    if (!tramo || tramo.porcentaje <= 0) continue;
+                    const d = promoMap.get(l.codarticulo) ?? { d2: 0, d3: 0 };
+                    if (slot === 2 && d.d2 === 0) d.d2 = tramo.porcentaje;
+                    if (slot === 3 && d.d3 === 0) d.d3 = tramo.porcentaje;
+                    promoMap.set(l.codarticulo, d);
+                }
+            }
+        }
 
         const dtoMap = new Map<number, { d1: number; d2: number; d3: number; precioFinal: number }>();
         for (const l of lineas) {
