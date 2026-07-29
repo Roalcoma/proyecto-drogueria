@@ -27,7 +27,7 @@ export class MetasService {
     static async getVendedores(): Promise<{ CODVENDEDOR: number; NOMVENDEDOR: string }[]> {
         const pool = await connectDb();
         const res = await pool.request().query(
-            `SELECT CODVENDEDOR, NOMVENDEDOR FROM VENDEDORES WHERE ACTIVO = 1 ORDER BY NOMVENDEDOR`
+            `SELECT CODVENDEDOR, NOMVENDEDOR FROM VENDEDORES ORDER BY NOMVENDEDOR`
         );
         return res.recordset;
     }
