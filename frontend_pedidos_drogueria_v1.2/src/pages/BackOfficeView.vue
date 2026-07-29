@@ -98,7 +98,7 @@
           <strong>{{ m.bit }}</strong> — {{ m.nombre }}
         </v-chip>
         <v-chip size="small" color="success" variant="tonal" prepend-icon="mdi-star">
-          <strong>32767</strong> — Acceso total (todos los módulos)
+          <strong>{{ MODULOS.reduce((a, m) => a + m.bit, 0) }}</strong> — Acceso total (todos los módulos)
         </v-chip>
       </div>
     </v-card>
