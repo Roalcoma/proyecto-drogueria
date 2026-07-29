@@ -26,6 +26,17 @@ export class MetasController {
         }
     }
 
+    static async getProgreso(req: Request, res: Response): Promise<void> {
+        const { anio, mes } = req.query;
+        if (!anio || !mes) { res.status(400).json({ success: false, message: 'anio y mes requeridos' }); return; }
+        try {
+            const data = await MetasService.getProgreso(Number(anio), Number(mes));
+            res.json({ success: true, data });
+        } catch (e) {
+            res.status(500).json({ success: false, message: 'Error al obtener progreso' });
+        }
+    }
+
     static async upsert(req: Request, res: Response): Promise<void> {
         const { codVendedor, anio, mes, meta } = req.body;
         if (!codVendedor || !anio || !mes || meta == null) {

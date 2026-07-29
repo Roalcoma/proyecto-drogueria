@@ -75,6 +75,35 @@ export class MetasService {
         return res.recordset[0]?.ID ?? 0;
     }
 
+    static async getProgreso(anio: number, mes: number): Promise<any[]> {
+        const pool = await connectDb();
+        const res  = await pool.request()
+            .input('ANIO', mssql.Int, anio)
+            .input('MES',  mssql.Int, mes)
+            .query(`
+                SELECT
+                    M.ID,
+                    M.CODVENDEDOR,
+                    V.NOMVENDEDOR,
+                    M.META,
+                    M.CUMPLIDA,
+                    ISNULL(SUM(CASE WHEN CP.ESTATUS != 'CANCELADO' THEN CP.TOTALPRECIO ELSE 0 END), 0)           AS VENTA_TOTAL,
+                    ISNULL(SUM(CASE WHEN CP.ESTATUS IN ('ICG','FINALIZADO') THEN CP.TOTALPRECIO ELSE 0 END), 0)  AS VENTA_FACTURADO,
+                    COUNT(CASE WHEN CP.ESTATUS != 'CANCELADO'              THEN 1 END)                           AS NUM_PEDIDOS,
+                    COUNT(CASE WHEN CP.ESTATUS IN ('ICG','FINALIZADO')     THEN 1 END)                           AS NUM_FACTURADO
+                FROM APP_METAS_VENDEDOR M
+                INNER JOIN VENDEDORES V ON V.CODVENDEDOR = M.CODVENDEDOR
+                LEFT JOIN CABECERA_PED CP
+                    ON  CP.CODVENDEDOR = M.CODVENDEDOR
+                    AND YEAR(CP.FECHA)  = @ANIO
+                    AND MONTH(CP.FECHA) = @MES
+                WHERE M.ANIO = @ANIO AND M.MES = @MES
+                GROUP BY M.ID, M.CODVENDEDOR, V.NOMVENDEDOR, M.META, M.CUMPLIDA
+                ORDER BY VENTA_TOTAL DESC
+            `);
+        return res.recordset;
+    }
+
     static async setCumplida(id: number, cumplida: boolean): Promise<void> {
         const pool = await connectDb();
         await pool.request()
