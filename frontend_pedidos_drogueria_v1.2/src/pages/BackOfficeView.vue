@@ -724,7 +724,8 @@ const MODULOS = [
   { bit: 2048, codigo: 'AUTORIZADOR', nombre: 'Puede autorizar pedidos',  icono: 'mdi-check-decagram'       },
   { bit: 4096,  codigo: 'RUTERO',       nombre: 'Rutero de Entrega', icono: 'mdi-truck-delivery'  },
   { bit: 8192,  codigo: 'FTP_PEDIDOS', nombre: 'Pedidos FTP',       icono: 'mdi-folder-network'  },
-  { bit: 16384, codigo: 'FTP_SERVIDOR', nombre: 'Servidor FTP',     icono: 'mdi-server-network'  },
+  { bit: 16384, codigo: 'FTP_SERVIDOR',   nombre: 'Servidor FTP',        icono: 'mdi-server-network' },
+  { bit: 32768, codigo: 'METAS_VENDEDOR', nombre: 'Metas de Vendedores', icono: 'mdi-target'         },
 ];
 
 const headers = [
