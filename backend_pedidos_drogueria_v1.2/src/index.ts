@@ -14,6 +14,7 @@ import sistemaRouter    from "./routers/sistema.router";
 import ecommerceRouter  from "./routers/ecommerce.router";
 import facturasRouter   from "./routers/facturas.router";
 import ftpRouter        from "./routers/ftp.router";
+import metasRouter      from "./routers/metas.router";
 import { ExchangeService }    from "./services/exchange.service";
 import { AuthService }        from "./services/auth.service";
 import { PromocionesService } from "./services/promociones.service";
@@ -21,6 +22,7 @@ import { PedidosServices }    from "./services/pedidos.service";
 import { ReclamosService }    from "./services/reclamos.service";
 import { EcommerceService }   from "./services/ecommerce.service";
 import { FtpService }         from "./services/ftp.service";
+import { MetasService }       from "./services/metas.service";
 import { RuteroService }      from "./services/rutero.service";
 import { BrandingService }    from "./services/branding.service";
 import { getDbConfig }        from "./services/dbconfig.service";
@@ -102,6 +104,7 @@ app.use('/sistema',    sistemaRouter);
 app.use('/ecommerce',  ecommerceRouter);
 app.use('/facturas',   facturasRouter);
 app.use('/ftp',        ftpRouter);
+app.use('/metas-vendedor', metasRouter);
 
 app.listen(port, async () => {
     console.log(`Servidor en http://localhost:${port}`);
@@ -113,6 +116,7 @@ app.listen(port, async () => {
     await EcommerceService.initTablas();
     await RuteroService.initTablas();
     await FtpService.initTablas();
+    await MetasService.initTablas();
     if (getDbConfig().ftpHabilitado) {
         FtpService.iniciarServidor().catch(console.error);
     }
