@@ -273,7 +273,8 @@ export class PedidosServices {
     static async getPedidos(page: any = 1, limit: any = 10, estatus?: string, buscarId?: string,
                              clienteId?: string, codVendedor?: string, riesgo?: string, codruta?: string,
                              fechaDesde?: string, fechaHasta?: string, esPsicotropico?: boolean,
-                             nombreCliente?: string, soloFacturado?: boolean, usuario?: string) {
+                             nombreCliente?: string, soloFacturado?: boolean, usuario?: string,
+                             nroFactura?: string) {
         try {
             const isAll = Number(limit) === -1;
             let validPage = isAll ? 1 : Math.max(1, Number(page) || 1);
@@ -305,7 +306,8 @@ export class PedidosServices {
                 .input('SOLO_FACTURADO', mssql.Bit,         soloFacturado  ? 1 : null)
                 .input('USD_CODE',       mssql.Int,         usdCode)
                 .input('VED_CODE',       mssql.Int,         vedCode)
-                .input('USUARIO',        mssql.VarChar(100), usuario ? `%${usuario}%` : null);
+                .input('USUARIO',        mssql.VarChar(100), usuario ? `%${usuario}%` : null)
+                .input('NROFACTURA',     mssql.VarChar(50),  nroFactura || null);
 
             const result = await req.query(`
                 SELECT
@@ -314,6 +316,12 @@ export class PedidosServices {
                     (SELECT TOP 1 AVC.FACTURADO FROM PEDVENTACAB PVC WITH(NOLOCK)
                      LEFT JOIN ALBVENTACAB AVC WITH(NOLOCK) ON AVC.NUMSERIE = PVC.SERIEALBARAN AND AVC.NUMALBARAN = PVC.NUMEROALBARAN AND AVC.N = PVC.NALBARAN
                      WHERE PVC.SUPEDIDO COLLATE DATABASE_DEFAULT = CP.ORDERID COLLATE DATABASE_DEFAULT) AS FACTURADO,
+                    (SELECT TOP 1 AVC.NUMSERIEFAC FROM PEDVENTACAB PVC WITH(NOLOCK)
+                     LEFT JOIN ALBVENTACAB AVC WITH(NOLOCK) ON AVC.NUMSERIE = PVC.SERIEALBARAN AND AVC.NUMALBARAN = PVC.NUMEROALBARAN AND AVC.N = PVC.NALBARAN
+                     WHERE PVC.SUPEDIDO COLLATE DATABASE_DEFAULT = CP.ORDERID COLLATE DATABASE_DEFAULT AND AVC.FACTURADO = 'T') AS SERIE_FAC,
+                    (SELECT TOP 1 AVC.NUMFAC FROM PEDVENTACAB PVC WITH(NOLOCK)
+                     LEFT JOIN ALBVENTACAB AVC WITH(NOLOCK) ON AVC.NUMSERIE = PVC.SERIEALBARAN AND AVC.NUMALBARAN = PVC.NUMEROALBARAN AND AVC.N = PVC.NALBARAN
+                     WHERE PVC.SUPEDIDO COLLATE DATABASE_DEFAULT = CP.ORDERID COLLATE DATABASE_DEFAULT AND AVC.FACTURADO = 'T') AS NROFAC,
                     CL.NOMBRECLIENTE, ISNULL(CL.NOMBRECOMERCIAL, '') AS NOMBRECOMERCIAL, CL.CIF, ISNULL(CL.NIF20, '') AS NIF20, CL.DIRECCION1, ISNULL(CE.DIRECCION1, CL.DIRECCION1) AS DIRECCION_ENVIO,
                     ISNULL(RUT.DESCRIPCION, '') AS RUTA,
                     V.NOMVENDEDOR,
@@ -357,6 +365,11 @@ export class PedidosServices {
                         SELECT 1 FROM PEDVENTACAB PVC2 WITH(NOLOCK)
                         INNER JOIN ALBVENTACAB AVC2 WITH(NOLOCK) ON AVC2.NUMSERIE = PVC2.SERIEALBARAN AND AVC2.NUMALBARAN = PVC2.NUMEROALBARAN AND AVC2.N = PVC2.NALBARAN
                         WHERE PVC2.SUPEDIDO COLLATE DATABASE_DEFAULT = CP.ORDERID COLLATE DATABASE_DEFAULT AND AVC2.FACTURADO = 'T'
+                    ))
+                    AND (@NROFACTURA IS NULL OR EXISTS (
+                        SELECT 1 FROM PEDVENTACAB PVC3 WITH(NOLOCK)
+                        INNER JOIN ALBVENTACAB AVC3 WITH(NOLOCK) ON AVC3.NUMSERIE = PVC3.SERIEALBARAN AND AVC3.NUMALBARAN = PVC3.NUMEROALBARAN AND AVC3.N = PVC3.NALBARAN
+                        WHERE PVC3.SUPEDIDO COLLATE DATABASE_DEFAULT = CP.ORDERID COLLATE DATABASE_DEFAULT AND AVC3.FACTURADO = 'T' AND CAST(AVC3.NUMFAC AS VARCHAR) LIKE '%' + @NROFACTURA + '%'
                     ))
                 ORDER BY
                     CP.FECHA DESC

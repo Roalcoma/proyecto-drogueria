@@ -102,6 +102,10 @@
         />
       </v-col>
       <v-col cols="12" sm="6" md="2">
+        <v-text-field v-model="filtros.nroFactura" label="N° Factura" density="compact" variant="outlined"
+          clearable hide-details prepend-inner-icon="mdi-receipt-text-outline" type="number" @update:model-value="aplicarFiltros" />
+      </v-col>
+      <v-col cols="12" sm="6" md="2">
         <v-select v-model="filtros.riesgo" label="Riesgo Crédito" density="compact" variant="outlined"
           clearable hide-details prepend-inner-icon="mdi-shield-half-full"
           :items="['BAJO','MEDIO','ALTO','SUPERADO','SIN LIMITE']" @update:model-value="aplicarFiltros" />
@@ -190,6 +194,10 @@
                 <v-chip v-if="item.FACTURADO === 'T'" size="x-small" color="green-darken-2"
                   variant="flat" prepend-icon="mdi-receipt-text-check" class="font-weight-bold">
                   Facturado
+                </v-chip>
+                <v-chip v-if="item.SERIE_FAC && item.NROFAC" size="x-small" color="green-darken-4"
+                  variant="outlined" prepend-icon="mdi-file-document-outline" class="font-weight-medium">
+                  {{ item.SERIE_FAC }}-{{ item.NROFAC }}
                 </v-chip>
               </div>
             </template>
@@ -707,7 +715,7 @@ const estatusOpciones = [
 ];
 
 const zonas  = ref<{ zona: string; display: string }[]>([]);
-const filtros = ref({ buscarId: '', clienteId: '', codVendedor: '', estatus: [] as string[], riesgo: null as string | null, codruta: null as string | null, fechaDesde: null as string | null, fechaHasta: null as string | null, esPsicotropico: false, soloIcompras: false, soloFacturado: false, nombreCliente: '', usuario: '' });
+const filtros = ref({ buscarId: '', clienteId: '', codVendedor: '', estatus: [] as string[], riesgo: null as string | null, codruta: null as string | null, fechaDesde: null as string | null, fechaHasta: null as string | null, esPsicotropico: false, soloIcompras: false, soloFacturado: false, nombreCliente: '', usuario: '', nroFactura: '' });
 
 let filtroTimer: ReturnType<typeof setTimeout> | null = null;
 const aplicarFiltros = () => {
@@ -732,6 +740,7 @@ const obtenerPedidos = async (page = 1, limit = 10) => {
     if (filtros.value.soloFacturado)  params.soloFacturado  = '1';
     if (filtros.value.nombreCliente)  params.nombreCliente  = filtros.value.nombreCliente;
     if (filtros.value.usuario)        params.usuario        = filtros.value.usuario;
+    if (filtros.value.nroFactura)     params.nroFactura     = filtros.value.nroFactura;
     const response = await axios.get(`${import.meta.env.VITE_API_URL}/pedidos`, { params });
     if (response.data.success) {
       pedidos.value = response.data.data;
