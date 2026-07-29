@@ -112,7 +112,7 @@
               <v-select
                 v-model="form.codVendedor"
                 :items="vendedores"
-                item-title="NOMVENDEDOR"
+                :item-title="v => `${v.CODVENDEDOR} — ${v.NOMVENDEDOR}`"
                 item-value="CODVENDEDOR"
                 label="Vendedor *"
                 variant="outlined"
@@ -145,12 +145,12 @@
             <v-col cols="12">
               <v-text-field
                 v-model.number="form.meta"
-                label="Meta (Bs.) *"
+                label="Meta ($) *"
                 variant="outlined"
                 density="compact"
                 type="number"
                 min="0"
-                prefix="Bs."
+                prefix="$"
               />
             </v-col>
             <v-col v-if="editando" cols="12">
