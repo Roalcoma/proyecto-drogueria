@@ -11,10 +11,11 @@ export interface CommitEntry {
   texto: string;
 }
 
-export const APP_VERSION = '1.2.7';
+export const APP_VERSION = '1.2.8';
 
 export const VERSIONES: VersionEntry[] = [
-  { version: '1.2.7', fecha: '2026-07-28', desde: '2026-07-28' },
+  { version: '1.2.8', fecha: '2026-07-30', desde: '2026-07-30' },
+  { version: '1.2.7', fecha: '2026-07-29', desde: '2026-07-28' },
   { version: '1.2.6', fecha: '2026-07-27', desde: '2026-07-27' },
   { version: '1.2.5', fecha: '2026-07-27', desde: '2026-07-25' },
   { version: '1.2.4', fecha: '2026-07-24', desde: '2026-07-20' },
@@ -25,9 +26,27 @@ export const VERSIONES: VersionEntry[] = [
 ];
 
 export const COMMITS: CommitEntry[] = [
-  { hash: 'a3f91c2', date: '2026-07-28', tipo: 'chore',   texto: 'bump version to 1.2.7' },
-  { hash: 'b7e042d', date: '2026-07-28', tipo: 'feat',    texto: 'edición de pedidos: selector para cambiar el vendedor atado al pedido' },
-  { hash: 'c1d85a9', date: '2026-07-28', tipo: 'fix',     texto: 'Control de Estatus: total excluye pedidos cancelados cuando no hay filtro de estatus' },
+  { hash: 'a7b2b28', date: '2026-07-30', tipo: 'feat',    texto: 'rutero: filtros de fecha, bloqueo confirmación y permisos admin (RUTERO_ADMIN bit 65536)' },
+  { hash: '531a71e', date: '2026-07-30', tipo: 'feat',    texto: 'artículos condicionados sin descuentos en carrito y Excel; NI en morado en Excel' },
+  { hash: '14f4e9b', date: '2026-07-30', tipo: 'fix',     texto: 'prevenir duplicado de facturas en ruteros concurrentes' },
+  { hash: '41590a1', date: '2026-07-29', tipo: 'fix',     texto: 'persistir estado FTP al iniciar/detener desde la UI' },
+  { hash: '1322f7b', date: '2026-07-29', tipo: 'feat',    texto: 'aplicar promociones por fecha en FTP y simplificar activación' },
+  { hash: '4311a05', date: '2026-07-29', tipo: 'feat',    texto: 'selector de formato PDF en control de estatus' },
+  { hash: '46367ed', date: '2026-07-29', tipo: 'fix',     texto: 'resolver timeout en filtro por N° factura con pre-lookup en dos pasos' },
+  { hash: 'a7ff67f', date: '2026-07-29', tipo: 'feat',    texto: 'serie y número de factura en control de estatus + filtro por N° factura' },
+  { hash: '29394f8', date: '2026-07-29', tipo: 'feat',    texto: 'rediseño dashboard metas + auto-sync CUMPLIDA' },
+  { hash: '51ac31d', date: '2026-07-29', tipo: 'feat',    texto: 'dashboard completo de metas con progreso, rankings y gestión' },
+  { hash: '13ec638', date: '2026-07-29', tipo: 'improve', texto: 'v-autocomplete en modal de metas para buscar vendedor por código o nombre' },
+  { hash: 'da0c48c', date: '2026-07-29', tipo: 'fix',     texto: 'quitar filtro ACTIVO inexistente en consulta de vendedores' },
+  { hash: 'ce8451b', date: '2026-07-29', tipo: 'improve', texto: 'metas en dólares y selector de vendedor muestra código + nombre' },
+  { hash: '78e5eed', date: '2026-07-29', tipo: 'fix',     texto: 'calcular acceso total de permisos dinámicamente desde MODULOS (no hardcodeado)' },
+  { hash: '3730d07', date: '2026-07-29', tipo: 'fix',     texto: 'ampliar límite de VISIBILIDAD a INT máximo para soportar más de 15 módulos' },
+  { hash: 'fa62583', date: '2026-07-29', tipo: 'fix',     texto: 'agregar módulo Metas de Vendedores al panel de permisos del BackOffice' },
+  { hash: 'e252146', date: '2026-07-29', tipo: 'feat',    texto: 'sincronizar metas con [RIP].[METAS_VENDEDORES] en upsert y eliminar' },
+  { hash: 'a25a34b', date: '2026-07-29', tipo: 'feat',    texto: 'módulo de metas de vendedores' },
+  { hash: '206dc8a', date: '2026-07-28', tipo: 'feat',    texto: 'sistema de rollback — backup automático antes de cada actualización y restauración desde UI' },
+  { hash: 'f8d2af8', date: '2026-07-28', tipo: 'feat',    texto: 'selector de vendedor en edición de pedidos y total sin cancelados en estatus' },
+  { hash: '2996938', date: '2026-07-27', tipo: 'feat',    texto: 'edición: modal para editar cantidad al hacer click en el número' },
   { hash: '64ec3f8', date: '2026-07-27', tipo: 'feat',    texto: 'FTP: campo de IP para datos de conexión de clientes' },
   { hash: 'd690609', date: '2026-07-27', tipo: 'chore',   texto: 'bump version to 1.2.6' },
   { hash: '7569588', date: '2026-07-27', tipo: 'fix',     texto: 'múltiples correcciones: descuentos en edición de pedidos, match cliente ICompras, datos conexión FTP, changelog URL' },
