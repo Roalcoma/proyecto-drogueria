@@ -157,9 +157,10 @@ export class RuteroService {
         const reqCnt = pool.request();
         let where = '';
         if (buscar) {
-            req.input('BUSCAR',    mssql.NVarChar(100), `%${buscar}%`);
-            reqCnt.input('BUSCAR', mssql.NVarChar(100), `%${buscar}%`);
-            where = `WHERE L.USUARIO LIKE @BUSCAR OR ISNULL(AR.NUMERO,'') LIKE @BUSCAR OR L.ACCION LIKE @BUSCAR OR L.DETALLES LIKE @BUSCAR`;
+            const buscarLower = `%${buscar.toLowerCase()}%`;
+            req.input('BUSCAR',    mssql.NVarChar(100), buscarLower);
+            reqCnt.input('BUSCAR', mssql.NVarChar(100), buscarLower);
+            where = `WHERE LOWER(L.USUARIO) LIKE @BUSCAR OR LOWER(ISNULL(AR.NUMERO,'')) LIKE @BUSCAR OR LOWER(L.ACCION) LIKE @BUSCAR OR LOWER(L.DETALLES) LIKE @BUSCAR`;
         }
         const safeLimit = Math.max(1, limit);
         const offset    = (Math.max(1, page) - 1) * safeLimit;

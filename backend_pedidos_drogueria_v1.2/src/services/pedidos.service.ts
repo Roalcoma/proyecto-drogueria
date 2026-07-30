@@ -325,11 +325,11 @@ export class PedidosServices {
                 .input('FECHA_DESDE',    mssql.VarChar(10),   fechaDesde    || null)
                 .input('FECHA_HASTA',    mssql.VarChar(10),   fechaHasta    || null)
                 .input('PSICO',          mssql.Bit,           esPsicotropico ? 1 : null)
-                .input('NOMBRE_CLIENTE', mssql.NVarChar(200), nombreCliente ? `%${nombreCliente}%` : null)
+                .input('NOMBRE_CLIENTE', mssql.NVarChar(200), nombreCliente ? `%${nombreCliente.toLowerCase()}%` : null)
                 .input('SOLO_FACTURADO', mssql.Bit,           soloFacturado  ? 1 : null)
                 .input('USD_CODE',       mssql.Int,           usdCode)
                 .input('VED_CODE',       mssql.Int,           vedCode)
-                .input('USUARIO',        mssql.VarChar(100),  usuario       ? `%${usuario}%`       : null);
+                .input('USUARIO',        mssql.VarChar(100),  usuario       ? `%${usuario.toLowerCase()}%`       : null);
             preIds.forEach((id, i) => req.input(`PRE${i}`, mssql.VarChar(50), id));
 
             const result = await req.query(`
@@ -380,8 +380,8 @@ export class PedidosServices {
                     AND (@FECHA_DESDE  IS NULL OR CAST(CP.FECHA AS DATE) >= @FECHA_DESDE)
                     AND (@FECHA_HASTA  IS NULL OR CAST(CP.FECHA AS DATE) <= @FECHA_HASTA)
                     AND (@PSICO        IS NULL OR (@PSICO = 1 AND CP.ORDERID LIKE '%P'))
-                    AND (@NOMBRE_CLIENTE IS NULL OR CL.NOMBRECLIENTE LIKE @NOMBRE_CLIENTE)
-                    AND (@USUARIO       IS NULL OR ISNULL(LG.USUARIO, '') LIKE @USUARIO)
+                    AND (@NOMBRE_CLIENTE IS NULL OR LOWER(CL.NOMBRECLIENTE) LIKE @NOMBRE_CLIENTE)
+                    AND (@USUARIO       IS NULL OR LOWER(ISNULL(LG.USUARIO, '')) LIKE @USUARIO OR LOWER(ISNULL(V.NOMVENDEDOR, '')) LIKE @USUARIO)
                     AND (@SOLO_FACTURADO IS NULL OR EXISTS (
                         SELECT 1 FROM PEDVENTACAB PVC2 WITH(NOLOCK)
                         INNER JOIN ALBVENTACAB AVC2 WITH(NOLOCK) ON AVC2.NUMSERIE = PVC2.SERIEALBARAN AND AVC2.NUMALBARAN = PVC2.NUMEROALBARAN AND AVC2.N = PVC2.NALBARAN
@@ -403,9 +403,9 @@ export class PedidosServices {
                 .input('FECHA_DESDE2',     mssql.VarChar(10),   fechaDesde    || null)
                 .input('FECHA_HASTA2',     mssql.VarChar(10),   fechaHasta    || null)
                 .input('PSICO2',           mssql.Bit,           esPsicotropico ? 1 : null)
-                .input('NOMBRE_CLIENTE2',  mssql.NVarChar(200), nombreCliente ? `%${nombreCliente}%` : null)
+                .input('NOMBRE_CLIENTE2',  mssql.NVarChar(200), nombreCliente ? `%${nombreCliente.toLowerCase()}%` : null)
                 .input('SOLO_FACTURADO2',  mssql.Bit,           soloFacturado  ? 1 : null)
-                .input('USUARIO2',         mssql.VarChar(100),  usuario       ? `%${usuario}%`       : null);
+                .input('USUARIO2',         mssql.VarChar(100),  usuario       ? `%${usuario.toLowerCase()}%`       : null);
             preIds.forEach((id, i) => countReq.input(`CPRE${i}`, mssql.VarChar(50), id));
             const countOrderIdClause = preIds.length
                 ? `AND CP.ORDERID IN (${preIds.map((_, i) => `@CPRE${i}`).join(',')})`
@@ -417,6 +417,7 @@ export class PedidosServices {
                 LEFT JOIN CLIENTES CL2 WITH (NOLOCK) ON CL2.CODCLIENTE = CP.CLIENTEID
                 LEFT JOIN CLIENTESCAMPOSLIBRES CLC WITH (NOLOCK) ON CLC.CODCLIENTE = CP.CLIENTEID
                 LEFT JOIN ${esquema}.APP_PEDIDO_LOG LG2 WITH (NOLOCK) ON LG2.ORDERID = CP.ORDERID AND LG2.EST_ANTERIOR IS NULL
+                LEFT JOIN VENDEDORES V2 WITH (NOLOCK) ON V2.CODVENDEDOR = CP.CODVENDEDOR
                 LEFT JOIN (
                     SELECT CL.CODCLIENTE,
                         CASE
@@ -440,8 +441,8 @@ export class PedidosServices {
                     AND (@FECHA_DESDE2  IS NULL OR CAST(CP.FECHA AS DATE) >= @FECHA_DESDE2)
                     AND (@FECHA_HASTA2  IS NULL OR CAST(CP.FECHA AS DATE) <= @FECHA_HASTA2)
                     AND (@PSICO2        IS NULL OR (@PSICO2 = 1 AND CP.ORDERID LIKE '%P'))
-                    AND (@NOMBRE_CLIENTE2 IS NULL OR CL2.NOMBRECLIENTE LIKE @NOMBRE_CLIENTE2)
-                    AND (@USUARIO2       IS NULL OR ISNULL(LG2.USUARIO, '') LIKE @USUARIO2)
+                    AND (@NOMBRE_CLIENTE2 IS NULL OR LOWER(CL2.NOMBRECLIENTE) LIKE @NOMBRE_CLIENTE2)
+                    AND (@USUARIO2       IS NULL OR LOWER(ISNULL(LG2.USUARIO, '')) LIKE @USUARIO2 OR LOWER(ISNULL(V2.NOMVENDEDOR, '')) LIKE @USUARIO2)
                     AND (@SOLO_FACTURADO2 IS NULL OR EXISTS (
                         SELECT 1 FROM PEDVENTACAB PVC2 WITH(NOLOCK)
                         INNER JOIN ALBVENTACAB AVC2 WITH(NOLOCK) ON AVC2.NUMSERIE = PVC2.SERIEALBARAN AND AVC2.NUMALBARAN = PVC2.NUMEROALBARAN AND AVC2.N = PVC2.NALBARAN
@@ -920,23 +921,25 @@ export class PedidosServices {
             const pool = await connectDb();
             const safeLimit = limit === -1 ? 10000 : Math.max(1, limit);
             const offset = limit === -1 ? 0 : (Math.max(1, page) - 1) * safeLimit;
+            const orderId_l  = orderId  ? `%${orderId.toLowerCase()}%`  : '%';
+            const usuario_l  = usuario  ? `%${usuario.toLowerCase()}%`  : '%';
             const result = await pool.request()
-                .input('ORDERID',    mssql.VarChar(50),   orderId  ? `%${orderId}%`  : '%')
-                .input('USUARIO',    mssql.VarChar(100),  usuario  ? `%${usuario}%`  : '%')
+                .input('ORDERID',    mssql.VarChar(50),   orderId_l)
+                .input('USUARIO',    mssql.VarChar(100),  usuario_l)
                 .input('LIMIT',      mssql.Int, safeLimit)
                 .input('OFFSET',     mssql.Int, offset)
                 .query(`
                     SELECT ID, ORDERID, EST_ANTERIOR, EST_NUEVO, CODUSUARIO, USUARIO, FECHA, DETALLES
                     FROM ${esquema}.APP_PEDIDO_LOG
-                    WHERE ORDERID LIKE @ORDERID AND ISNULL(USUARIO,'') LIKE @USUARIO
+                    WHERE LOWER(ORDERID) LIKE @ORDERID AND LOWER(ISNULL(USUARIO,'')) LIKE @USUARIO
                     ORDER BY FECHA DESC
                     OFFSET @OFFSET ROWS FETCH NEXT @LIMIT ROWS ONLY
                 `);
             const countRes = await pool.request()
-                .input('ORDERID2',   mssql.VarChar(50),   orderId  ? `%${orderId}%`  : '%')
-                .input('USUARIO2',   mssql.VarChar(100),  usuario  ? `%${usuario}%`  : '%')
+                .input('ORDERID2',   mssql.VarChar(50),   orderId_l)
+                .input('USUARIO2',   mssql.VarChar(100),  usuario_l)
                 .query(`SELECT COUNT(*) AS TOTAL FROM ${esquema}.APP_PEDIDO_LOG
-                        WHERE ORDERID LIKE @ORDERID2 AND ISNULL(USUARIO,'') LIKE @USUARIO2`);
+                        WHERE LOWER(ORDERID) LIKE @ORDERID2 AND LOWER(ISNULL(USUARIO,'')) LIKE @USUARIO2`);
             return { success: true, data: result.recordset, total: countRes.recordset[0].TOTAL };
         } catch (error) {
             return { success: false, data: [], total: 0, message: String(error) };
