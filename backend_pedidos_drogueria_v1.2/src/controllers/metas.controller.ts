@@ -99,6 +99,18 @@ export class MetasController {
         }
     }
 
+    static async deleteMetaZona(req: Request, res: Response): Promise<void> {
+        const codruta = Number(req.params['codruta']);
+        const { anio, mes } = req.query;
+        if (!anio || !mes) { res.status(400).json({ success: false, message: 'anio y mes requeridos' }); return; }
+        try {
+            await MetasService.deleteMetaZona(codruta, Number(anio), Number(mes));
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ success: false, message: 'Error al eliminar la meta de zona' });
+        }
+    }
+
     static async setCumplida(req: Request, res: Response): Promise<void> {
         const id = parseInt(req.params['id'] as string);
         const { cumplida } = req.body;

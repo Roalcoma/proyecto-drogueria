@@ -1,10 +1,17 @@
-import { mssql, connectDb } from "../db/db.conection";
+import { mssql, connectDb, connectRuteroDB } from "../db/db.conection";
+import { getDbConfig } from "./dbconfig.service";
+
+function p(): string {
+    const db = getDbConfig().dbRutero;
+    if (!db) throw new Error('dbRutero no configurado en connections.json');
+    return `[${db}].[dbo].`;
+}
 
 export class MetasService {
 
     static async initTablas(): Promise<void> {
         try {
-            const pool = await connectDb();
+            const pool = await connectRuteroDB();
             await pool.request().query(`
                 IF NOT EXISTS (SELECT 1 FROM sysobjects WHERE name='APP_METAS_VENDEDOR' AND xtype='U')
                 CREATE TABLE APP_METAS_VENDEDOR (
@@ -28,7 +35,7 @@ export class MetasService {
                     CONSTRAINT UQ_META_ZONA UNIQUE (CODRUTA, ANIO, MES)
                 );
             `);
-            console.log('Tablas APP_METAS_VENDEDOR y APP_METAS_ZONA verificadas.');
+            console.log('Tablas APP_METAS_VENDEDOR y APP_METAS_ZONA verificadas en BD rutero.');
         } catch (err) {
             console.error('Error en MetasService.initTablas:', err);
         }
@@ -52,7 +59,7 @@ export class MetasService {
                     AND CLC.CODVENDEDOR IS NOT NULL
                     AND LTRIM(RTRIM(CAST(CLC.CODVENDEDOR AS NVARCHAR))) != ''
                     AND TRY_CAST(CLC.CODVENDEDOR AS INT) > 0
-                LEFT JOIN APP_METAS_ZONA MZ
+                LEFT JOIN ${p()}APP_METAS_ZONA MZ
                     ON  MZ.CODRUTA = R.CODRUTA AND MZ.ANIO = @ANIO AND MZ.MES = @MES
                 GROUP BY R.CODRUTA, R.DESCRIPCION, MZ.META, MZ.ID
                 HAVING COUNT(DISTINCT TRY_CAST(CLC.CODVENDEDOR AS INT)) > 0
@@ -69,7 +76,7 @@ export class MetasService {
             .input('MES',     mssql.Int, mes)
             .query(`
                 SELECT ISNULL(META, 0) AS META
-                FROM APP_METAS_ZONA
+                FROM ${p()}APP_METAS_ZONA
                 WHERE CODRUTA = @CODRUTA AND ANIO = @ANIO AND MES = @MES
             `);
         const metaZona = Number(metaRes.recordset[0]?.META ?? 0);
@@ -94,7 +101,7 @@ export class MetasService {
                       AND TRY_CAST(CLC.CODVENDEDOR AS INT) > 0
                 ) Z
                 INNER JOIN VENDEDORES V WITH(NOLOCK) ON V.CODVENDEDOR = Z.CODVENDEDOR
-                LEFT JOIN APP_METAS_VENDEDOR M
+                LEFT JOIN ${p()}APP_METAS_VENDEDOR M
                     ON M.CODVENDEDOR = Z.CODVENDEDOR AND M.ANIO = @ANIO AND M.MES = @MES
                 ORDER BY V.NOMVENDEDOR
             `);
@@ -104,21 +111,19 @@ export class MetasService {
     static async setMetaZona(codruta: number, anio: number, mes: number, metaTotal: number): Promise<void> {
         const pool = await connectDb();
 
-        // Upsert zona meta
         await pool.request()
             .input('CODRUTA', mssql.Int,           codruta)
             .input('ANIO',    mssql.Int,           anio)
             .input('MES',     mssql.Int,           mes)
             .input('META',    mssql.Decimal(18, 2), metaTotal)
             .query(`
-                MERGE APP_METAS_ZONA AS T
+                MERGE ${p()}APP_METAS_ZONA AS T
                 USING (SELECT @CODRUTA AS C, @ANIO AS A, @MES AS M) AS S
                 ON (T.CODRUTA = S.C AND T.ANIO = S.A AND T.MES = S.M)
                 WHEN MATCHED     THEN UPDATE SET T.META = @META, T.FECHACARGA = GETDATE()
                 WHEN NOT MATCHED THEN INSERT (CODRUTA, ANIO, MES, META) VALUES (@CODRUTA, @ANIO, @MES, @META);
             `);
 
-        // Get vendors in zone
         const vendRes = await pool.request()
             .input('CODRUTA', mssql.Int, codruta)
             .query(`
@@ -150,13 +155,13 @@ export class MetasService {
         const pool = await connectDb();
         const req  = pool.request();
         const wheres: string[] = [];
-        if (anio)        { req.input('ANIO', mssql.Int, anio);              wheres.push('M.ANIO = @ANIO'); }
-        if (mes)         { req.input('MES',  mssql.Int, mes);               wheres.push('M.MES = @MES'); }
-        if (codVendedor) { req.input('COD',  mssql.Int, codVendedor);       wheres.push('M.CODVENDEDOR = @COD'); }
+        if (anio)        { req.input('ANIO', mssql.Int, anio);        wheres.push('M.ANIO = @ANIO'); }
+        if (mes)         { req.input('MES',  mssql.Int, mes);         wheres.push('M.MES = @MES'); }
+        if (codVendedor) { req.input('COD',  mssql.Int, codVendedor); wheres.push('M.CODVENDEDOR = @COD'); }
         const where = wheres.length ? `WHERE ${wheres.join(' AND ')}` : '';
         const res = await req.query(`
             SELECT M.ID, M.CODVENDEDOR, V.NOMVENDEDOR, M.ANIO, M.MES, M.META, M.CUMPLIDA, M.FECHACARGA
-            FROM APP_METAS_VENDEDOR M
+            FROM ${p()}APP_METAS_VENDEDOR M
             INNER JOIN VENDEDORES V ON V.CODVENDEDOR = M.CODVENDEDOR
             ${where}
             ORDER BY M.ANIO DESC, M.MES DESC, V.NOMVENDEDOR
@@ -173,7 +178,7 @@ export class MetasService {
             .input('META', mssql.Decimal(18,6), meta);
 
         await req.query(`
-            MERGE APP_METAS_VENDEDOR AS T
+            MERGE ${p()}APP_METAS_VENDEDOR AS T
             USING (SELECT @COD AS C, @ANIO AS A, @MES AS M) AS S
             ON (T.CODVENDEDOR = S.C AND T.ANIO = S.A AND T.MES = S.M)
             WHEN MATCHED THEN UPDATE SET T.META = @META, T.FECHACARGA = GETDATE()
@@ -194,14 +199,14 @@ export class MetasService {
                   AND YEAR(CP.FECHA) = @ANIO
                   AND MONTH(CP.FECHA) = @MES
             ), 0) >= M.META THEN 1 ELSE 0 END
-            FROM APP_METAS_VENDEDOR M
+            FROM ${p()}APP_METAS_VENDEDOR M
             WHERE M.CODVENDEDOR = @COD AND M.ANIO = @ANIO AND M.MES = @MES;
         `);
         const idRes = await pool.request()
             .input('COD',  mssql.Int, codVendedor)
             .input('ANIO', mssql.Int, anio)
             .input('MES',  mssql.Int, mes)
-            .query(`SELECT ID FROM APP_METAS_VENDEDOR WHERE CODVENDEDOR = @COD AND ANIO = @ANIO AND MES = @MES`);
+            .query(`SELECT ID FROM ${p()}APP_METAS_VENDEDOR WHERE CODVENDEDOR = @COD AND ANIO = @ANIO AND MES = @MES`);
         return idRes.recordset[0]?.ID ?? 0;
     }
 
@@ -211,14 +216,13 @@ export class MetasService {
             .input('ANIO', mssql.Int, anio)
             .input('MES',  mssql.Int, mes);
 
-        // Auto-sync CUMPLIDA: si las ventas superan la meta se marca, si no, se desmarca
         await req.query(`
             WITH Ventas AS (
                 SELECT
                     M.ID,
                     M.META,
                     ISNULL(SUM(CASE WHEN CP.ESTATUS != 'CANCELADO' THEN CP.TOTALPRECIO ELSE 0 END), 0) AS VENTA_TOTAL
-                FROM APP_METAS_VENDEDOR M
+                FROM ${p()}APP_METAS_VENDEDOR M
                 LEFT JOIN CABECERA_PED CP
                     ON  CP.CODVENDEDOR = M.CODVENDEDOR
                     AND YEAR(CP.FECHA)  = @ANIO
@@ -228,47 +232,47 @@ export class MetasService {
             )
             UPDATE M
             SET M.CUMPLIDA = CASE WHEN V.VENTA_TOTAL >= V.META THEN 1 ELSE 0 END
-            FROM APP_METAS_VENDEDOR M
+            FROM ${p()}APP_METAS_VENDEDOR M
             INNER JOIN Ventas V ON V.ID = M.ID
         `);
 
         const res = await req.query(`
-                SELECT
-                    M.ID,
-                    M.CODVENDEDOR,
-                    V.NOMVENDEDOR,
-                    M.META,
-                    M.CUMPLIDA,
-                    ISNULL(CZ.CODRUTA, 0)                AS CODRUTA,
-                    ISNULL(RZ.DESCRIPCION, 'Sin zona')   AS NOMBREZONA,
-                    ISNULL(SUM(CASE WHEN CP.ESTATUS != 'CANCELADO' THEN CP.TOTALPRECIO ELSE 0 END), 0)           AS VENTA_TOTAL,
-                    ISNULL(SUM(CASE WHEN CP.ESTATUS IN ('ICG','FINALIZADO') THEN CP.TOTALPRECIO ELSE 0 END), 0)  AS VENTA_FACTURADO,
-                    COUNT(CASE WHEN CP.ESTATUS != 'CANCELADO'              THEN 1 END)                           AS NUM_PEDIDOS,
-                    COUNT(CASE WHEN CP.ESTATUS IN ('ICG','FINALIZADO')     THEN 1 END)                           AS NUM_FACTURADO
-                FROM APP_METAS_VENDEDOR M
-                INNER JOIN VENDEDORES V ON V.CODVENDEDOR = M.CODVENDEDOR
-                OUTER APPLY (
-                    SELECT TOP 1 MZ.CODRUTA
-                    FROM APP_METAS_ZONA MZ WITH(NOLOCK)
-                    INNER JOIN CLIENTESCAMPOSLIBRES CLC WITH(NOLOCK)
-                        ON  TRY_CAST(CLC.ZONA AS INT) = MZ.CODRUTA
-                        AND TRY_CAST(CLC.CODVENDEDOR AS INT) = M.CODVENDEDOR
-                    WHERE MZ.ANIO = @ANIO AND MZ.MES = @MES
-                    ORDER BY MZ.CODRUTA
-                ) CZ
-                LEFT JOIN RUTAS RZ WITH(NOLOCK) ON RZ.CODRUTA = CZ.CODRUTA
-                LEFT JOIN CABECERA_PED CP
-                    ON  CP.CODVENDEDOR = M.CODVENDEDOR
-                    AND YEAR(CP.FECHA)  = @ANIO
-                    AND MONTH(CP.FECHA) = @MES
-                    AND (CZ.CODRUTA IS NULL OR EXISTS (
-                        SELECT 1 FROM CLIENTESCAMPOSLIBRES CLC2 WITH(NOLOCK)
-                        WHERE CLC2.CODCLIENTE = CP.CLIENTEID
-                          AND TRY_CAST(CLC2.ZONA AS INT) = CZ.CODRUTA
-                    ))
-                WHERE M.ANIO = @ANIO AND M.MES = @MES
-                GROUP BY M.ID, M.CODVENDEDOR, V.NOMVENDEDOR, M.META, M.CUMPLIDA, CZ.CODRUTA, RZ.DESCRIPCION
-                ORDER BY ISNULL(RZ.DESCRIPCION, 'Sin zona'), VENTA_TOTAL DESC
+            SELECT
+                M.ID,
+                M.CODVENDEDOR,
+                V.NOMVENDEDOR,
+                M.META,
+                M.CUMPLIDA,
+                ISNULL(CZ.CODRUTA, 0)                AS CODRUTA,
+                ISNULL(RZ.DESCRIPCION, 'Sin zona')   AS NOMBREZONA,
+                ISNULL(SUM(CASE WHEN CP.ESTATUS != 'CANCELADO' THEN CP.TOTALPRECIO ELSE 0 END), 0)           AS VENTA_TOTAL,
+                ISNULL(SUM(CASE WHEN CP.ESTATUS IN ('ICG','FINALIZADO') THEN CP.TOTALPRECIO ELSE 0 END), 0)  AS VENTA_FACTURADO,
+                COUNT(CASE WHEN CP.ESTATUS != 'CANCELADO'              THEN 1 END)                           AS NUM_PEDIDOS,
+                COUNT(CASE WHEN CP.ESTATUS IN ('ICG','FINALIZADO')     THEN 1 END)                           AS NUM_FACTURADO
+            FROM ${p()}APP_METAS_VENDEDOR M
+            INNER JOIN VENDEDORES V ON V.CODVENDEDOR = M.CODVENDEDOR
+            OUTER APPLY (
+                SELECT TOP 1 MZ.CODRUTA
+                FROM ${p()}APP_METAS_ZONA MZ WITH(NOLOCK)
+                INNER JOIN CLIENTESCAMPOSLIBRES CLC WITH(NOLOCK)
+                    ON  TRY_CAST(CLC.ZONA AS INT) = MZ.CODRUTA
+                    AND TRY_CAST(CLC.CODVENDEDOR AS INT) = M.CODVENDEDOR
+                WHERE MZ.ANIO = @ANIO AND MZ.MES = @MES
+                ORDER BY MZ.CODRUTA
+            ) CZ
+            LEFT JOIN RUTAS RZ WITH(NOLOCK) ON RZ.CODRUTA = CZ.CODRUTA
+            LEFT JOIN CABECERA_PED CP
+                ON  CP.CODVENDEDOR = M.CODVENDEDOR
+                AND YEAR(CP.FECHA)  = @ANIO
+                AND MONTH(CP.FECHA) = @MES
+                AND (CZ.CODRUTA IS NULL OR EXISTS (
+                    SELECT 1 FROM CLIENTESCAMPOSLIBRES CLC2 WITH(NOLOCK)
+                    WHERE CLC2.CODCLIENTE = CP.CLIENTEID
+                      AND TRY_CAST(CLC2.ZONA AS INT) = CZ.CODRUTA
+                ))
+            WHERE M.ANIO = @ANIO AND M.MES = @MES
+            GROUP BY M.ID, M.CODVENDEDOR, V.NOMVENDEDOR, M.META, M.CUMPLIDA, CZ.CODRUTA, RZ.DESCRIPCION
+            ORDER BY ISNULL(RZ.DESCRIPCION, 'Sin zona'), VENTA_TOTAL DESC
         `);
         return res.recordset;
     }
@@ -291,7 +295,7 @@ export class MetasService {
                     ISNULL(SUM(CASE WHEN CP.ESTATUS IN ('ICG','FINALIZADO') THEN CP.TOTALPRECIO ELSE 0 END), 0) AS VENTA_FACTURADO,
                     COUNT(CASE WHEN CP.ESTATUS != 'CANCELADO'               THEN 1 END)                        AS NUM_PEDIDOS,
                     COUNT(CASE WHEN CP.ESTATUS IN ('ICG','FINALIZADO')      THEN 1 END)                        AS NUM_FACTURADO
-                FROM APP_METAS_VENDEDOR M
+                FROM ${p()}APP_METAS_VENDEDOR M
                 INNER JOIN VENDEDORES V ON V.CODVENDEDOR = M.CODVENDEDOR
                 LEFT JOIN CABECERA_PED CP
                     ON  CP.CODVENDEDOR = M.CODVENDEDOR
@@ -307,25 +311,50 @@ export class MetasService {
         return res.recordset;
     }
 
+    static async deleteMetaZona(codruta: number, anio: number, mes: number): Promise<void> {
+        const pool = await connectDb();
+        await pool.request()
+            .input('CODRUTA', mssql.Int, codruta)
+            .input('ANIO',    mssql.Int, anio)
+            .input('MES',     mssql.Int, mes)
+            .query(`
+                DELETE M
+                FROM ${p()}APP_METAS_VENDEDOR M
+                INNER JOIN CLIENTESCAMPOSLIBRES CLC WITH(NOLOCK)
+                    ON  TRY_CAST(CLC.CODVENDEDOR AS INT) = M.CODVENDEDOR
+                    AND TRY_CAST(CLC.ZONA AS INT)        = @CODRUTA
+                WHERE M.ANIO = @ANIO AND M.MES = @MES;
+
+                DELETE R
+                FROM [RIP].[METAS_VENDEDORES] R
+                INNER JOIN CLIENTESCAMPOSLIBRES CLC WITH(NOLOCK)
+                    ON  TRY_CAST(CLC.CODVENDEDOR AS INT) = R.CODVENDEDOR
+                    AND TRY_CAST(CLC.ZONA AS INT)        = @CODRUTA
+                WHERE R.ANYO = @ANIO AND R.MES = @MES;
+
+                DELETE FROM ${p()}APP_METAS_ZONA
+                WHERE CODRUTA = @CODRUTA AND ANIO = @ANIO AND MES = @MES;
+            `);
+    }
+
     static async setCumplida(id: number, cumplida: boolean): Promise<void> {
         const pool = await connectDb();
         await pool.request()
             .input('ID',  mssql.Int, id)
             .input('CUM', mssql.Bit, cumplida ? 1 : 0)
-            .query(`UPDATE APP_METAS_VENDEDOR SET CUMPLIDA = @CUM WHERE ID = @ID`);
+            .query(`UPDATE ${p()}APP_METAS_VENDEDOR SET CUMPLIDA = @CUM WHERE ID = @ID`);
     }
 
     static async eliminar(id: number): Promise<void> {
         const pool = await connectDb();
-        // Obtener codvendedor/anio/mes antes de borrar para sincronizar RIP
         const meta = await pool.request()
             .input('ID', mssql.Int, id)
-            .query(`SELECT CODVENDEDOR, ANIO, MES FROM APP_METAS_VENDEDOR WHERE ID = @ID`);
+            .query(`SELECT CODVENDEDOR, ANIO, MES FROM ${p()}APP_METAS_VENDEDOR WHERE ID = @ID`);
         const row = meta.recordset[0];
 
         await pool.request()
             .input('ID', mssql.Int, id)
-            .query(`DELETE FROM APP_METAS_VENDEDOR WHERE ID = @ID`);
+            .query(`DELETE FROM ${p()}APP_METAS_VENDEDOR WHERE ID = @ID`);
 
         if (row) {
             await pool.request()

@@ -446,6 +446,8 @@
             </template>
             <template #item.acciones="{ item }">
               <v-btn icon="mdi-eye" variant="text" size="small" density="compact" @click="abrirDetalleZona(item)" />
+              <v-btn icon="mdi-trash-can-outline" variant="text" size="small" density="compact" color="error"
+                @click="zonaAEliminar = item; dialogEliminarZona = true" />
             </template>
           </v-data-table>
         </div>
@@ -650,6 +652,29 @@
       </v-card>
     </v-dialog>
 
+    <!-- Dialog: Confirmar eliminación de zona -->
+    <v-dialog v-model="dialogEliminarZona" max-width="420" persistent>
+      <v-card>
+        <v-card-title class="text-subtitle-1 font-weight-bold pa-4 d-flex align-center gap-2">
+          <v-icon color="error" size="18">mdi-alert</v-icon>
+          Eliminar meta de zona
+        </v-card-title>
+        <v-card-text class="pt-0">
+          <p>
+            ¿Eliminar la meta de <strong>{{ zonaAEliminar?.DESCRIPCION }}</strong>?
+          </p>
+          <v-alert type="warning" variant="tonal" density="compact" class="mt-2 text-caption">
+            También se eliminarán las metas individuales de todos los vendedores de esta zona para el período seleccionado.
+          </v-alert>
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dialogEliminarZona = false; zonaAEliminar = null">Cancelar</v-btn>
+          <v-btn color="error" variant="flat" :loading="eliminandoZona" @click="eliminarMetaZona">Eliminar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-snackbar v-model="snack.show" :color="snack.color" :timeout="3000">{{ snack.text }}</v-snackbar>
   </v-container>
 </template>
@@ -698,7 +723,10 @@ const dialogNuevaZona   = ref(false);
 const dialogDetalleZona = ref(false);
 const zonaNuevaMeta     = ref<number | null>(null);
 const metaNuevaInput    = ref(0);
-const guardandoZona     = ref(false);
+const guardandoZona       = ref(false);
+const dialogEliminarZona  = ref(false);
+const zonaAEliminar       = ref<any>(null);
+const eliminandoZona      = ref(false);
 const guardando = ref(false);
 const toggling  = ref<number | null>(null);
 const form      = ref({ codVendedor: null as number | null, nomVendedor: '', meta: 0, cumplida: false, id: null as number | null });
@@ -715,7 +743,7 @@ const headersZonaList = [
   { title: 'Zona',        key: 'DESCRIPCION',   sortable: true },
   { title: 'Vendedores',  key: 'NUM_VENDEDORES', sortable: true, width: '140px' },
   { title: 'Meta ($)',    key: 'META_ZONA',      sortable: true, width: '180px' },
-  { title: '',            key: 'acciones',       sortable: false, width: '60px' },
+  { title: '',            key: 'acciones',       sortable: false, width: '100px' },
 ];
 
 // ── Helpers ──
@@ -883,6 +911,23 @@ async function recargar() {
   await Promise.all([cargarProgreso(), cargarZonas()]);
   if (tab.value === 'vendedores') await cargarProgresoVendedor();
   if (zonaSeleccionada.value) await cargarVendedoresZona();
+}
+
+// ── Zona: eliminar meta ──
+async function eliminarMetaZona() {
+  if (!zonaAEliminar.value) return;
+  eliminandoZona.value = true;
+  try {
+    await axios.delete(`${API}/zonas/${zonaAEliminar.value.CODRUTA}`, {
+      params: { anio: filtroAnio.value, mes: filtroMes.value },
+    });
+    mostrarSnack(`Meta de ${zonaAEliminar.value.DESCRIPCION} eliminada`);
+    dialogEliminarZona.value = false;
+    zonaAEliminar.value = null;
+    progresoVendedor.value = [];
+    await Promise.all([cargarZonas(), cargarProgreso()]);
+  } catch { mostrarSnack('Error al eliminar la meta de zona', 'error'); }
+  finally { eliminandoZona.value = false; }
 }
 
 // ── Zona: abrir detalle y guardar nueva meta ──
