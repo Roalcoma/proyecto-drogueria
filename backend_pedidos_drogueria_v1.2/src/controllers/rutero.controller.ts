@@ -59,8 +59,10 @@ export class RuteroController {
         const page          = req.query.page          ? Number(req.query.page)                 : 1;
         const limit         = req.query.limit         ? Number(req.query.limit)                : 15;
         const historial     = req.query.historial === 'true';
+        const fechaDesde    = req.query.fechaDesde    ? String(req.query.fechaDesde).trim()    : undefined;
+        const fechaHasta    = req.query.fechaHasta    ? String(req.query.fechaHasta).trim()    : undefined;
         try {
-            const { data, total } = await RuteroService.getRuteros(codruta, buscarNumero, buscarFactura, buscarPedido, page, limit, historial);
+            const { data, total } = await RuteroService.getRuteros(codruta, buscarNumero, buscarFactura, buscarPedido, page, limit, historial, fechaDesde, fechaHasta);
             res.json({ success: true, data, total });
         } catch (error) {
             res.status(500).json({ success: false, message: 'Error al obtener ruteros', error: error instanceof Error ? error.message : String(error) });
@@ -206,6 +208,36 @@ export class RuteroController {
             const msg = error instanceof Error ? error.message : String(error);
             res.status(msg.includes('PENDIENTE') || msg.includes('no encontrado') ? 400 : 500)
                .json({ success: false, message: msg });
+        }
+    }
+
+    static async actualizarFechaRutero(req: RequestConUsuario, res: Response): Promise<void> {
+        const id    = Number(req.params.id);
+        const fecha = String(req.body.fecha ?? '').trim();
+        if (!fecha) { res.status(400).json({ success: false, message: 'fecha requerida' }); return; }
+        try {
+            const usuario = req.usuario?.usuario ?? '';
+            await RuteroService.actualizarFechaRutero(id, fecha, usuario);
+            res.json({ success: true, message: 'Fecha de rutero actualizada' });
+        } catch (error) {
+            res.status(500).json({ success: false, message: 'Error al actualizar fecha', error: error instanceof Error ? error.message : String(error) });
+        }
+    }
+
+    static async actualizarFechaFactura(req: RequestConUsuario, res: Response): Promise<void> {
+        const id         = Number(req.params.id);
+        const numserie   = String(req.body.numserie   ?? '').trim().toUpperCase();
+        const numfactura = Number(req.body.numfactura);
+        const fecha      = String(req.body.fecha ?? '').trim();
+        if (!numserie || isNaN(numfactura) || !fecha) {
+            res.status(400).json({ success: false, message: 'numserie, numfactura y fecha son requeridos' }); return;
+        }
+        try {
+            const usuario = req.usuario?.usuario ?? '';
+            await RuteroService.actualizarFechaFactura(id, numserie, numfactura, fecha, usuario);
+            res.json({ success: true, message: 'Fecha actualizada' });
+        } catch (error) {
+            res.status(500).json({ success: false, message: 'Error al actualizar fecha', error: error instanceof Error ? error.message : String(error) });
         }
     }
 

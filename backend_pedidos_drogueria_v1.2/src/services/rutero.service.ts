@@ -362,7 +362,7 @@ export class RuteroService {
 
     static async getRuteros(
         codruta?: number, buscarNumero?: string, buscarFactura?: string, buscarPedido?: string,
-        page = 1, limit = 15, historial = false
+        page = 1, limit = 15, historial = false, fechaDesde?: string, fechaHasta?: string
     ): Promise<{ data: any[]; total: number }> {
         const pool   = await connectRuteroDB();
         const req    = pool.request();
@@ -406,6 +406,16 @@ export class RuteroService {
                       AND PV2.SUPEDIDO LIKE @BUSCAR_PED
                 )
             )`;
+        }
+        if (fechaDesde) {
+            req.input('FECHA_DESDE', mssql.Date, fechaDesde);
+            reqCnt.input('FECHA_DESDE', mssql.Date, fechaDesde);
+            where += ' AND CAST(AR.FECHA AS DATE) >= @FECHA_DESDE';
+        }
+        if (fechaHasta) {
+            req.input('FECHA_HASTA', mssql.Date, fechaHasta);
+            reqCnt.input('FECHA_HASTA', mssql.Date, fechaHasta);
+            where += ' AND CAST(AR.FECHA AS DATE) <= @FECHA_HASTA';
         }
         const safeLimit = limit === -1 ? 10000 : Math.max(1, limit);
         const offset = limit === -1 ? 0 : (Math.max(1, page) - 1) * safeLimit;
@@ -1002,13 +1012,11 @@ export class RuteroService {
     static async quitarFacturaDeRutero(idrutero: number, numserie: string, numfactura: number, usuario = ''): Promise<void> {
         const ruteroDB = await connectRuteroDB();
 
-        // Solo se puede quitar de ruteros PENDIENTE (no confirmados ni entregados)
         const check = await ruteroDB.request()
             .input('IDRUTERO', mssql.Int, idrutero)
             .query(`SELECT ESTADO FROM APP_RUTEROS WHERE ID = @IDRUTERO`);
 
         if (!check.recordset.length) throw new Error('Rutero no encontrado');
-        if (check.recordset[0].ESTADO !== 'PENDIENTE') throw new Error('Solo se pueden quitar facturas de ruteros PENDIENTE');
 
         await ruteroDB.request()
             .input('IDRUTERO',   mssql.Int,        idrutero)
@@ -1019,8 +1027,73 @@ export class RuteroService {
                 WHERE IDRUTERO = @IDRUTERO
                   AND NUMSERIE COLLATE DATABASE_DEFAULT = @NUMSERIE COLLATE DATABASE_DEFAULT
                   AND NUMFACTURA = @NUMFACTURA
-                  AND FECHARECIBIDO IS NULL
             `);
         await RuteroService.registrarLog('QUITAR_FACTURA', usuario, idrutero, `${numserie}-${numfactura}`);
+    }
+
+    static async actualizarFechaRutero(idrutero: number, fechaEntrega: string, usuario = ''): Promise<void> {
+        const ruteroDB = await connectRuteroDB();
+        const fechaVal = fechaEntrega.substring(0, 10);
+
+        await ruteroDB.request()
+            .input('IDRUTERO', mssql.Int,  idrutero)
+            .input('FECHA',    mssql.Date, fechaVal)
+            .query(`
+                UPDATE APP_RUTEROS_DETALLE
+                SET FECHARECIBIDO = @FECHA
+                WHERE IDRUTERO = @IDRUTERO
+            `);
+
+        const detalles = await ruteroDB.request()
+            .input('IDRUTERO', mssql.Int, idrutero)
+            .query(`SELECT NUMSERIE, NUMFACTURA FROM APP_RUTEROS_DETALLE WHERE IDRUTERO = @IDRUTERO`);
+
+        const pool = await connectDb();
+        for (const d of detalles.recordset) {
+            await pool.request()
+                .input('NUMSERIE',   mssql.VarChar(20), d.NUMSERIE)
+                .input('NUMFACTURA', mssql.Int,         d.NUMFACTURA)
+                .input('FECHA',      mssql.Date,        fechaVal)
+                .query(`
+                    UPDATE FACTURASVENTACAMPOSLIBRES
+                    SET FECHARECIBIDO = @FECHA
+                    WHERE NUMSERIE   COLLATE DATABASE_DEFAULT = @NUMSERIE COLLATE DATABASE_DEFAULT
+                      AND NUMFACTURA = @NUMFACTURA
+                `);
+        }
+
+        await RuteroService.registrarLog('CAMBIAR_FECHA_RUTERO', usuario, idrutero, `=> ${fechaVal}`);
+    }
+
+    static async actualizarFechaFactura(idrutero: number, numserie: string, numfactura: number, fechaEntrega: string, usuario = ''): Promise<void> {
+        const ruteroDB = await connectRuteroDB();
+        const fechaVal = fechaEntrega.substring(0, 10);
+
+        await ruteroDB.request()
+            .input('IDRUTERO',   mssql.Int,        idrutero)
+            .input('NUMSERIE',   mssql.VarChar(20), numserie)
+            .input('NUMFACTURA', mssql.Int,         numfactura)
+            .input('FECHA',      mssql.Date,        fechaVal)
+            .query(`
+                UPDATE APP_RUTEROS_DETALLE
+                SET FECHARECIBIDO = @FECHA
+                WHERE IDRUTERO = @IDRUTERO
+                  AND NUMSERIE COLLATE DATABASE_DEFAULT = @NUMSERIE COLLATE DATABASE_DEFAULT
+                  AND NUMFACTURA = @NUMFACTURA
+            `);
+
+        const pool = await connectDb();
+        await pool.request()
+            .input('NUMSERIE',   mssql.VarChar(20), numserie)
+            .input('NUMFACTURA', mssql.Int,         numfactura)
+            .input('FECHA',      mssql.Date,        fechaVal)
+            .query(`
+                UPDATE FACTURASVENTACAMPOSLIBRES
+                SET FECHARECIBIDO = @FECHA
+                WHERE NUMSERIE   COLLATE DATABASE_DEFAULT = @NUMSERIE COLLATE DATABASE_DEFAULT
+                  AND NUMFACTURA = @NUMFACTURA
+            `);
+
+        await RuteroService.registrarLog('CAMBIAR_FECHA', usuario, idrutero, `${numserie}-${numfactura} => ${fechaVal}`);
     }
 }

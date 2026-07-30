@@ -726,6 +726,7 @@ const MODULOS = [
   { bit: 8192,  codigo: 'FTP_PEDIDOS', nombre: 'Pedidos FTP',       icono: 'mdi-folder-network'  },
   { bit: 16384, codigo: 'FTP_SERVIDOR',   nombre: 'Servidor FTP',        icono: 'mdi-server-network' },
   { bit: 32768, codigo: 'METAS_VENDEDOR', nombre: 'Metas de Vendedores', icono: 'mdi-target'         },
+  { bit: 65536, codigo: 'RUTERO_ADMIN',   nombre: 'Rutero Admin',        icono: 'mdi-truck-check'    },
 ];
 
 const headers = [

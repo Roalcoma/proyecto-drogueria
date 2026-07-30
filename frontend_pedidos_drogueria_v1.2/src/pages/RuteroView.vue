@@ -7,6 +7,10 @@
         <h1 class="text-h5 font-weight-black text-on-surface">Rutero de Entrega</h1>
         <p class="text-body-2 text-grey-darken-1 mb-0">Gestión de rutas y confirmación de entregas</p>
       </div>
+      <v-spacer />
+      <v-chip v-if="authStore.puedeRuteroAdmin" color="deep-orange" variant="elevated" size="small" prepend-icon="mdi-shield-account">
+        Rutero Admin
+      </v-chip>
     </div>
 
     <!-- Filtro zona -->
@@ -223,6 +227,26 @@
               @keyup.enter="buscarRuteros"
               @click:clear="buscarRuteros"
             />
+            <v-text-field
+              v-model="filtroRuteros.fechaDesde"
+              label="Desde"
+              type="date"
+              prepend-inner-icon="mdi-calendar-start"
+              variant="outlined" density="compact" hide-details clearable
+              style="min-width:160px;max-width:190px"
+              @change="buscarRuteros"
+              @click:clear="buscarRuteros"
+            />
+            <v-text-field
+              v-model="filtroRuteros.fechaHasta"
+              label="Hasta"
+              type="date"
+              prepend-inner-icon="mdi-calendar-end"
+              variant="outlined" density="compact" hide-details clearable
+              style="min-width:160px;max-width:190px"
+              @change="buscarRuteros"
+              @click:clear="buscarRuteros"
+            />
             <v-btn color="primary" variant="tonal" prepend-icon="mdi-magnify" @click="buscarRuteros">Buscar</v-btn>
             <v-btn variant="text" color="grey" prepend-icon="mdi-close" @click="limpiarFiltrosRuteros">Limpiar</v-btn>
           </div>
@@ -287,24 +311,36 @@
                         </v-chip>
                       </template>
                     </template>
-                    <v-btn
-                      v-if="selCount(r.ID) > 0"
-                      size="small" color="teal" variant="elevated"
-                      prepend-icon="mdi-check-bold"
-                      :loading="confirmandoRutero === r.ID"
-                      @click.stop="abrirDialogFechaSeleccion(r)"
-                    >
-                      Confirmar selec. ({{ selCount(r.ID) }})
-                    </v-btn>
-                    <v-btn
-                      size="small" color="success" variant="elevated"
-                      prepend-icon="mdi-check-all"
-                      :loading="confirmandoRutero === r.ID"
-                      :disabled="r.ENTREGADAS >= r.TOTAL_FACTURAS"
-                      @click.stop="abrirDialogFechaTodo(r)"
-                    >
-                      Confirmar todo
-                    </v-btn>
+                    <v-tooltip v-if="selCount(r.ID) > 0" :text="r.ESTADO !== 'EN_RUTA' ? 'El rutero debe estar En Viaje para confirmar' : ''">
+                      <template #activator="{ props: tp }">
+                        <span v-bind="tp">
+                          <v-btn
+                            size="small" color="teal" variant="elevated"
+                            prepend-icon="mdi-check-bold"
+                            :disabled="r.ESTADO !== 'EN_RUTA'"
+                            :loading="confirmandoRutero === r.ID"
+                            @click.stop="abrirDialogFechaSeleccion(r)"
+                          >
+                            Confirmar selec. ({{ selCount(r.ID) }})
+                          </v-btn>
+                        </span>
+                      </template>
+                    </v-tooltip>
+                    <v-tooltip :text="r.ESTADO !== 'EN_RUTA' ? 'El rutero debe estar En Viaje para confirmar' : ''">
+                      <template #activator="{ props: tp }">
+                        <span v-bind="tp">
+                          <v-btn
+                            size="small" color="success" variant="elevated"
+                            prepend-icon="mdi-check-all"
+                            :loading="confirmandoRutero === r.ID"
+                            :disabled="r.ENTREGADAS >= r.TOTAL_FACTURAS || r.ESTADO !== 'EN_RUTA'"
+                            @click.stop="abrirDialogFechaTodo(r)"
+                          >
+                            Confirmar todo
+                          </v-btn>
+                        </span>
+                      </template>
+                    </v-tooltip>
                   </div>
 
                   <div v-if="!facturasRutero[r.ID]" class="text-center pa-4">
@@ -331,7 +367,7 @@
                   >
                     <template #item.sel="{ item }">
                       <v-checkbox
-                        v-if="!item.FECHARECIBIDO"
+                        v-if="!item.FECHARECIBIDO && r.ESTADO === 'EN_RUTA'"
                         :model-value="isSelFactura(r.ID, item)"
                         hide-details
                         density="compact"
@@ -361,16 +397,22 @@
                       <span>${{ Number(item.TOTAL).toFixed(2) }}</span>
                     </template>
                     <template #item.actions="{ item }">
-                      <div class="d-flex gap-1">
+                      <div class="d-flex gap-1 align-center">
+                        <v-tooltip v-if="!item.FECHARECIBIDO" :text="r.ESTADO !== 'EN_RUTA' ? 'El rutero debe estar En Viaje' : 'Confirmar entrega'">
+                          <template #activator="{ props: tp }">
+                            <span v-bind="tp">
+                              <v-btn
+                                size="x-small" color="success" variant="tonal"
+                                icon="mdi-check"
+                                :disabled="r.ESTADO !== 'EN_RUTA'"
+                                :loading="confirmandoFactura === clave(item)"
+                                @click.stop="abrirDialogFecha(r, item)"
+                              />
+                            </span>
+                          </template>
+                        </v-tooltip>
                         <v-btn
-                          v-if="!item.FECHARECIBIDO"
-                          size="x-small" color="success" variant="tonal"
-                          icon="mdi-check"
-                          :loading="confirmandoFactura === clave(item)"
-                          @click.stop="abrirDialogFecha(r, item)"
-                        />
-                        <v-btn
-                          v-if="r.ESTADO === 'PENDIENTE' && !item.FECHARECIBIDO"
+                          v-if="(r.ESTADO === 'PENDIENTE' && !item.FECHARECIBIDO) || (authStore.puedeRuteroAdmin && (r.ESTADO === 'EN_RUTA' || r.ESTADO === 'ENTREGADO'))"
                           size="x-small" color="error" variant="tonal"
                           icon="mdi-delete-outline"
                           :loading="quitandoFactura === clave(item)"
@@ -561,6 +603,26 @@
               @keyup.enter="buscarHistorial"
               @click:clear="buscarHistorial"
             />
+            <v-text-field
+              v-model="filtroHist.fechaDesde"
+              label="Desde"
+              type="date"
+              prepend-inner-icon="mdi-calendar-start"
+              variant="outlined" density="compact" hide-details clearable
+              style="min-width:160px;max-width:190px"
+              @change="buscarHistorial"
+              @click:clear="buscarHistorial"
+            />
+            <v-text-field
+              v-model="filtroHist.fechaHasta"
+              label="Hasta"
+              type="date"
+              prepend-inner-icon="mdi-calendar-end"
+              variant="outlined" density="compact" hide-details clearable
+              style="min-width:160px;max-width:190px"
+              @change="buscarHistorial"
+              @click:clear="buscarHistorial"
+            />
             <v-btn color="primary" variant="tonal" prepend-icon="mdi-magnify" @click="buscarHistorial">Buscar</v-btn>
             <v-btn variant="text" color="grey" prepend-icon="mdi-close" @click="limpiarFiltrosHist">Limpiar</v-btn>
           </div>
@@ -599,6 +661,15 @@
                     >Reimprimir PDF</v-btn>
                   </div>
 
+                  <div v-if="authStore.puedeRuteroAdmin" class="mb-3">
+                    <v-btn
+                      size="small" color="orange" variant="tonal"
+                      prepend-icon="mdi-calendar-edit"
+                      :loading="confirmandoRutero === r.ID"
+                      @click.stop="dialogFecha = { show: true, idrutero: r.ID, item: null, fecha: hoyISO, minFecha: '', modo: 'editar-rutero' }"
+                    >Cambiar fecha (todo)</v-btn>
+                  </div>
+
                   <div v-if="!facturasRutero[r.ID]" class="text-center pa-4">
                     <v-progress-circular indeterminate size="24" color="primary" />
                   </div>
@@ -626,9 +697,27 @@
                       <span>${{ Number(item.TOTAL).toFixed(2) }}</span>
                     </template>
                     <template #item.actions="{ item }">
-                      <span v-if="item.FECHARECIBIDO" class="text-caption text-grey-darken-1">
-                        {{ item.FECHARECIBIDO?.toString().substring(0, 10) }}
-                      </span>
+                      <div class="d-flex gap-1 align-center">
+                        <span v-if="item.FECHARECIBIDO" class="text-caption text-grey-darken-1">
+                          {{ item.FECHARECIBIDO?.toString().substring(0, 10) }}
+                        </span>
+                        <template v-if="authStore.puedeRuteroAdmin">
+                          <v-btn
+                            size="x-small" color="orange" variant="tonal"
+                            icon="mdi-pencil"
+                            :loading="confirmandoFactura === clave(item)"
+                            title="Cambiar fecha de entrega"
+                            @click.stop="dialogFecha = { show: true, idrutero: r.ID, item, fecha: item.FECHARECIBIDO?.toString().substring(0,10) || hoyISO, minFecha: '', modo: 'editar' }"
+                          />
+                          <v-btn
+                            size="x-small" color="error" variant="tonal"
+                            icon="mdi-delete-outline"
+                            :loading="quitandoFactura === clave(item)"
+                            title="Quitar factura del rutero"
+                            @click.stop="quitarFacturaDeRutero(r, item)"
+                          />
+                        </template>
+                      </div>
                     </template>
                   </v-data-table>
                 </v-expansion-panel-text>
@@ -767,7 +856,11 @@
     <!-- Dialog fecha entrega -->
     <v-dialog v-model="dialogFecha.show" max-width="360" persistent>
       <v-card rounded="xl">
-        <v-card-title class="pa-4">Confirmar entrega</v-card-title>
+        <v-card-title class="pa-4">
+          <template v-if="dialogFecha.modo === 'editar-rutero'">Cambiar fecha — rutero completo</template>
+          <template v-else-if="dialogFecha.modo === 'editar'">Cambiar fecha de entrega</template>
+          <template v-else>Confirmar entrega</template>
+        </v-card-title>
         <v-card-text class="pa-4 pt-0">
           <p class="text-body-2 mb-3 text-grey-darken-2">
             <template v-if="dialogFecha.modo === 'todo'">Confirmar entrega de todas las facturas pendientes</template>
@@ -787,9 +880,9 @@
         <v-card-actions class="pa-4 pt-0">
           <v-spacer />
           <v-btn variant="text" @click="dialogFecha.show = false">Cancelar</v-btn>
-          <v-btn color="success" variant="elevated" :loading="!!confirmandoFactura" @click="confirmarFacturaConFecha">
-            <v-icon start>mdi-check</v-icon>
-            Confirmar
+          <v-btn :color="dialogFecha.modo === 'editar' ? 'orange' : 'success'" variant="elevated" :loading="!!confirmandoFactura" @click="confirmarFacturaConFecha">
+            <v-icon start>{{ dialogFecha.modo === 'editar' ? 'mdi-pencil' : 'mdi-check' }}</v-icon>
+            {{ dialogFecha.modo === 'editar' ? 'Guardar' : 'Confirmar' }}
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -899,23 +992,23 @@ const facturasRutero    = reactive<Record<number, any[]>>({});
 const confirmandoRutero = ref<number | null>(null);
 const confirmandoFactura = ref<string | null>(null);
 const quitandoFactura   = ref<string | null>(null);
-const filtroRuteros     = ref({ numero: '', factura: '', pedido: '' });
+const filtroRuteros     = ref({ numero: '', factura: '', pedido: '', fechaDesde: '', fechaHasta: '' });
 const paginaRuteros     = ref(1);
 const totalRuteros      = ref(0);
 const limitRuteros      = 15;
 const filtroPickingEstado = ref<string>('todos');
 const buscarRuteros = () => { paginaRuteros.value = 1; cargarRuteros(); };
-const limpiarFiltrosRuteros = () => { filtroRuteros.value = { numero: '', factura: '', pedido: '' }; paginaRuteros.value = 1; cargarRuteros(); };
+const limpiarFiltrosRuteros = () => { filtroRuteros.value = { numero: '', factura: '', pedido: '', fechaDesde: '', fechaHasta: '' }; paginaRuteros.value = 1; cargarRuteros(); };
 
 // Historial
 const ruterosHist     = ref<any[]>([]);
 const cargandoHist    = ref(false);
-const filtroHist      = ref({ numero: '', factura: '', pedido: '' });
+const filtroHist      = ref({ numero: '', factura: '', pedido: '', fechaDesde: '', fechaHasta: '' });
 const paginaHist      = ref(1);
 const totalRuterosHist = ref(0);
 const limitHist        = 15;
 const buscarHistorial = () => { paginaHist.value = 1; cargarHistorial(); };
-const limpiarFiltrosHist = () => { filtroHist.value = { numero: '', factura: '', pedido: '' }; paginaHist.value = 1; cargarHistorial(); };
+const limpiarFiltrosHist = () => { filtroHist.value = { numero: '', factura: '', pedido: '', fechaDesde: '', fechaHasta: '' }; paginaHist.value = 1; cargarHistorial(); };
 const hoyISO = new Date().toLocaleDateString('en-CA', { timeZone: useBrandingStore().zonaHoraria });
 
 const filtrarFacturasRutero = (id: number) => {
@@ -929,7 +1022,7 @@ const filtrarFacturasRutero = (id: number) => {
   }
 };
 
-const dialogFecha = ref({ show: false, idrutero: 0, item: null as any, fecha: hoyISO, minFecha: '', modo: 'factura' as 'factura' | 'todo' | 'seleccion' });
+const dialogFecha = ref({ show: false, idrutero: 0, item: null as any, fecha: hoyISO, minFecha: '', modo: 'factura' as 'factura' | 'todo' | 'seleccion' | 'editar' | 'editar-rutero' });
 
 const abrirDialogFecha = (r: any, item: any) => {
   dialogFecha.value = { show: true, idrutero: r.ID, item, fecha: hoyISO, minFecha: (r.FECHA ?? '').substring(0, 10), modo: 'factura' };
@@ -1405,10 +1498,12 @@ const cargarRuteros = async () => {
   try {
     const codruta = zonaSeleccionada.value?.zona ? parseInt(zonaSeleccionada.value.zona) : undefined;
     const params: any = { page: paginaRuteros.value, limit: limitRuteros };
-    if (codruta)                        params.codruta       = codruta;
-    if (filtroRuteros.value.numero)     params.buscarNumero  = filtroRuteros.value.numero;
-    if (filtroRuteros.value.factura)    params.buscarFactura = filtroRuteros.value.factura;
-    if (filtroRuteros.value.pedido)     params.buscarPedido  = filtroRuteros.value.pedido;
+    if (codruta)                            params.codruta       = codruta;
+    if (filtroRuteros.value.numero)         params.buscarNumero  = filtroRuteros.value.numero;
+    if (filtroRuteros.value.factura)        params.buscarFactura = filtroRuteros.value.factura;
+    if (filtroRuteros.value.pedido)         params.buscarPedido  = filtroRuteros.value.pedido;
+    if (filtroRuteros.value.fechaDesde)     params.fechaDesde    = filtroRuteros.value.fechaDesde;
+    if (filtroRuteros.value.fechaHasta)     params.fechaHasta    = filtroRuteros.value.fechaHasta;
     const res = await axios.get(`${API}/rutero/ruteros`, { params });
     ruteros.value    = res.data.data  ?? [];
     totalRuteros.value = res.data.total ?? 0;
@@ -1424,10 +1519,12 @@ const cargarHistorial = async () => {
   try {
     const codruta = zonaSeleccionada.value?.zona ? parseInt(zonaSeleccionada.value.zona) : undefined;
     const params: any = { page: paginaHist.value, limit: limitHist, historial: true };
-    if (codruta)                     params.codruta       = codruta;
-    if (filtroHist.value.numero)     params.buscarNumero  = filtroHist.value.numero;
-    if (filtroHist.value.factura)    params.buscarFactura = filtroHist.value.factura;
-    if (filtroHist.value.pedido)     params.buscarPedido  = filtroHist.value.pedido;
+    if (codruta)                         params.codruta       = codruta;
+    if (filtroHist.value.numero)         params.buscarNumero  = filtroHist.value.numero;
+    if (filtroHist.value.factura)        params.buscarFactura = filtroHist.value.factura;
+    if (filtroHist.value.pedido)         params.buscarPedido  = filtroHist.value.pedido;
+    if (filtroHist.value.fechaDesde)     params.fechaDesde    = filtroHist.value.fechaDesde;
+    if (filtroHist.value.fechaHasta)     params.fechaHasta    = filtroHist.value.fechaHasta;
     const res = await axios.get(`${API}/rutero/ruteros`, { params });
     ruterosHist.value      = res.data.data  ?? [];
     totalRuterosHist.value = res.data.total ?? 0;
@@ -1479,8 +1576,41 @@ const confirmarFacturaConFecha = async () => {
     for (const f of lista) await confirmarFactura(idrutero, f, fecha);
     clearSelFacturas(idrutero);
     notify(`${lista.length} factura(s) confirmadas`, 'success');
+  } else if (modo === 'editar-rutero') {
+    await actualizarFechaRutero(idrutero, fecha);
+  } else if (modo === 'editar') {
+    await actualizarFechaFactura(idrutero, item, fecha);
   } else {
     await confirmarFactura(idrutero, item, fecha);
+  }
+};
+
+const actualizarFechaRutero = async (idrutero: number, fecha: string) => {
+  confirmandoRutero.value = idrutero;
+  try {
+    await axios.put(`${API}/rutero/ruteros/${idrutero}/fecha`, { fecha });
+    const lista = facturasRutero[idrutero];
+    if (lista) lista.forEach((f: any) => { f.FECHARECIBIDO = fecha; });
+    notify('Fecha de entrega actualizada para todo el rutero', 'success');
+  } catch (e: any) {
+    notify(e.response?.data?.message || 'Error al actualizar fecha', 'error');
+  } finally {
+    confirmandoRutero.value = null;
+  }
+};
+
+const actualizarFechaFactura = async (idrutero: number, item: any, fecha: string) => {
+  confirmandoFactura.value = clave(item);
+  try {
+    await axios.put(`${API}/rutero/ruteros/${idrutero}/facturas/fecha`, {
+      numserie: item.NUMSERIE, numfactura: item.NUMFACTURA, fecha,
+    });
+    item.FECHARECIBIDO = fecha;
+    notify('Fecha de entrega actualizada', 'success');
+  } catch (e: any) {
+    notify(e.response?.data?.message || 'Error al actualizar fecha', 'error');
+  } finally {
+    confirmandoFactura.value = null;
   }
 };
 

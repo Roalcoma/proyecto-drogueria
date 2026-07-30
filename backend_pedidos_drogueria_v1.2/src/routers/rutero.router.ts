@@ -20,7 +20,9 @@ ruteroRouter.post('/ruteros/:id/picking/liberar', authMiddleware, RuteroControll
 ruteroRouter.post('/ruteros/:id/escanear',     authMiddleware, RuteroController.escanearCaja);
 ruteroRouter.put('/ruteros/:id/confirmar',     authMiddleware, RuteroController.confirmarRutero);
 ruteroRouter.put('/confirmar-factura',         authMiddleware, RuteroController.confirmarFacturaRutero);
-ruteroRouter.delete('/ruteros/:id/facturas',   authMiddleware, RuteroController.quitarFactura);
-ruteroRouter.get('/auditoria',                 authMiddleware, RuteroController.getAuditoriaRutero);
+ruteroRouter.delete('/ruteros/:id/facturas',        authMiddleware, RuteroController.quitarFactura);
+ruteroRouter.put('/ruteros/:id/fecha',              authMiddleware, RuteroController.actualizarFechaRutero);
+ruteroRouter.put('/ruteros/:id/facturas/fecha',     authMiddleware, RuteroController.actualizarFechaFactura);
+ruteroRouter.get('/auditoria',                      authMiddleware, RuteroController.getAuditoriaRutero);
 
 export default ruteroRouter;
