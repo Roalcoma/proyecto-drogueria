@@ -38,10 +38,10 @@
                       <div class="text-caption text-grey">Código: {{ item.CODARTICULO }}</div>
                     </div>
                     <v-chip v-if="item.ES_PSICOTROPICO === 'T'" color="purple-darken-2" size="x-small" variant="flat" class="font-weight-black ml-2">CONTROLADO</v-chip>
-                    <v-chip v-else-if="item.NODTOAPLICABLE === true || item.NODTOAPLICABLE === 1" color="red-darken-2" size="x-small" variant="flat" class="font-weight-black ml-2">SIN DTO</v-chip>
+                    <v-chip v-else-if="item.NODTOAPLICABLE === 1 || item.NODTOAPLICABLE === true" color="orange-darken-3" size="x-small" variant="flat" class="font-weight-black ml-2">CONDICIONADO</v-chip>
                     <v-chip v-else-if="Number(item.DIASPROTECCION ?? 0) > 0" color="teal-darken-2" size="x-small" variant="flat" class="font-weight-black ml-2">NI {{ item.DIASPROTECCION }}d</v-chip>
                   </div>
-                  <div v-if="item.descuentos?.some((d: number) => d > 0)" class="mt-1">
+                  <div v-if="!(item.NODTOAPLICABLE === 1 || item.NODTOAPLICABLE === true) && item.descuentos?.some((d: number) => d > 0)" class="mt-1">
                     <v-chip size="x-small" color="orange-darken-2" variant="flat" class="font-weight-bold">
                       {{ item.descuentos.filter((d: number) => d > 0).length }} Desc. Aplicados ({{ item.descuentos.filter((d: number) => d > 0).join('%+') }}%)
                     </v-chip>
@@ -67,7 +67,7 @@
                 </td>
 
                 <td class="text-right">
-                  <div v-if="item.descuentos?.length" class="text-caption text-grey text-decoration-line-through">
+                  <div v-if="!(item.NODTOAPLICABLE === 1 || item.NODTOAPLICABLE === true) && item.descuentos?.length" class="text-caption text-grey text-decoration-line-through">
                     $ {{ obtenerPrecioBase(item).toFixed(2) }}
                   </div>
                   <MontoDisplay :usd="calcularPrecioConDescuento(item)" :tasa="carritoStore.tasa" main-class="font-weight-bold text-on-surface" align-end />
@@ -235,6 +235,7 @@ const obtenerPrecioBase = (item: any): number => {
 };
 
 const calcularPrecioConDescuento = (item: any): number => {
+  if (item.NODTOAPLICABLE === 1 || item.NODTOAPLICABLE === true) return obtenerPrecioBase(item);
   let precio = obtenerPrecioBase(item);
   if (item.descuentos && item.descuentos.length > 0) {
     item.descuentos.forEach((desc: number) => {

@@ -139,6 +139,9 @@
                 <v-chip v-if="item.ES_PSICOTROPICO === 'T'" color="purple-darken-2" size="x-small" variant="flat" class="font-weight-black ml-2">
                   <v-icon start size="12">mdi-alert-decagram</v-icon> CONTROLADO
                 </v-chip>
+                <v-chip v-if="item.NODTOAPLICABLE === 1 || item.NODTOAPLICABLE === true" color="orange-darken-3" size="x-small" variant="flat" class="font-weight-black ml-2">
+                  <v-icon start size="12">mdi-tag-off</v-icon> CONDICIONADO
+                </v-chip>
               </div>
             </template>
 
@@ -349,14 +352,16 @@ const seleccionarCliente = (cliente: any) => {
   lanzarAviso(`Cliente seleccionado: ${cliente.CODCLIENTE} - ${cliente.NOMBRECOMERCIAL || cliente.NOMBRECLIENTE}`, "success");
 };
 
-// Colores de leyenda (orden de prioridad: condicionado > nuevo > IVA > normal)
+// Colores de leyenda (orden de prioridad: condicionado > NI > IVA > normal)
 const COLOR_CONDICIONADO = 'FF81C784'; // verde
+const COLOR_NI           = 'FFCE93D8'; // morado claro (NI — no indexado)
 const COLOR_IVA          = 'FFFFD54F'; // amarillo
 const COLOR_ZEBRA        = 'FFE3F2FD'; // azul muy claro (filas pares normales)
 
 const getColorFila = (p: any): string | null => {
-  if (p.NODTOAPLICABLE)     return COLOR_CONDICIONADO;
-  if (p.PORCENTAJEIVA > 0)  return COLOR_IVA;
+  if (p.NODTOAPLICABLE)              return COLOR_CONDICIONADO;
+  if (Number(p.DIASPROTECCION) > 0)  return COLOR_NI;
+  if (p.PORCENTAJEIVA > 0)           return COLOR_IVA;
   return null;
 };
 
@@ -405,14 +410,16 @@ const exportarCatalogoSegmentos = async () => {
     };
 
     const buildRow = (p: any, dto: number) => {
-      const d2  = p.D2_PORCENTAJE ?? 0;
+      const nodto = p.NODTOAPLICABLE === 1 || p.NODTOAPLICABLE === true;
+      const dtoEfectivo = nodto ? 0 : dto;
+      const d2  = nodto ? 0 : (p.D2_PORCENTAJE ?? 0);
       const base = Number(p.PRECIO_BASE);
-      const precioFinal = base * (1 - dto / 100) * (1 - d2 / 100);
+      const precioFinal = base * (1 - dtoEfectivo / 100) * (1 - d2 / 100);
       const g = p.GARANTIACOMPRA;
       const garantia = g instanceof Date ? g : (g ? new Date(g) : '');
       const r: any[] = [
         p.CODARTICULO ?? '', p.REFPROVEEDOR ?? '', p.DESCRIPCION ?? '',
-        base, dto, d2, precioFinal,
+        base, dtoEfectivo, d2, precioFinal,
         p.STOCK_DISP ?? 0, garantia, 0, '',
       ];
       if (conProveedor) r.push(p.PROVEEDOR ?? '');
@@ -551,10 +558,12 @@ const importarArticulosExcel = async (fileOrFiles: File | File[] | null) => {
 
 // --- RESTO DE FUNCIONES ---
 const obtenerPrecioDolar = (item: any): number => (item.prices && item.prices.length > 0) ? parseFloat(item.prices[0].PNETO) : 0;
-const tieneDescuentos = (_item: any): boolean => (Number(carritoStore.clienteSeleccionado?.DESCUENTO) || 0) > 0;
+const esCondicionado = (item: any): boolean => item.NODTOAPLICABLE === 1 || item.NODTOAPLICABLE === true;
+const tieneDescuentos = (item: any): boolean => !esCondicionado(item) && (Number(carritoStore.clienteSeleccionado?.DESCUENTO) || 0) > 0;
 const calcularPrecioFinalDolar = (item: any): number => {
   let p = obtenerPrecioDolar(item);
-  const dc  = Number(carritoStore.clienteSeleccionado?.DESCUENTO) || 0;
+  if (esCondicionado(item)) return p;
+  const dc = Number(carritoStore.clienteSeleccionado?.DESCUENTO) || 0;
   if (dc > 0) p -= (p * (dc / 100));
   return p;
 };

@@ -56,7 +56,7 @@ export const useCarritoStore = defineStore('carrito', () => {
         articulos.value.forEach(art => {
             const d4Manual = Number(art.descuentos?.[3] ?? 0); // preservar D4 manual
 
-            if (art.NODTOAPLICABLE === 'T') {
+            if (art.NODTOAPLICABLE === 1 || art.NODTOAPLICABLE === true) {
                 art.descuentos = d4Manual > 0 ? [0, 0, 0, d4Manual] : [];
                 return;
             }
