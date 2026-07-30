@@ -26,6 +26,8 @@ export const VERSIONES: VersionEntry[] = [
 ];
 
 export const COMMITS: CommitEntry[] = [
+  { hash: 'pending', date: '2026-07-30', tipo: 'improve', texto: 'metas: gestión de zonas con lista + modales para nueva meta y detalle de zona' },
+  { hash: 'pending', date: '2026-07-30', tipo: 'fix',     texto: 'metas progreso: vendedores aparecían en zona incorrecta — ahora se usan las zonas de APP_METAS_ZONA' },
   { hash: 'a7b2b28', date: '2026-07-30', tipo: 'feat',    texto: 'rutero: filtros de fecha, bloqueo confirmación y permisos admin (RUTERO_ADMIN bit 65536)' },
   { hash: '531a71e', date: '2026-07-30', tipo: 'feat',    texto: 'artículos condicionados sin descuentos en carrito y Excel; NI en morado en Excel' },
   { hash: '14f4e9b', date: '2026-07-30', tipo: 'fix',     texto: 'prevenir duplicado de facturas en ruteros concurrentes' },

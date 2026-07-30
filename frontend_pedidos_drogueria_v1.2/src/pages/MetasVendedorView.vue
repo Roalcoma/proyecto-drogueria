@@ -37,9 +37,10 @@
 
     <!-- ── Tabs ── -->
     <v-tabs v-model="tab" color="primary" class="dash-tabs mb-1">
-      <v-tab value="progreso" prepend-icon="mdi-chart-line">Progreso</v-tab>
-      <v-tab value="rankings" prepend-icon="mdi-trophy">Rankings</v-tab>
-      <v-tab value="gestion"  prepend-icon="mdi-table-edit">Gestión</v-tab>
+      <v-tab value="progreso"   prepend-icon="mdi-chart-line">Progreso</v-tab>
+      <v-tab value="rankings"   prepend-icon="mdi-trophy">Rankings</v-tab>
+      <v-tab value="vendedores" prepend-icon="mdi-account-details">Vendedores</v-tab>
+      <v-tab value="gestion"    prepend-icon="mdi-table-edit">Gestión</v-tab>
     </v-tabs>
     <v-divider class="mb-4" />
 
@@ -107,50 +108,72 @@
           </v-col>
         </v-row>
 
-        <div v-else class="progress-list">
-          <div
-            v-for="(item, idx) in progresoOrdenado"
-            :key="item.ID"
-            class="progress-card"
-            :class="borderColorClass(pct(item))"
-          >
-            <!-- rank + nombre + chip -->
-            <div class="d-flex align-center gap-3">
-              <span class="rank-badge" :class="rankClass(idx)">{{ idx + 1 }}</span>
-              <div class="flex-grow-1">
-                <div class="d-flex align-center gap-2 flex-wrap">
-                  <span class="prog-name">{{ item.NOMVENDEDOR }}</span>
-                  <v-chip v-if="item.CUMPLIDA" color="success" size="x-small" variant="flat">✓ Cumplida</v-chip>
-                </div>
-                <div class="prog-sub">Cód. {{ item.CODVENDEDOR }} · {{ pedidoLabel(item) }} pedido(s)</div>
+        <v-expansion-panels v-else variant="accordion" class="zona-panels">
+          <v-expansion-panel v-for="zona in progresoByZona" :key="zona.codruta">
+            <v-expansion-panel-title>
+              <div class="d-flex align-center gap-3 flex-grow-1 flex-wrap pr-2">
+                <v-icon size="16" color="#1E40AF">mdi-map-marker-radius</v-icon>
+                <span class="zona-panel-name">{{ zona.nombre }}</span>
+                <v-chip size="x-small" color="primary" variant="tonal">{{ zona.items.length }} vend.</v-chip>
+                <div class="flex-grow-1" />
+                <span class="zona-panel-kpi d-none d-sm-flex">
+                  <span class="text-caption text-medium-emphasis mr-1">Meta:</span>
+                  <span class="mono font-weight-medium">$ {{ fmt(zona.items.reduce((s, i) => s + Number(i.META), 0)) }}</span>
+                </span>
+                <v-chip
+                  size="small"
+                  :color="colorPct(Math.round(zona.items.reduce((s, i) => s + pct(i), 0) / zona.items.length))"
+                  variant="flat"
+                >
+                  {{ Math.round(zona.items.reduce((s, i) => s + pct(i), 0) / zona.items.length) }}%
+                </v-chip>
               </div>
-              <div class="text-right">
-                <div class="prog-pct" :class="pctColorClass(pct(item))">{{ pct(item) }}%</div>
-                <div class="prog-falta" v-if="pct(item) < 100">
-                  Falta&nbsp;<span class="mono">$ {{ fmt(Math.max(0, item.META - ventaModo(item))) }}</span>
-                </div>
-                <div class="prog-sobre text-success" v-else>
-                  +$ {{ fmt(ventaModo(item) - item.META) }}
+            </v-expansion-panel-title>
+            <v-expansion-panel-text class="pa-0">
+              <div class="progress-list pa-3">
+                <div
+                  v-for="(item, idx) in [...zona.items].sort((a, b) => pct(b) - pct(a))"
+                  :key="item.ID"
+                  class="progress-card"
+                  :class="borderColorClass(pct(item))"
+                >
+                  <div class="d-flex align-center gap-3">
+                    <span class="rank-badge" :class="rankClass(idx)">{{ idx + 1 }}</span>
+                    <div class="flex-grow-1">
+                      <div class="d-flex align-center gap-2 flex-wrap">
+                        <span class="prog-name">{{ item.NOMVENDEDOR }}</span>
+                        <v-chip v-if="item.CUMPLIDA" color="success" size="x-small" variant="flat">✓ Cumplida</v-chip>
+                      </div>
+                      <div class="prog-sub">Cód. {{ item.CODVENDEDOR }} · {{ pedidoLabel(item) }} pedido(s)</div>
+                    </div>
+                    <div class="text-right">
+                      <div class="prog-pct" :class="pctColorClass(pct(item))">{{ pct(item) }}%</div>
+                      <div class="prog-falta" v-if="pct(item) < 100">
+                        Falta&nbsp;<span class="mono">$ {{ fmt(Math.max(0, item.META - ventaModo(item))) }}</span>
+                      </div>
+                      <div class="prog-sobre text-success" v-else>
+                        +$ {{ fmt(ventaModo(item) - item.META) }}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="prog-bar-row mt-2">
+                    <div class="d-flex justify-space-between text-caption mb-1">
+                      <span class="mono font-weight-medium">$ {{ fmt(ventaModo(item)) }}</span>
+                      <span class="prog-meta">Meta&nbsp;<span class="mono">$ {{ fmt(item.META) }}</span></span>
+                    </div>
+                    <v-progress-linear
+                      :model-value="Math.min(pct(item), 100)"
+                      :color="colorPct(pct(item))"
+                      bg-color="#E9EEF6"
+                      height="8"
+                      rounded
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
-
-            <!-- barra -->
-            <div class="prog-bar-row mt-2">
-              <div class="d-flex justify-space-between text-caption mb-1">
-                <span class="mono font-weight-medium">$ {{ fmt(ventaModo(item)) }}</span>
-                <span class="prog-meta">Meta&nbsp;<span class="mono">$ {{ fmt(item.META) }}</span></span>
-              </div>
-              <v-progress-linear
-                :model-value="Math.min(pct(item), 100)"
-                :color="colorPct(pct(item))"
-                bg-color="#E9EEF6"
-                height="8"
-                rounded
-              />
-            </div>
-          </div>
-        </div>
+            </v-expansion-panel-text>
+          </v-expansion-panel>
+        </v-expansion-panels>
 
       </v-tabs-window-item>
 
@@ -293,134 +316,337 @@
         </v-row>
       </v-tabs-window-item>
 
+      <!-- ══════════════ TAB VENDEDORES ══════════════ -->
+      <v-tabs-window-item value="vendedores">
+
+        <v-row v-if="cargandoProgresoVendedor" class="mt-2">
+          <v-col v-for="i in 3" :key="i" cols="12"><v-skeleton-loader type="list-item-two-line" /></v-col>
+        </v-row>
+
+        <v-row v-else-if="progresoVendedorAgrupado.length === 0" class="mt-2">
+          <v-col><v-alert type="info" variant="tonal">No hay metas cargadas para este período.</v-alert></v-col>
+        </v-row>
+
+        <v-expansion-panels v-else variant="accordion" class="zona-panels">
+          <v-expansion-panel v-for="vend in progresoVendedorAgrupado" :key="vend.codVendedor">
+            <v-expansion-panel-title>
+              <div class="d-flex align-center gap-3 flex-grow-1 flex-wrap pr-2">
+                <v-icon size="16" color="#1E40AF">mdi-account</v-icon>
+                <span class="zona-panel-name">{{ vend.nomVendedor }}</span>
+                <span class="gestion-vend-cod">· {{ vend.codVendedor }}</span>
+                <v-chip v-if="vend.cumplida" color="success" size="x-small" variant="flat">✓ Cumplida</v-chip>
+                <div class="flex-grow-1" />
+                <span class="zona-panel-kpi d-none d-sm-flex">
+                  <span class="text-caption text-medium-emphasis mr-1">Meta:</span>
+                  <span class="mono font-weight-medium">$ {{ fmt(vend.meta) }}</span>
+                </span>
+                <v-chip
+                  size="small"
+                  :color="colorPct(vend.meta ? Math.round((modo === 'total' ? vend.totalVenta : vend.totalFact) / vend.meta * 100) : 0)"
+                  variant="flat"
+                >
+                  {{ vend.meta ? Math.round((modo === 'total' ? vend.totalVenta : vend.totalFact) / vend.meta * 100) : 0 }}%
+                </v-chip>
+              </div>
+            </v-expansion-panel-title>
+            <v-expansion-panel-text class="pa-0">
+              <div class="pa-3">
+
+                <!-- Barra de progreso global del vendedor -->
+                <div class="vend-progress-row mb-3">
+                  <div class="d-flex justify-space-between text-caption mb-1">
+                    <span class="mono font-weight-medium">$ {{ fmt(modo === 'total' ? vend.totalVenta : vend.totalFact) }} vendido</span>
+                    <span class="text-medium-emphasis">Meta <span class="mono">$ {{ fmt(vend.meta) }}</span></span>
+                  </div>
+                  <v-progress-linear
+                    :model-value="Math.min(vend.meta ? Math.round((modo === 'total' ? vend.totalVenta : vend.totalFact) / vend.meta * 100) : 0, 100)"
+                    :color="colorPct(vend.meta ? Math.round((modo === 'total' ? vend.totalVenta : vend.totalFact) / vend.meta * 100) : 0)"
+                    bg-color="#E9EEF6"
+                    height="8"
+                    rounded
+                  />
+                </div>
+
+                <!-- Desglose por zona -->
+                <div class="vend-zona-table">
+                  <div class="vend-zona-row vend-zona-header">
+                    <span>Zona</span>
+                    <span class="text-right">Pedidos</span>
+                    <span class="text-right">Vendido</span>
+                    <span class="text-right">% del total</span>
+                  </div>
+                  <div
+                    v-for="zona in vend.zonas.filter((z: any) => (modo === 'total' ? z.VENTA_TOTAL : z.VENTA_FACTURADO) > 0 || z.NUM_PEDIDOS > 0)"
+                    :key="zona.CODRUTA_ZONA"
+                    class="vend-zona-row"
+                  >
+                    <span>
+                      <v-icon size="12" color="#1E40AF" class="mr-1">mdi-map-marker-radius</v-icon>
+                      {{ zona.NOMBRE_ZONA }}
+                    </span>
+                    <span class="text-right mono text-caption">{{ modo === 'total' ? zona.NUM_PEDIDOS : zona.NUM_FACTURADO }}</span>
+                    <span class="text-right mono font-weight-medium">$ {{ fmt(modo === 'total' ? zona.VENTA_TOTAL : zona.VENTA_FACTURADO) }}</span>
+                    <span class="text-right">
+                      <v-chip size="x-small" color="primary" variant="tonal">
+                        {{ (modo === 'total' ? vend.totalVenta : vend.totalFact) > 0
+                          ? Math.round((modo === 'total' ? zona.VENTA_TOTAL : zona.VENTA_FACTURADO) / (modo === 'total' ? vend.totalVenta : vend.totalFact) * 100)
+                          : 0 }}%
+                      </v-chip>
+                    </span>
+                  </div>
+                  <div v-if="vend.zonas.filter((z: any) => (modo === 'total' ? z.VENTA_TOTAL : z.VENTA_FACTURADO) > 0).length === 0"
+                       class="vend-zona-empty">Sin ventas registradas este período</div>
+                </div>
+
+              </div>
+            </v-expansion-panel-text>
+          </v-expansion-panel>
+        </v-expansion-panels>
+
+      </v-tabs-window-item>
+
       <!-- ══════════════ TAB GESTIÓN ══════════════ -->
       <v-tabs-window-item value="gestion">
+
         <!-- Toolbar -->
-        <div class="gestion-toolbar mb-4">
-          <div class="d-flex align-center gap-3 flex-wrap">
-            <v-icon color="#1E40AF" size="18">mdi-filter-variant</v-icon>
-            <v-autocomplete
-              v-model="filtroVendedor"
-              :items="vendedores"
-              :item-title="v => `${v.CODVENDEDOR} — ${v.NOMVENDEDOR}`"
-              item-value="CODVENDEDOR"
-              :custom-filter="(_, query, item) => {
-                const q = query.toLowerCase();
-                return String(item.raw.CODVENDEDOR).includes(q) || item.raw.NOMVENDEDOR.toLowerCase().includes(q);
-              }"
-              label="Filtrar por vendedor"
-              density="compact"
-              variant="outlined"
-              hide-details
-              clearable
-              style="max-width:320px"
-              @update:model-value="cargarMetas"
-            />
-            <v-spacer />
-            <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" @click="abrirNueva">
-              Nueva Meta
+        <div class="d-flex align-center justify-space-between mb-4 flex-wrap gap-2">
+          <div class="section-label">
+            <v-icon size="16" color="#1E40AF">mdi-map-marker-radius</v-icon>
+            Zonas con vendedores
+          </div>
+          <div class="d-flex gap-2">
+            <v-btn variant="text" size="small" prepend-icon="mdi-refresh" :loading="cargandoZonas" @click="cargarZonas">Actualizar</v-btn>
+            <v-btn color="primary" variant="flat" size="small" prepend-icon="mdi-plus" @click="dialogNuevaZona = true">
+              Nueva meta de zona
             </v-btn>
           </div>
         </div>
 
-        <!-- Tabla -->
+        <!-- Lista de zonas -->
         <div class="gestion-table-wrap">
           <v-data-table
-            :headers="headers"
-            :items="metas"
-            :loading="cargandoMetas"
+            :headers="headersZonaList"
+            :items="zonasConMeta"
+            :loading="cargandoZonas"
             density="comfortable"
-            no-data-text="No hay metas registradas para este período"
+            no-data-text="No hay zonas disponibles"
             items-per-page-text="Por página"
             class="gestion-table"
           >
-            <template #item.NOMVENDEDOR="{ item }">
-              <span class="gestion-vend-name">{{ item.NOMVENDEDOR }}</span>
-              <span class="gestion-vend-cod"> · {{ item.CODVENDEDOR }}</span>
+            <template #item.DESCRIPCION="{ item }">
+              <div class="d-flex align-center gap-2">
+                <v-icon size="14" color="#1E40AF">mdi-map-marker-radius</v-icon>
+                <span class="gestion-vend-name">{{ item.DESCRIPCION }}</span>
+                <span class="gestion-vend-cod">· {{ item.CODRUTA }}</span>
+              </div>
             </template>
-            <template #item.MES="{ item }">{{ meses.find(m => m.valor === item.MES)?.label ?? item.MES }}</template>
-            <template #item.META="{ item }">
-              <span class="mono font-weight-medium">$ {{ fmt(item.META) }}</span>
-            </template>
-            <template #item.CUMPLIDA="{ item }">
-              <v-chip
-                :color="item.CUMPLIDA ? 'success' : 'default'"
-                :variant="item.CUMPLIDA ? 'flat' : 'outlined'"
-                size="small"
-                :loading="toggling === item.ID"
-                style="cursor:pointer"
-                @click="toggleCumplida(item)"
-              >
-                <v-icon start size="14">{{ item.CUMPLIDA ? 'mdi-check-circle' : 'mdi-circle-outline' }}</v-icon>
-                {{ item.CUMPLIDA ? 'Cumplida' : 'Pendiente' }}
-              </v-chip>
+            <template #item.META_ZONA="{ item }">
+              <span v-if="item.META_ZONA" class="mono font-weight-medium">$ {{ fmt(item.META_ZONA) }}</span>
+              <span v-else class="text-medium-emphasis text-caption">—</span>
             </template>
             <template #item.acciones="{ item }">
-              <v-btn icon="mdi-pencil" variant="text" size="small" density="compact" @click="abrirEdicion(item)" />
-              <v-btn icon="mdi-delete" variant="text" size="small" density="compact" color="error" @click="confirmarEliminar(item)" />
+              <v-btn icon="mdi-eye" variant="text" size="small" density="compact" @click="abrirDetalleZona(item)" />
             </template>
           </v-data-table>
         </div>
+
       </v-tabs-window-item>
     </v-tabs-window>
 
-    <!-- Dialog crear/editar -->
-    <v-dialog v-model="dialog" max-width="480" persistent>
+    <!-- Dialog editar meta de vendedor individual -->
+    <v-dialog v-model="dialog" max-width="400" persistent>
       <v-card>
-        <v-card-title class="text-subtitle-1 font-weight-bold pa-4">{{ editando ? 'Editar Meta' : 'Nueva Meta' }}</v-card-title>
+        <v-card-title class="text-subtitle-1 font-weight-bold pa-4">Editar Meta — {{ form.nomVendedor }}</v-card-title>
         <v-card-text class="pt-0">
           <v-row dense>
             <v-col cols="12">
-              <v-autocomplete
-                v-model="form.codVendedor"
-                :items="vendedores"
-                :item-title="v => `${v.CODVENDEDOR} — ${v.NOMVENDEDOR}`"
-                item-value="CODVENDEDOR"
-                :custom-filter="(_, query, item) => {
-                  const q = query.toLowerCase();
-                  return String(item.raw.CODVENDEDOR).includes(q) || item.raw.NOMVENDEDOR.toLowerCase().includes(q);
-                }"
-                label="Vendedor *"
+              <v-text-field
+                v-model.number="form.meta"
+                label="Meta ($) *"
                 variant="outlined"
                 density="compact"
-                :disabled="editando"
-                clearable
+                type="number"
+                min="0"
+                :max="maxMetaVendedor ?? undefined"
+                prefix="$"
+                :error="metaZona > 0 && form.meta > maxMetaVendedor"
+                :error-messages="metaZona > 0 && form.meta > maxMetaVendedor ? `Máximo disponible: $ ${fmt(maxMetaVendedor)}` : ''"
               />
             </v-col>
-            <v-col cols="6">
-              <v-select v-model="form.anio" :items="aniosDisponibles" label="Año *" variant="outlined" density="compact" :disabled="editando" />
-            </v-col>
-            <v-col cols="6">
-              <v-select v-model="form.mes" :items="meses" item-title="label" item-value="valor" label="Mes *" variant="outlined" density="compact" :disabled="editando" />
-            </v-col>
-            <v-col cols="12">
-              <v-text-field v-model.number="form.meta" label="Meta ($) *" variant="outlined" density="compact" type="number" min="0" prefix="$" />
-            </v-col>
-            <v-col v-if="editando" cols="12">
+            <v-col v-if="form.id" cols="12">
               <v-switch v-model="form.cumplida" label="¿Meta cumplida?" color="success" density="compact" hide-details />
+            </v-col>
+            <v-col v-if="metaZona > 0" cols="12">
+              <div class="text-caption text-medium-emphasis">
+                Representa el <strong>{{ Math.round((form.meta / metaZona) * 100) }}%</strong> de la meta total de la zona ($ {{ fmt(metaZona) }})
+                · Disponible: <span :class="maxMetaVendedor < 0 ? 'text-error font-weight-bold' : ''">$ {{ fmt(maxMetaVendedor) }}</span>
+              </div>
             </v-col>
           </v-row>
         </v-card-text>
         <v-card-actions class="pa-4 pt-0">
           <v-spacer />
           <v-btn variant="text" @click="dialog = false">Cancelar</v-btn>
-          <v-btn color="primary" variant="flat" :loading="guardando" @click="guardar">Guardar</v-btn>
+          <v-btn color="primary" variant="flat" :loading="guardando" @click="guardarVendedor">Guardar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
 
-    <!-- Confirm eliminar -->
-    <v-dialog v-model="dialogEliminar" max-width="360">
+    <!-- Dialog: Nueva meta de zona -->
+    <v-dialog v-model="dialogNuevaZona" max-width="440" persistent>
       <v-card>
-        <v-card-text class="pt-4">
-          ¿Eliminar la meta de <strong>{{ itemAEliminar?.NOMVENDEDOR }}</strong> para
-          {{ meses.find(m => m.valor === itemAEliminar?.MES)?.label }} {{ itemAEliminar?.ANIO }}?
+        <v-card-title class="text-subtitle-1 font-weight-bold pa-4 d-flex align-center gap-2">
+          <v-icon color="#1E40AF" size="18">mdi-map-marker-plus</v-icon>
+          Nueva meta de zona
+        </v-card-title>
+        <v-card-text class="pt-0">
+          <v-row dense>
+            <v-col cols="12">
+              <v-autocomplete
+                v-model="zonaNuevaMeta"
+                :items="zonas"
+                item-title="LABEL"
+                item-value="CODRUTA"
+                label="Zona *"
+                variant="outlined"
+                density="compact"
+                clearable
+                hide-details
+              />
+            </v-col>
+            <v-col cols="12" class="mt-3">
+              <v-text-field
+                v-model.number="metaNuevaInput"
+                label="Meta total ($) *"
+                variant="outlined"
+                density="compact"
+                type="number"
+                min="0"
+                prefix="$"
+                hide-details
+              />
+            </v-col>
+            <v-col v-if="zonaNuevaMeta && metaNuevaInput > 0" cols="12" class="mt-2">
+              <div class="text-caption text-medium-emphasis">
+                <span class="font-weight-medium">{{ zonas.find((z: any) => z.CODRUTA === zonaNuevaMeta)?.NUM_VENDEDORES ?? '?' }}</span> vendedor(es) en esta zona
+                · aprox. <span class="mono">$ {{ fmt(metaNuevaInput / (zonas.find((z: any) => z.CODRUTA === zonaNuevaMeta)?.NUM_VENDEDORES || 1)) }}</span> c/u
+              </div>
+            </v-col>
+          </v-row>
         </v-card-text>
-        <v-card-actions>
+        <v-card-actions class="pa-4 pt-0">
           <v-spacer />
-          <v-btn variant="text" @click="dialogEliminar = false">Cancelar</v-btn>
-          <v-btn color="error" variant="flat" @click="eliminar">Eliminar</v-btn>
+          <v-btn variant="text" @click="dialogNuevaZona = false; zonaNuevaMeta = null; metaNuevaInput = 0">Cancelar</v-btn>
+          <v-btn color="primary" variant="flat" :loading="guardandoZona" prepend-icon="mdi-approximately-equal-box" @click="guardarNuevaMetaZona">
+            Dividir y guardar
+          </v-btn>
         </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog: Detalle de zona -->
+    <v-dialog v-model="dialogDetalleZona" max-width="680" scrollable>
+      <v-card>
+        <v-card-title class="text-subtitle-1 font-weight-bold pa-4 d-flex align-center gap-2">
+          <v-icon color="#1E40AF" size="18">mdi-map-marker-radius</v-icon>
+          {{ zonaDetalleActual?.DESCRIPCION ?? 'Zona' }}
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" density="compact" size="small" @click="dialogDetalleZona = false" />
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-4">
+
+          <!-- Meta de zona + dividir -->
+          <div class="zona-meta-panel mb-4">
+            <div class="zona-meta-header">
+              <v-icon size="16" color="#1E40AF">mdi-target</v-icon>
+              <span>Meta total de la zona</span>
+            </div>
+            <div class="d-flex align-center gap-3 flex-wrap mt-2">
+              <v-text-field
+                v-model.number="metaZonaInput"
+                label="Meta ($)"
+                variant="outlined"
+                density="compact"
+                type="number"
+                min="0"
+                prefix="$"
+                hide-details
+                style="max-width:200px"
+              />
+              <v-btn
+                color="primary"
+                variant="flat"
+                size="small"
+                prepend-icon="mdi-approximately-equal-box"
+                :loading="dividiendo"
+                @click="dividirIgualitariamente"
+              >
+                Dividir igualitariamente
+              </v-btn>
+              <div v-if="metaZona > 0" class="zona-meta-actual">
+                Meta guardada: <span class="mono font-weight-bold">$ {{ fmt(metaZona) }}</span>
+                &nbsp;·&nbsp; {{ vendedoresZona.length }} vendedor(es)
+                &nbsp;·&nbsp; aprox. <span class="mono">$ {{ fmt(metaZona / (vendedoresZona.length || 1)) }}</span> c/u
+              </div>
+            </div>
+          </div>
+
+          <!-- Tabla vendedores de la zona -->
+          <div class="gestion-table-wrap">
+            <v-data-table
+              :headers="headersZona"
+              :items="vendedoresZona"
+              :loading="cargandoVendedoresZona"
+              density="comfortable"
+              no-data-text="No hay vendedores en esta zona"
+              items-per-page-text="Por página"
+              class="gestion-table"
+            >
+              <template #item.NOMVENDEDOR="{ item }">
+                <span class="gestion-vend-name">{{ item.NOMVENDEDOR }}</span>
+                <span class="gestion-vend-cod"> · {{ item.CODVENDEDOR }}</span>
+              </template>
+              <template #item.META="{ item }">
+                <span class="mono font-weight-medium">$ {{ fmt(item.META) }}</span>
+              </template>
+              <template #item.PCT_ZONA="{ item }">
+                <div class="d-flex align-center gap-2">
+                  <v-progress-linear
+                    :model-value="pctZona(item)"
+                    color="primary"
+                    bg-color="#E9EEF6"
+                    height="6"
+                    rounded
+                    style="min-width:60px;max-width:80px"
+                  />
+                  <span class="mono text-caption font-weight-medium" :class="pctZona(item) >= 100 ? 'text-error' : ''">
+                    {{ pctZona(item) }}%
+                  </span>
+                </div>
+              </template>
+              <template #item.CUMPLIDA="{ item }">
+                <v-chip
+                  v-if="item.ID_META"
+                  :color="item.CUMPLIDA ? 'success' : 'default'"
+                  :variant="item.CUMPLIDA ? 'flat' : 'outlined'"
+                  size="small"
+                  :loading="toggling === item.ID_META"
+                  style="cursor:pointer"
+                  @click="toggleCumplida({ ID: item.ID_META, CUMPLIDA: item.CUMPLIDA })"
+                >
+                  <v-icon start size="14">{{ item.CUMPLIDA ? 'mdi-check-circle' : 'mdi-circle-outline' }}</v-icon>
+                  {{ item.CUMPLIDA ? 'Cumplida' : 'Pendiente' }}
+                </v-chip>
+                <v-chip v-else size="small" variant="outlined" color="default">Sin meta</v-chip>
+              </template>
+              <template #item.acciones="{ item }">
+                <v-btn icon="mdi-pencil" variant="text" size="small" density="compact" @click="abrirEdicionVendedor(item)" />
+              </template>
+            </v-data-table>
+          </div>
+
+        </v-card-text>
       </v-card>
     </v-dialog>
 
@@ -429,7 +655,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import axios from 'axios';
 
 const API = `${import.meta.env.VITE_API_URL}/metas-vendedor`;
@@ -451,32 +677,45 @@ const filtroMes    = ref(mesActual);
 const modo         = ref<'total' | 'facturado'>('total');
 
 // ── Progreso ──
-const progreso         = ref<any[]>([]);
-const cargandoProgreso = ref(false);
+const progreso                 = ref<any[]>([]);
+const cargandoProgreso         = ref(false);
+const progresoVendedor         = ref<any[]>([]);
+const cargandoProgresoVendedor = ref(false);
 
-// ── Gestión ──
-const vendedores     = ref<{ CODVENDEDOR: number; NOMVENDEDOR: string }[]>([]);
-const metas          = ref<any[]>([]);
-const cargandoMetas  = ref(false);
-const filtroVendedor = ref<number | null>(null);
+// ── Gestión: zonas ──
+const zonas               = ref<any[]>([]);
+const cargandoZonas       = ref(false);
+const zonaSeleccionada    = ref<number | null>(null);
+const metaZona            = ref(0);
+const metaZonaInput       = ref(0);
+const vendedoresZona      = ref<any[]>([]);
+const cargandoVendedoresZona = ref(false);
+const dividiendo          = ref(false);
 
 // ── Dialogs ──
-const dialog        = ref(false);
-const editando      = ref(false);
-const dialogEliminar = ref(false);
-const itemAEliminar  = ref<any>(null);
-const guardando      = ref(false);
-const toggling       = ref<number | null>(null);
-const form = ref({ codVendedor: null as number | null, anio: anioActual, mes: mesActual, meta: 0, cumplida: false, id: null as number | null });
-const snack = ref({ show: false, text: '', color: 'success' });
+const dialog            = ref(false);
+const dialogNuevaZona   = ref(false);
+const dialogDetalleZona = ref(false);
+const zonaNuevaMeta     = ref<number | null>(null);
+const metaNuevaInput    = ref(0);
+const guardandoZona     = ref(false);
+const guardando = ref(false);
+const toggling  = ref<number | null>(null);
+const form      = ref({ codVendedor: null as number | null, nomVendedor: '', meta: 0, cumplida: false, id: null as number | null });
+const snack     = ref({ show: false, text: '', color: 'success' });
 
-const headers = [
-  { title: 'Vendedor', key: 'NOMVENDEDOR', sortable: true },
-  { title: 'Año',      key: 'ANIO',        sortable: true, width: '80px' },
-  { title: 'Mes',      key: 'MES',         sortable: true, width: '120px' },
-  { title: 'Meta',     key: 'META',        sortable: true, width: '140px' },
-  { title: 'Cumplida', key: 'CUMPLIDA',    sortable: true, width: '90px' },
-  { title: '',         key: 'acciones',    sortable: false, width: '80px' },
+const headersZona = [
+  { title: 'Vendedor',    key: 'NOMVENDEDOR', sortable: true },
+  { title: 'Meta indiv.', key: 'META',        sortable: true, width: '160px' },
+  { title: '% de zona',   key: 'PCT_ZONA',    sortable: false, width: '160px' },
+  { title: 'Estado',      key: 'CUMPLIDA',    sortable: false, width: '130px' },
+  { title: '',            key: 'acciones',    sortable: false, width: '60px' },
+];
+const headersZonaList = [
+  { title: 'Zona',        key: 'DESCRIPCION',   sortable: true },
+  { title: 'Vendedores',  key: 'NUM_VENDEDORES', sortable: true, width: '140px' },
+  { title: 'Meta ($)',    key: 'META_ZONA',      sortable: true, width: '180px' },
+  { title: '',            key: 'acciones',       sortable: false, width: '60px' },
 ];
 
 // ── Helpers ──
@@ -523,6 +762,16 @@ function rankClass(i: number): string {
 
 // ── Computed para progreso ──
 const progresoOrdenado = computed(() => [...progreso.value].sort((a, b) => pct(b) - pct(a)));
+
+const progresoByZona = computed(() => {
+  const grupos: Record<number, { codruta: number; nombre: string; items: any[] }> = {};
+  for (const item of progreso.value) {
+    const key = Number(item.CODRUTA) || 0;
+    if (!grupos[key]) grupos[key] = { codruta: key, nombre: String(item.NOMBREZONA || 'Sin zona'), items: [] };
+    grupos[key].items.push(item);
+  }
+  return Object.values(grupos).sort((a, b) => a.nombre.localeCompare(b.nombre));
+});
 const totalMeta        = computed(() => progreso.value.reduce((s, i) => s + Number(i.META), 0));
 const totalVendido     = computed(() => progreso.value.reduce((s, i) => s + ventaModo(i), 0));
 const promedioGeneral  = computed(() => {
@@ -537,6 +786,40 @@ const rankingPedidos   = computed(() => [...progreso.value].sort((a, b) => pedid
 const rankingDistancia = computed(() => [...progreso.value].sort((a, b) => (a.META - ventaModo(a)) - (b.META - ventaModo(b))));
 const top3             = computed(() => rankingPct.value.slice(0, 3));
 
+const zonaDetalleActual = computed(() =>
+  zonas.value.find((z: any) => z.CODRUTA === zonaSeleccionada.value)
+);
+
+const progresoVendedorAgrupado = computed(() => {
+  const map: Record<number, { codVendedor: number; nomVendedor: string; meta: number; cumplida: boolean; zonas: any[]; totalVenta: number; totalFact: number }> = {};
+  for (const row of progresoVendedor.value) {
+    const k = row.CODVENDEDOR;
+    if (!map[k]) map[k] = { codVendedor: k, nomVendedor: row.NOMVENDEDOR, meta: Number(row.META), cumplida: !!row.CUMPLIDA, zonas: [], totalVenta: 0, totalFact: 0 };
+    map[k].zonas.push(row);
+    map[k].totalVenta += Number(row.VENTA_TOTAL);
+    map[k].totalFact  += Number(row.VENTA_FACTURADO);
+  }
+  return Object.values(map).sort((a, b) => a.nomVendedor.localeCompare(b.nomVendedor));
+});
+
+const zonasConMeta = computed(() =>
+  zonas.value.filter((z: any) => z.META_ZONA != null)
+);
+
+// ── Computed ──
+function pctZona(item: any): number {
+  if (!metaZona.value) return 0;
+  return Math.min(Math.round((Number(item.META) / metaZona.value) * 100), 999);
+}
+
+const maxMetaVendedor = computed(() => {
+  if (!metaZona.value) return Infinity;
+  const otras = vendedoresZona.value
+    .filter((v: any) => v.CODVENDEDOR !== form.value.codVendedor)
+    .reduce((s: number, v: any) => s + Number(v.META), 0);
+  return metaZona.value - otras;
+});
+
 // ── Data loaders ──
 async function cargarProgreso() {
   cargandoProgreso.value = true;
@@ -547,70 +830,154 @@ async function cargarProgreso() {
   finally { cargandoProgreso.value = false; }
 }
 
-async function cargarVendedores() {
-  const res = await axios.get(`${API}/vendedores`);
-  vendedores.value = res.data.data;
+async function cargarProgresoVendedor() {
+  cargandoProgresoVendedor.value = true;
+  try {
+    const res = await axios.get(`${API}/progreso-vendedor`, { params: { anio: filtroAnio.value, mes: filtroMes.value } });
+    progresoVendedor.value = res.data.data;
+  } catch { mostrarSnack('Error al obtener progreso por vendedor', 'error'); }
+  finally { cargandoProgresoVendedor.value = false; }
 }
 
-async function cargarMetas() {
-  cargandoMetas.value = true;
+async function cargarZonas() {
+  cargandoZonas.value = true;
   try {
-    const params: any = { anio: filtroAnio.value, mes: filtroMes.value };
-    if (filtroVendedor.value) params.codVendedor = filtroVendedor.value;
-    const res = await axios.get(API, { params });
-    metas.value = res.data.data;
-  } finally { cargandoMetas.value = false; }
+    const res = await axios.get(`${API}/zonas`, { params: { anio: filtroAnio.value, mes: filtroMes.value } });
+    zonas.value = (res.data.data ?? []).map((z: any) => ({
+      ...z,
+      LABEL: `${z.CODRUTA} - ${z.DESCRIPCION}`,
+    }));
+  } catch (e) {
+    console.error('[metas] error zonas:', e);
+    mostrarSnack('Error al obtener zonas', 'error');
+  }
+  finally { cargandoZonas.value = false; }
 }
+
+async function cargarVendedoresZona() {
+  if (!zonaSeleccionada.value) return;
+  cargandoVendedoresZona.value = true;
+  try {
+    const res = await axios.get(`${API}/zonas/${zonaSeleccionada.value}/vendedores`, {
+      params: { anio: filtroAnio.value, mes: filtroMes.value }
+    });
+    vendedoresZona.value = res.data.vendedores;
+    metaZona.value       = Number(res.data.metaZona ?? 0);
+    metaZonaInput.value  = metaZona.value || 0;
+  } catch { mostrarSnack('Error al obtener vendedores de la zona', 'error'); }
+  finally { cargandoVendedoresZona.value = false; }
+}
+
+watch(tab, (val) => {
+  if (val === 'vendedores' && !progresoVendedor.value.length) cargarProgresoVendedor();
+});
+
+watch(zonaSeleccionada, () => {
+  vendedoresZona.value = [];
+  metaZona.value       = 0;
+  metaZonaInput.value  = 0;
+});
 
 async function recargar() {
-  await Promise.all([cargarProgreso(), cargarMetas()]);
+  progresoVendedor.value = [];
+  await Promise.all([cargarProgreso(), cargarZonas()]);
+  if (tab.value === 'vendedores') await cargarProgresoVendedor();
+  if (zonaSeleccionada.value) await cargarVendedoresZona();
 }
 
-// ── CRUD ──
-function abrirNueva() {
-  editando.value = false;
-  form.value = { codVendedor: null, anio: filtroAnio.value, mes: filtroMes.value, meta: 0, cumplida: false, id: null };
+// ── Zona: abrir detalle y guardar nueva meta ──
+async function abrirDetalleZona(zona: any) {
+  zonaSeleccionada.value = zona.CODRUTA;
+  dialogDetalleZona.value = true;
+  await cargarVendedoresZona();
+}
+
+async function guardarNuevaMetaZona() {
+  if (!zonaNuevaMeta.value || !metaNuevaInput.value) {
+    mostrarSnack('Completá la zona y la meta', 'warning'); return;
+  }
+  guardandoZona.value = true;
+  try {
+    await axios.post(`${API}/zonas/${zonaNuevaMeta.value}`, {
+      anio: filtroAnio.value, mes: filtroMes.value, meta: metaNuevaInput.value,
+    });
+    mostrarSnack('Meta de zona guardada y distribuida');
+    dialogNuevaZona.value = false;
+    zonaNuevaMeta.value   = null;
+    metaNuevaInput.value  = 0;
+    await Promise.all([cargarZonas(), cargarProgreso()]);
+  } catch { mostrarSnack('Error al guardar la meta de zona', 'error'); }
+  finally { guardandoZona.value = false; }
+}
+
+// ── Zona: dividir igualitariamente ──
+async function dividirIgualitariamente() {
+  if (!zonaSeleccionada.value || !metaZonaInput.value) {
+    mostrarSnack('Ingresá un monto de meta para la zona', 'warning'); return;
+  }
+  dividiendo.value = true;
+  try {
+    await axios.post(`${API}/zonas/${zonaSeleccionada.value}`, {
+      anio: filtroAnio.value,
+      mes:  filtroMes.value,
+      meta: metaZonaInput.value,
+    });
+    mostrarSnack('Meta dividida igualitariamente entre los vendedores');
+    await Promise.all([cargarVendedoresZona(), cargarZonas()]);
+    await cargarProgreso();
+  } catch { mostrarSnack('Error al guardar la meta de zona', 'error'); }
+  finally { dividiendo.value = false; }
+}
+
+// ── Edición por vendedor ──
+function abrirEdicionVendedor(item: any) {
+  form.value = {
+    codVendedor: item.CODVENDEDOR,
+    nomVendedor: item.NOMVENDEDOR,
+    meta:        Number(item.META),
+    cumplida:    !!item.CUMPLIDA,
+    id:          item.ID_META ?? null,
+  };
   dialog.value = true;
 }
-function abrirEdicion(item: any) {
-  editando.value = true;
-  form.value = { codVendedor: item.CODVENDEDOR, anio: item.ANIO, mes: item.MES, meta: item.META, cumplida: !!item.CUMPLIDA, id: item.ID };
-  dialog.value = true;
-}
-async function guardar() {
-  if (!form.value.codVendedor || !form.value.anio || !form.value.mes || form.value.meta == null) {
+
+async function guardarVendedor() {
+  if (!form.value.codVendedor || form.value.meta == null) {
     mostrarSnack('Completá todos los campos requeridos', 'warning'); return;
+  }
+  if (metaZona.value > 0 && form.value.meta > maxMetaVendedor.value) {
+    mostrarSnack(`La meta supera el disponible de la zona (máx. $ ${fmt(maxMetaVendedor.value)})`, 'error'); return;
   }
   guardando.value = true;
   try {
-    await axios.post(API, { codVendedor: form.value.codVendedor, anio: form.value.anio, mes: form.value.mes, meta: form.value.meta });
-    if (editando.value && form.value.id) await axios.patch(`${API}/${form.value.id}/cumplida`, { cumplida: form.value.cumplida });
+    await axios.post(API, {
+      codVendedor: form.value.codVendedor,
+      anio: filtroAnio.value,
+      mes:  filtroMes.value,
+      meta: form.value.meta,
+    });
+    if (form.value.id) await axios.patch(`${API}/${form.value.id}/cumplida`, { cumplida: form.value.cumplida });
     dialog.value = false;
     mostrarSnack('Meta guardada correctamente');
-    await recargar();
+    await cargarVendedoresZona();
+    await cargarProgreso();
   } catch { mostrarSnack('Error al guardar la meta', 'error'); }
   finally { guardando.value = false; }
 }
+
 async function toggleCumplida(item: any) {
   toggling.value = item.ID;
   try {
     const nueva = !item.CUMPLIDA;
     await axios.patch(`${API}/${item.ID}/cumplida`, { cumplida: nueva });
-    item.CUMPLIDA = nueva;
+    const vend = vendedoresZona.value.find((v: any) => v.ID_META === item.ID);
+    if (vend) vend.CUMPLIDA = nueva;
     mostrarSnack(nueva ? 'Meta marcada como cumplida' : 'Meta desmarcada');
   } catch { mostrarSnack('Error al actualizar la meta', 'error'); }
   finally { toggling.value = null; }
 }
-function confirmarEliminar(item: any) { itemAEliminar.value = item; dialogEliminar.value = true; }
-async function eliminar() {
-  await axios.delete(`${API}/${itemAEliminar.value.ID}`);
-  dialogEliminar.value = false;
-  mostrarSnack('Meta eliminada');
-  await recargar();
-}
 
 onMounted(async () => {
-  await cargarVendedores();
   await recargar();
 });
 </script>
@@ -876,6 +1243,30 @@ onMounted(async () => {
   color: var(--c-sub);
 }
 
+/* ── Panel meta zona ── */
+.zona-meta-panel {
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-left: 4px solid var(--c-primary);
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+.zona-meta-header {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--c-sub);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.zona-meta-actual {
+  font-size: 0.8rem;
+  color: var(--c-sub);
+  align-self: center;
+}
+
 /* ── Gestión tab ── */
 .gestion-toolbar {
   background: var(--c-bg);
@@ -917,6 +1308,75 @@ onMounted(async () => {
 .gestion-cumplida-label {
   font-size: 0.78rem;
   font-weight: 500;
+}
+
+/* ── Zona expansion panels (progreso) ── */
+.zona-panels {
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.zona-panels :deep(.v-expansion-panel) {
+  border-radius: 0 !important;
+}
+.zona-panels :deep(.v-expansion-panel-title) {
+  background: white;
+  border-bottom: 1px solid var(--c-border);
+  min-height: 52px;
+  padding: 8px 16px;
+}
+.zona-panels :deep(.v-expansion-panel-title:hover) {
+  background: var(--c-bg);
+}
+.zona-panels :deep(.v-expansion-panel-text__wrapper) {
+  padding: 0;
+}
+.zona-panel-name {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--c-text);
+}
+.zona-panel-kpi {
+  display: flex;
+  align-items: center;
+  font-size: 0.82rem;
+  color: var(--c-text);
+  gap: 4px;
+}
+
+/* ── Vendedores tab: desglose por zona ── */
+.vend-progress-row { padding: 0 4px; }
+.vend-zona-table {
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 0.82rem;
+}
+.vend-zona-row {
+  display: grid;
+  grid-template-columns: 1fr 90px 160px 100px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-bottom: 1px solid #F1F5F9;
+  transition: background 120ms;
+}
+.vend-zona-row:last-child { border-bottom: none; }
+.vend-zona-row:not(.vend-zona-header):hover { background: var(--c-bg); }
+.vend-zona-header {
+  background: var(--c-bg);
+  border-bottom: 1px solid var(--c-border);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--c-sub);
+}
+.vend-zona-empty {
+  padding: 12px 14px;
+  font-size: 0.8rem;
+  color: var(--c-sub);
+  font-style: italic;
 }
 
 /* ── Misc ── */

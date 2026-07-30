@@ -17,10 +17,124 @@ export class MetasService {
                     FECHACARGA  DATETIME      NOT NULL DEFAULT GETDATE(),
                     CONSTRAINT UQ_META_VEND_MES UNIQUE (CODVENDEDOR, ANIO, MES)
                 );
+                IF NOT EXISTS (SELECT 1 FROM sysobjects WHERE name='APP_METAS_ZONA' AND xtype='U')
+                CREATE TABLE APP_METAS_ZONA (
+                    ID          INT IDENTITY(1,1) PRIMARY KEY,
+                    CODRUTA     INT           NOT NULL,
+                    ANIO        INT           NOT NULL,
+                    MES         INT           NOT NULL,
+                    META        DECIMAL(18,2) NOT NULL,
+                    FECHACARGA  DATETIME      NOT NULL DEFAULT GETDATE(),
+                    CONSTRAINT UQ_META_ZONA UNIQUE (CODRUTA, ANIO, MES)
+                );
             `);
-            console.log('Tabla APP_METAS_VENDEDOR verificada.');
+            console.log('Tablas APP_METAS_VENDEDOR y APP_METAS_ZONA verificadas.');
         } catch (err) {
             console.error('Error en MetasService.initTablas:', err);
+        }
+    }
+
+    static async getZonas(anio: number, mes: number): Promise<any[]> {
+        const pool = await connectDb();
+        const res = await pool.request()
+            .input('ANIO', mssql.Int, anio)
+            .input('MES',  mssql.Int, mes)
+            .query(`
+                SELECT
+                    R.CODRUTA,
+                    R.DESCRIPCION,
+                    COUNT(DISTINCT TRY_CAST(CLC.CODVENDEDOR AS INT)) AS NUM_VENDEDORES,
+                    MZ.META AS META_ZONA,
+                    MZ.ID   AS ID_ZONA
+                FROM RUTAS R
+                LEFT JOIN CLIENTESCAMPOSLIBRES CLC WITH(NOLOCK)
+                    ON  TRY_CAST(CLC.ZONA AS INT) = R.CODRUTA
+                    AND CLC.CODVENDEDOR IS NOT NULL
+                    AND LTRIM(RTRIM(CAST(CLC.CODVENDEDOR AS NVARCHAR))) != ''
+                    AND TRY_CAST(CLC.CODVENDEDOR AS INT) > 0
+                LEFT JOIN APP_METAS_ZONA MZ
+                    ON  MZ.CODRUTA = R.CODRUTA AND MZ.ANIO = @ANIO AND MZ.MES = @MES
+                GROUP BY R.CODRUTA, R.DESCRIPCION, MZ.META, MZ.ID
+                HAVING COUNT(DISTINCT TRY_CAST(CLC.CODVENDEDOR AS INT)) > 0
+                ORDER BY R.DESCRIPCION
+            `);
+        return res.recordset;
+    }
+
+    static async getVendedoresByZona(codruta: number, anio: number, mes: number): Promise<{ vendedores: any[]; metaZona: number }> {
+        const pool = await connectDb();
+        const metaRes = await pool.request()
+            .input('CODRUTA', mssql.Int, codruta)
+            .input('ANIO',    mssql.Int, anio)
+            .input('MES',     mssql.Int, mes)
+            .query(`
+                SELECT ISNULL(META, 0) AS META
+                FROM APP_METAS_ZONA
+                WHERE CODRUTA = @CODRUTA AND ANIO = @ANIO AND MES = @MES
+            `);
+        const metaZona = Number(metaRes.recordset[0]?.META ?? 0);
+
+        const res = await pool.request()
+            .input('CODRUTA', mssql.Int, codruta)
+            .input('ANIO',    mssql.Int, anio)
+            .input('MES',     mssql.Int, mes)
+            .query(`
+                SELECT
+                    V.CODVENDEDOR,
+                    V.NOMVENDEDOR,
+                    ISNULL(M.META, 0)    AS META,
+                    M.ID                 AS ID_META,
+                    ISNULL(M.CUMPLIDA,0) AS CUMPLIDA
+                FROM (
+                    SELECT DISTINCT TRY_CAST(CLC.CODVENDEDOR AS INT) AS CODVENDEDOR
+                    FROM CLIENTESCAMPOSLIBRES CLC WITH(NOLOCK)
+                    WHERE TRY_CAST(CLC.ZONA AS INT) = @CODRUTA
+                      AND CLC.CODVENDEDOR IS NOT NULL
+                      AND LTRIM(RTRIM(CAST(CLC.CODVENDEDOR AS NVARCHAR))) != ''
+                      AND TRY_CAST(CLC.CODVENDEDOR AS INT) > 0
+                ) Z
+                INNER JOIN VENDEDORES V WITH(NOLOCK) ON V.CODVENDEDOR = Z.CODVENDEDOR
+                LEFT JOIN APP_METAS_VENDEDOR M
+                    ON M.CODVENDEDOR = Z.CODVENDEDOR AND M.ANIO = @ANIO AND M.MES = @MES
+                ORDER BY V.NOMVENDEDOR
+            `);
+        return { vendedores: res.recordset, metaZona };
+    }
+
+    static async setMetaZona(codruta: number, anio: number, mes: number, metaTotal: number): Promise<void> {
+        const pool = await connectDb();
+
+        // Upsert zona meta
+        await pool.request()
+            .input('CODRUTA', mssql.Int,           codruta)
+            .input('ANIO',    mssql.Int,           anio)
+            .input('MES',     mssql.Int,           mes)
+            .input('META',    mssql.Decimal(18, 2), metaTotal)
+            .query(`
+                MERGE APP_METAS_ZONA AS T
+                USING (SELECT @CODRUTA AS C, @ANIO AS A, @MES AS M) AS S
+                ON (T.CODRUTA = S.C AND T.ANIO = S.A AND T.MES = S.M)
+                WHEN MATCHED     THEN UPDATE SET T.META = @META, T.FECHACARGA = GETDATE()
+                WHEN NOT MATCHED THEN INSERT (CODRUTA, ANIO, MES, META) VALUES (@CODRUTA, @ANIO, @MES, @META);
+            `);
+
+        // Get vendors in zone
+        const vendRes = await pool.request()
+            .input('CODRUTA', mssql.Int, codruta)
+            .query(`
+                SELECT DISTINCT TRY_CAST(CODVENDEDOR AS INT) AS CODVENDEDOR
+                FROM CLIENTESCAMPOSLIBRES WITH(NOLOCK)
+                WHERE TRY_CAST(ZONA AS INT) = @CODRUTA
+                  AND CODVENDEDOR IS NOT NULL
+                  AND LTRIM(RTRIM(CAST(CODVENDEDOR AS NVARCHAR))) != ''
+                  AND TRY_CAST(CODVENDEDOR AS INT) > 0
+            `);
+        const vendors = vendRes.recordset;
+        if (!vendors.length) return;
+
+        const metaPorVendedor = Math.round((metaTotal / vendors.length) * 100) / 100;
+        for (const { CODVENDEDOR } of vendors) {
+            await MetasService.upsert(CODVENDEDOR, anio, mes, metaPorVendedor);
         }
     }
 
@@ -125,20 +239,71 @@ export class MetasService {
                     V.NOMVENDEDOR,
                     M.META,
                     M.CUMPLIDA,
+                    ISNULL(CZ.CODRUTA, 0)                AS CODRUTA,
+                    ISNULL(RZ.DESCRIPCION, 'Sin zona')   AS NOMBREZONA,
                     ISNULL(SUM(CASE WHEN CP.ESTATUS != 'CANCELADO' THEN CP.TOTALPRECIO ELSE 0 END), 0)           AS VENTA_TOTAL,
                     ISNULL(SUM(CASE WHEN CP.ESTATUS IN ('ICG','FINALIZADO') THEN CP.TOTALPRECIO ELSE 0 END), 0)  AS VENTA_FACTURADO,
                     COUNT(CASE WHEN CP.ESTATUS != 'CANCELADO'              THEN 1 END)                           AS NUM_PEDIDOS,
                     COUNT(CASE WHEN CP.ESTATUS IN ('ICG','FINALIZADO')     THEN 1 END)                           AS NUM_FACTURADO
                 FROM APP_METAS_VENDEDOR M
                 INNER JOIN VENDEDORES V ON V.CODVENDEDOR = M.CODVENDEDOR
+                OUTER APPLY (
+                    SELECT TOP 1 MZ.CODRUTA
+                    FROM APP_METAS_ZONA MZ WITH(NOLOCK)
+                    INNER JOIN CLIENTESCAMPOSLIBRES CLC WITH(NOLOCK)
+                        ON  TRY_CAST(CLC.ZONA AS INT) = MZ.CODRUTA
+                        AND TRY_CAST(CLC.CODVENDEDOR AS INT) = M.CODVENDEDOR
+                    WHERE MZ.ANIO = @ANIO AND MZ.MES = @MES
+                    ORDER BY MZ.CODRUTA
+                ) CZ
+                LEFT JOIN RUTAS RZ WITH(NOLOCK) ON RZ.CODRUTA = CZ.CODRUTA
                 LEFT JOIN CABECERA_PED CP
                     ON  CP.CODVENDEDOR = M.CODVENDEDOR
                     AND YEAR(CP.FECHA)  = @ANIO
                     AND MONTH(CP.FECHA) = @MES
+                    AND (CZ.CODRUTA IS NULL OR EXISTS (
+                        SELECT 1 FROM CLIENTESCAMPOSLIBRES CLC2 WITH(NOLOCK)
+                        WHERE CLC2.CODCLIENTE = CP.CLIENTEID
+                          AND TRY_CAST(CLC2.ZONA AS INT) = CZ.CODRUTA
+                    ))
                 WHERE M.ANIO = @ANIO AND M.MES = @MES
-                GROUP BY M.ID, M.CODVENDEDOR, V.NOMVENDEDOR, M.META, M.CUMPLIDA
-                ORDER BY VENTA_TOTAL DESC
+                GROUP BY M.ID, M.CODVENDEDOR, V.NOMVENDEDOR, M.META, M.CUMPLIDA, CZ.CODRUTA, RZ.DESCRIPCION
+                ORDER BY ISNULL(RZ.DESCRIPCION, 'Sin zona'), VENTA_TOTAL DESC
         `);
+        return res.recordset;
+    }
+
+    static async getProgresoVendedor(anio: number, mes: number): Promise<any[]> {
+        const pool = await connectDb();
+        const res = await pool.request()
+            .input('ANIO', mssql.Int, anio)
+            .input('MES',  mssql.Int, mes)
+            .query(`
+                SELECT
+                    M.ID              AS ID_META,
+                    M.CODVENDEDOR,
+                    V.NOMVENDEDOR,
+                    M.META,
+                    M.CUMPLIDA,
+                    ISNULL(TRY_CAST(CLC.ZONA AS INT), 0)  AS CODRUTA_ZONA,
+                    ISNULL(RZ.DESCRIPCION, 'Sin zona')     AS NOMBRE_ZONA,
+                    ISNULL(SUM(CASE WHEN CP.ESTATUS != 'CANCELADO'          THEN CP.TOTALPRECIO ELSE 0 END), 0) AS VENTA_TOTAL,
+                    ISNULL(SUM(CASE WHEN CP.ESTATUS IN ('ICG','FINALIZADO') THEN CP.TOTALPRECIO ELSE 0 END), 0) AS VENTA_FACTURADO,
+                    COUNT(CASE WHEN CP.ESTATUS != 'CANCELADO'               THEN 1 END)                        AS NUM_PEDIDOS,
+                    COUNT(CASE WHEN CP.ESTATUS IN ('ICG','FINALIZADO')      THEN 1 END)                        AS NUM_FACTURADO
+                FROM APP_METAS_VENDEDOR M
+                INNER JOIN VENDEDORES V ON V.CODVENDEDOR = M.CODVENDEDOR
+                LEFT JOIN CABECERA_PED CP
+                    ON  CP.CODVENDEDOR = M.CODVENDEDOR
+                    AND YEAR(CP.FECHA)  = @ANIO
+                    AND MONTH(CP.FECHA) = @MES
+                LEFT JOIN CLIENTESCAMPOSLIBRES CLC WITH(NOLOCK) ON CLC.CODCLIENTE = CP.CLIENTEID
+                LEFT JOIN RUTAS RZ WITH(NOLOCK) ON RZ.CODRUTA = TRY_CAST(CLC.ZONA AS INT)
+                WHERE M.ANIO = @ANIO AND M.MES = @MES
+                GROUP BY M.ID, M.CODVENDEDOR, V.NOMVENDEDOR, M.META, M.CUMPLIDA,
+                         TRY_CAST(CLC.ZONA AS INT), RZ.DESCRIPCION
+                ORDER BY V.NOMVENDEDOR, ISNULL(RZ.DESCRIPCION, 'Sin zona')
+            `);
         return res.recordset;
     }
 
