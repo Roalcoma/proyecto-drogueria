@@ -336,18 +336,27 @@ export class RuteroService {
             `);
         const id = ruteroRes.recordset[0].ID;
 
+        let insertadas = 0;
         for (const f of facturas) {
-            await pool.request()
+            const ins = await pool.request()
                 .input('IDRUTERO',   mssql.Int,         id)
                 .input('NUMSERIE',   mssql.VarChar(20), f.numserie)
                 .input('NUMFACTURA', mssql.Int,         f.numfactura)
                 .query(`
                     INSERT INTO APP_RUTEROS_DETALLE (IDRUTERO, NUMSERIE, NUMFACTURA)
-                    VALUES (@IDRUTERO, @NUMSERIE, @NUMFACTURA)
+                    SELECT @IDRUTERO, @NUMSERIE, @NUMFACTURA
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM APP_RUTEROS_DETALLE ARD2
+                        INNER JOIN APP_RUTEROS AR2 ON AR2.ID = ARD2.IDRUTERO
+                        WHERE ARD2.NUMSERIE   COLLATE DATABASE_DEFAULT = @NUMSERIE COLLATE DATABASE_DEFAULT
+                          AND ARD2.NUMFACTURA = @NUMFACTURA
+                          AND AR2.ESTADO IN ('PENDIENTE', 'EN_RUTA')
+                    )
                 `);
+            insertadas += ins.rowsAffected[0];
         }
 
-        await RuteroService.registrarLog('CREAR', usuario, id, `Ruta: ${nombreRuta}, ${facturas.length} facturas`);
+        await RuteroService.registrarLog('CREAR', usuario, id, `Ruta: ${nombreRuta}, ${insertadas}/${facturas.length} facturas`);
         return { id, numero };
     }
 
