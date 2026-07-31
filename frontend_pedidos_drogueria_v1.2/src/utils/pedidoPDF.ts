@@ -59,13 +59,15 @@ export interface PedidoPDFData {
     conteo?: ConteoPDFData;
 }
 
-export async function generarPedidoPDF(data: PedidoPDFData): Promise<void> {
-    const doc = new jsPDF();
+// ── Internal: renders one pedido into an existing jsPDF doc (no window.open) ──
+async function renderPedidoEnDoc(doc: jsPDF, data: PedidoPDFData, preloadedLogo?: string | null): Promise<void> {
 
     // --- Logo ---
     try {
-        const logoData = await compressImageForPDF(useBrandingStore().logo, 42, 22);
-        doc.addImage(logoData, 'JPEG', 14, 5, 42, 22);
+        const logo = preloadedLogo !== undefined
+            ? preloadedLogo
+            : await compressImageForPDF(useBrandingStore().logo, 42, 22);
+        if (logo) doc.addImage(logo, 'JPEG', 14, 5, 42, 22);
     } catch { /* si falla, el PDF sigue sin logo */ }
 
     // --- Encabezado empresa ---
@@ -308,5 +310,23 @@ export async function generarPedidoPDF(data: PedidoPDFData): Promise<void> {
     doc.text('© RedesIP — Sistema de Pedidos Droguería Intercontinental', 105, pageH - 5, { align: 'center' });
     doc.setTextColor(0);
 
+}
+
+export async function generarPedidoPDF(data: PedidoPDFData): Promise<void> {
+    const doc = new jsPDF();
+    await renderPedidoEnDoc(doc, data);
+    window.open(doc.output('bloburl'), '_blank');
+}
+
+export async function generarPDFMultiple(dataArray: PedidoPDFData[]): Promise<void> {
+    if (dataArray.length === 0) return;
+    // Pre-load logo once so all pages reuse it
+    let logo: string | null = null;
+    try { logo = await compressImageForPDF(useBrandingStore().logo, 42, 22); } catch { /* sin logo */ }
+    const doc = new jsPDF();
+    for (let i = 0; i < dataArray.length; i++) {
+        if (i > 0) doc.addPage();
+        await renderPedidoEnDoc(doc, dataArray[i], logo);
+    }
     window.open(doc.output('bloburl'), '_blank');
 }

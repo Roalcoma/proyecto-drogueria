@@ -597,7 +597,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { usePageSize } from '../utils/usePageSize';
 import axios from 'axios';
 import { useRouter } from 'vue-router';
-import { generarPedidoPDF, type ConteoPDFData, type FormatoPDF } from '../utils/pedidoPDF';
+import { generarPedidoPDF, generarPDFMultiple, type PedidoPDFData, type ConteoPDFData, type FormatoPDF } from '../utils/pedidoPDF';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useCarritoStore } from '../stores/useCarritoStore';
 import MontoDisplay from '../components/MontoDisplay.vue';
@@ -955,7 +955,8 @@ const imprimirPDFMultiple = async () => {
         ])
       )
     );
-    // Generar PDF para cada pedido encadenado (uno por uno para no abrir N ventanas)
+    // Armar array de datos y generar un único PDF con todas las proformas
+    const dataArray: PedidoPDFData[] = [];
     for (let i = 0; i < pedidosSeleccionados.value.length; i++) {
       const item = pedidosSeleccionados.value[i];
       const [pedidoRes, conteoRes] = resultados[i];
@@ -967,7 +968,7 @@ const imprimirPDFMultiple = async () => {
       if (conteoRes?.data?.success && conteoRes.data.data) {
         conteo = { fechaConteo: conteoRes.data.data.fechaConteo, estadoConteo: conteoRes.data.data.estadoConteo, lineas: conteoRes.data.data.lineas };
       }
-      await generarPedidoPDF({
+      dataArray.push({
         numeroOrden: item.ORDERID, fecha: item.FECHA, estatus: item.ESTATUS,
         esPsicotropico: String(item.ORDERID ?? '').endsWith('P'),
         formatoPDF: formatoPDF.value,
@@ -978,6 +979,7 @@ const imprimirPDFMultiple = async () => {
         conteo,
       });
     }
+    await generarPDFMultiple(dataArray);
     pedidosSeleccionados.value = [];
   } catch {
     lanzarNotificacion('Error al generar PDFs', 'error');
