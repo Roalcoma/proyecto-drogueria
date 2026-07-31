@@ -624,16 +624,11 @@ const seleccionarProducto = async (producto: any) => {
       const res = await axios.get(`${API}/products/get-prices`, { params: { codarticulo: producto.CODARTICULO, tarifa } });
       precio = res.data.data?.[0]?.PNETO ?? res.data?.[0]?.PNETO ?? 0;
     }
-    // Heredar los 4 descuentos del pedido existente para el nuevo producto
+    // Solo heredar D1 (descuento de cabecera del cliente); D2/D3 son de promoción
+    // específica por grupo de artículo y no aplican al producto nuevo
     const ref = lineasEditadas.value[0];
     const d1 = Number(ref?.DESCUENTO1 ?? 0);
-    const d2 = Number(ref?.DESCUENTO2 ?? 0);
-    const d3 = Number(ref?.DESCUENTO3 ?? 0);
-    const d4 = Number(ref?.DESCUENTO4 ?? 0);
-    const precioConDto = [d1, d2, d3, d4].reduce(
-      (p, d) => d > 0 ? p * (1 - d / 100) : p,
-      precio
-    );
+    const precioConDto = d1 > 0 ? precio * (1 - d1 / 100) : precio;
 
     const yaExiste = lineasEditadas.value.find(l => l.CODARTICULO === producto.CODARTICULO);
     if (yaExiste) {
@@ -648,7 +643,7 @@ const seleccionarProducto = async (producto: any) => {
         PRECIOBRUTO:    precio,
         PRECIOUNITARIO: precioConDto,
         PRODUCTCOUNT:   1,
-        DESCUENTO1: d1, DESCUENTO2: d2, DESCUENTO3: d3, DESCUENTO4: d4,
+        DESCUENTO1: d1, DESCUENTO2: 0, DESCUENTO3: 0, DESCUENTO4: 0,
       });
     }
     lanzarNotificacion(`${producto.DESCRIPCION} añadido`, 'success');
