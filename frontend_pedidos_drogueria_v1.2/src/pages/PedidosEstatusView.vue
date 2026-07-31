@@ -874,7 +874,8 @@ const eliminarPedido = async () => {
 };
 
 const irAEdicion = (item: any) => {
-  if (item.ESTATUS !== 'PENDIENTE') return;
+  const esPsicoAprobacion = item.ESTATUS === 'APROBACION PSICOTROPICOS' && authStore.puedeDescuentoLinea;
+  if (item.ESTATUS !== 'PENDIENTE' && !esPsicoAprobacion) return;
   router.push({ name: 'pedidos-edicion', query: { id: item.ORDERID } });
 };
 
