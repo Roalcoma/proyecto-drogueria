@@ -258,6 +258,99 @@
       </v-card>
     </v-dialog>
 
+    <!-- ── Modal: Vista previa de importación Excel ── -->
+    <v-dialog v-model="previewImport.mostrar" max-width="900" scrollable :persistent="previewImport.cargando">
+      <v-card class="rounded-lg">
+        <v-card-title class="bg-blue-darken-3 text-white font-weight-bold d-flex align-center pa-4 gap-2">
+          <v-icon>mdi-eye-check-outline</v-icon>
+          Vista previa del pedido
+          <v-spacer />
+          <v-btn v-if="!previewImport.cargando" icon size="small" variant="text" color="white" @click="previewImport.mostrar = false">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+        </v-card-title>
+
+        <!-- Cargando -->
+        <v-card-text v-if="previewImport.cargando" class="d-flex flex-column align-center justify-center py-12 gap-4">
+          <v-progress-circular indeterminate color="primary" size="52" width="5" />
+          <p class="text-body-1 text-grey-darken-1">Consultando disponibilidad de artículos...</p>
+        </v-card-text>
+
+        <!-- Resultados -->
+        <template v-else>
+          <!-- Resumen -->
+          <div class="d-flex gap-2 flex-wrap px-5 py-3 bg-grey-lighten-4 border-b">
+            <v-chip color="success" variant="tonal" size="small" prepend-icon="mdi-check-circle">
+              {{ previewResumen.ok }} completos
+            </v-chip>
+            <v-chip color="warning" variant="tonal" size="small" prepend-icon="mdi-alert-circle">
+              {{ previewResumen.parcial }} parciales (stock insuficiente)
+            </v-chip>
+            <v-chip color="error" variant="tonal" size="small" prepend-icon="mdi-close-circle">
+              {{ previewResumen.sinStock }} sin stock · {{ previewResumen.noEncontrado }} no encontrados
+            </v-chip>
+          </div>
+
+          <!-- Tabla -->
+          <v-card-text class="pa-0" style="max-height:440px;overflow-y:auto;">
+            <v-table density="compact" hover>
+              <thead>
+                <tr class="bg-grey-lighten-3 text-caption">
+                  <th style="width:130px">Referencia</th>
+                  <th>Descripción</th>
+                  <th class="text-right" style="width:95px">Solicitado</th>
+                  <th class="text-right" style="width:95px">Disponible</th>
+                  <th class="text-right" style="width:95px">Se agrega</th>
+                  <th class="text-center" style="width:120px">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in previewImport.items" :key="item.ref"
+                    :style="item.estado === 'ok'          ? 'background:rgba(76,175,80,.07)'  :
+                            item.estado === 'parcial'     ? 'background:rgba(255,167,38,.10)' :
+                            'background:rgba(229,57,53,.07)'">
+                  <td class="text-caption font-weight-medium">{{ item.ref }}</td>
+                  <td class="text-caption" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                    {{ item.descripcion }}
+                  </td>
+                  <td class="text-right text-caption">{{ item.solicitado }}</td>
+                  <td class="text-right text-caption">
+                    <span :class="item.disponible < item.solicitado ? 'text-error font-weight-bold' : ''">
+                      {{ item.disponible }}
+                    </span>
+                  </td>
+                  <td class="text-right text-caption font-weight-bold">
+                    {{ item.aAgregar || '—' }}
+                  </td>
+                  <td class="text-center">
+                    <v-chip v-if="item.estado === 'ok'"             size="x-small" color="success" variant="flat">Completo</v-chip>
+                    <v-chip v-else-if="item.estado === 'parcial'"   size="x-small" color="warning" variant="flat">Parcial</v-chip>
+                    <v-chip v-else-if="item.estado === 'sin_stock'" size="x-small" color="error"   variant="flat">Sin stock</v-chip>
+                    <v-chip v-else                                   size="x-small" color="grey"    variant="flat">No encontrado</v-chip>
+                  </td>
+                </tr>
+              </tbody>
+            </v-table>
+          </v-card-text>
+
+          <v-divider />
+          <v-card-actions class="pa-4 bg-grey-lighten-4">
+            <v-btn variant="text" color="grey-darken-1" @click="previewImport.mostrar = false">Cancelar</v-btn>
+            <v-spacer />
+            <v-btn
+              color="success"
+              variant="flat"
+              prepend-icon="mdi-cart-plus"
+              :disabled="previewResumen.aAgregarTotal === 0"
+              @click="confirmarImportacion"
+            >
+              Agregar al carrito ({{ previewResumen.aAgregarTotal }} artículos)
+            </v-btn>
+          </v-card-actions>
+        </template>
+      </v-card>
+    </v-dialog>
+
     <v-snackbar v-model="aviso.mostrar" :color="aviso.color" timeout="3000">
       {{ aviso.texto }}
     </v-snackbar>
@@ -265,7 +358,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import axios from 'axios';
 import { usePageSize } from '../utils/usePageSize';
 import * as XLSX from 'xlsx';
@@ -312,6 +405,30 @@ const headersProductos = [
 
 const modalCantidad = ref({ mostrar: false, producto: null as any, cantidad: 1, stockMaximo: 0 });
 const aviso = ref({ mostrar: false, texto: '', color: 'success' });
+
+// EXCEL — preview de importación
+type ExcelItem = {
+  ref: string;
+  descripcion: string;
+  solicitado: number;
+  disponible: number;
+  aAgregar: number;
+  estado: 'ok' | 'parcial' | 'sin_stock' | 'no_encontrado';
+  producto: any;
+};
+
+const previewImport = ref({ mostrar: false, cargando: false, items: [] as ExcelItem[] });
+
+const previewResumen = computed(() => {
+  const items = previewImport.value.items;
+  return {
+    ok:            items.filter(i => i.estado === 'ok').length,
+    parcial:       items.filter(i => i.estado === 'parcial').length,
+    sinStock:      items.filter(i => i.estado === 'sin_stock').length,
+    noEncontrado:  items.filter(i => i.estado === 'no_encontrado').length,
+    aAgregarTotal: items.filter(i => i.estado === 'ok' || i.estado === 'parcial').length,
+  };
+});
 
 // EXCEL — segmentos dinámicos desde D1 de clientes
 const segmentosDisponibles = ref<{ id: number; nombre: string }[]>([]);
@@ -533,27 +650,53 @@ const importarArticulosExcel = async (fileOrFiles: File | File[] | null) => {
     const itemsParaCargar = jsonData.filter(row => getCantidad(row) > 0);
 
     if (itemsParaCargar.length === 0) { lanzarAviso("No hay cantidades en el archivo", "warning"); return; }
-    lanzarAviso(`Cargando ${itemsParaCargar.length} productos...`, "info");
 
-    let agregados = 0;
+    previewImport.value = { mostrar: true, cargando: true, items: [] };
+
+    const resultados: ExcelItem[] = [];
     for (const item of itemsParaCargar) {
+      const ref = getRef(item);
+      const solicitado = getCantidad(item);
       try {
-        const ref = getRef(item);
         const res = await axios.get(`${import.meta.env.VITE_API_URL}/products/get-products?articulo=${encodeURIComponent(ref)}`);
         if (res.data.success && res.data.data.length > 0) {
           const pBD = res.data.data[0];
-          const stock = getStockTotal(pBD);
-          if (stock > 0) {
-            carritoStore.agregarArticulo(pBD, Math.min(getCantidad(item), stock));
-            agregados++;
-          }
+          const disponible = getStockTotal(pBD);
+          resultados.push({
+            ref,
+            descripcion: pBD.DESCRIPCION ?? ref,
+            solicitado,
+            disponible,
+            aAgregar: Math.min(solicitado, disponible),
+            estado: disponible === 0 ? 'sin_stock' : disponible >= solicitado ? 'ok' : 'parcial',
+            producto: pBD,
+          });
+        } else {
+          resultados.push({ ref, descripcion: ref, solicitado, disponible: 0, aAgregar: 0, estado: 'no_encontrado', producto: null });
         }
-      } catch (err) { console.error(err); }
+      } catch {
+        resultados.push({ ref, descripcion: ref, solicitado, disponible: 0, aAgregar: 0, estado: 'no_encontrado', producto: null });
+      }
     }
-    lanzarAviso(`¡Éxito! ${agregados} artículos añadidos.`, "success");
-    modalExcel.value.mostrar = false;
+
+    previewImport.value.items    = resultados;
+    previewImport.value.cargando = false;
   };
   reader.readAsArrayBuffer(file);
+};
+
+const confirmarImportacion = () => {
+  let agregados = 0;
+  for (const item of previewImport.value.items) {
+    if ((item.estado === 'ok' || item.estado === 'parcial') && item.producto) {
+      carritoStore.agregarArticulo(item.producto, item.aAgregar);
+      agregados++;
+    }
+  }
+  lanzarAviso(`${agregados} artículo(s) agregados al carrito`, 'success');
+  previewImport.value.mostrar = false;
+  modalExcel.value.mostrar    = false;
+  modalExcel.value.archivo    = null;
 };
 
 // --- RESTO DE FUNCIONES ---
