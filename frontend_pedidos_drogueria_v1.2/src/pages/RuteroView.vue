@@ -262,7 +262,7 @@
               <v-expansion-panel
                 v-for="r in ruteros"
                 :key="r.ID"
-                @group:selected="(ev) => { if (ev.value) { cargarFacturasRutero(r.ID); filtroPickingEstado.value = 'todos'; } }"
+                @group:selected="(ev) => { if (ev.value) abrirPanelRutero(r.ID); }"
               >
                 <v-expansion-panel-title>
                   <div class="d-flex align-center gap-3 w-100 flex-wrap">
@@ -1550,6 +1550,11 @@ const cargarHistorial = async () => {
   } finally {
     cargandoHist.value = false;
   }
+};
+
+const abrirPanelRutero = (idrutero: number) => {
+    filtroPickingEstado.value = 'todos';
+    cargarFacturasRutero(idrutero);
 };
 
 const cargarFacturasRutero = async (idrutero: number) => {
