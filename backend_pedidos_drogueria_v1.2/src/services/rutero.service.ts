@@ -278,7 +278,7 @@ export class RuteroService {
                     ON R.CODRUTA = TRY_CAST(CLC.ZONA AS INT)
                 WHERE TRY_CAST(CLC.ZONA AS INT) = @CODRUTA
                   AND FVCL.FECHARECIBIDO IS NULL
-                  AND (FV.NUMSERIE LIKE '%F' OR FV.NUMSERIE LIKE '%N')
+                  AND (FV.NUMSERIE LIKE '%F' OR FV.NUMSERIE LIKE '%N' OR FV.NUMSERIE LIKE '%Q')
                 ORDER BY CL.NOMBRECLIENTE, FV.NUMSERIE, FV.NUMFACTURA
             `);
 
@@ -991,16 +991,19 @@ export class RuteroService {
             .query(`SELECT NUMSERIE, NUMFACTURA FROM APP_RUTEROS_DETALLE WHERE IDRUTERO = @IDRUTERO`);
 
         const pool = await connectDb();
-        for (const d of detalles.recordset) {
+        if (detalles.recordset.length > 0) {
+            const cfg = getDbConfig();
             await pool.request()
-                .input('NUMSERIE',   mssql.VarChar(20), d.NUMSERIE)
-                .input('NUMFACTURA', mssql.Int,         d.NUMFACTURA)
+                .input('IDRUTERO', mssql.Int, idrutero)
                 .query(`
-                    UPDATE FACTURASVENTACAMPOSLIBRES
-                    SET FECHARECIBIDO = ${fechaVal}
-                    WHERE NUMSERIE   COLLATE DATABASE_DEFAULT = @NUMSERIE COLLATE DATABASE_DEFAULT
-                      AND NUMFACTURA = @NUMFACTURA
-                      AND FECHARECIBIDO IS NULL
+                    UPDATE FVCL
+                    SET FVCL.FECHARECIBIDO = ${fechaVal}
+                    FROM FACTURASVENTACAMPOSLIBRES FVCL
+                    INNER JOIN [${cfg.dbRutero}]..APP_RUTEROS_DETALLE ARD
+                        ON ARD.NUMSERIE   COLLATE DATABASE_DEFAULT = FVCL.NUMSERIE   COLLATE DATABASE_DEFAULT
+                       AND ARD.NUMFACTURA = FVCL.NUMFACTURA
+                    WHERE ARD.IDRUTERO = @IDRUTERO
+                      AND FVCL.FECHARECIBIDO IS NULL
                 `);
         }
 

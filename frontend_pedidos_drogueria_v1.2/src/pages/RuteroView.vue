@@ -333,7 +333,7 @@
                             size="small" color="success" variant="elevated"
                             prepend-icon="mdi-check-all"
                             :loading="confirmandoRutero === r.ID"
-                            :disabled="r.ENTREGADAS >= r.TOTAL_FACTURAS || r.ESTADO !== 'EN_RUTA'"
+                            :disabled="r.ESTADO !== 'EN_RUTA'"
                             @click.stop="abrirDialogFechaTodo(r)"
                           >
                             Confirmar todo
@@ -341,6 +341,13 @@
                         </span>
                       </template>
                     </v-tooltip>
+                    <v-btn
+                      v-if="r.ESTADO === 'EN_RUTA'"
+                      size="small" color="orange" variant="tonal"
+                      prepend-icon="mdi-calendar-edit"
+                      :loading="confirmandoRutero === r.ID"
+                      @click.stop="dialogFecha = { show: true, idrutero: r.ID, item: null, fecha: hoyISO, minFecha: '', modo: 'editar-rutero' }"
+                    >Cambiar fecha</v-btn>
                   </div>
 
                   <div v-if="!facturasRutero[r.ID]" class="text-center pa-4">
@@ -418,7 +425,17 @@
                           :loading="quitandoFactura === clave(item)"
                           @click.stop="quitarFacturaDeRutero(r, item)"
                         />
-                        <span v-if="item.FECHARECIBIDO" class="text-caption text-grey-darken-1">{{ item.FECHARECIBIDO?.toString().substring(0,10) }}</span>
+                        <template v-if="item.FECHARECIBIDO">
+                          <v-btn
+                            v-if="r.ESTADO === 'EN_RUTA'"
+                            size="x-small" color="orange" variant="tonal"
+                            icon="mdi-pencil"
+                            :loading="confirmandoFactura === clave(item)"
+                            title="Cambiar fecha de entrega"
+                            @click.stop="dialogFecha = { show: true, idrutero: r.ID, item, fecha: item.FECHARECIBIDO?.toString().substring(0,10) || hoyISO, minFecha: '', modo: 'editar' }"
+                          />
+                          <span class="text-caption text-grey-darken-1">{{ item.FECHARECIBIDO?.toString().substring(0,10) }}</span>
+                        </template>
                       </div>
                     </template>
                   </v-data-table>
