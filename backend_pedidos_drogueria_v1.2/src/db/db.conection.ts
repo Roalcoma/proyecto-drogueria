@@ -18,8 +18,9 @@ function buildBase(): sql.config {
         password: cfg.password,
         server:   cfg.server,
         port:     cfg.port,
-        pool:     { max: 10, min: 0, idleTimeoutMillis: 30000 },
-        options:  { encrypt: false, trustServerCertificate: true, useUTC: false },
+        pool:           { max: 10, min: 0, idleTimeoutMillis: 30000 },
+        options:        { encrypt: false, trustServerCertificate: true, useUTC: false },
+        requestTimeout: 60000,
     };
 }
 
