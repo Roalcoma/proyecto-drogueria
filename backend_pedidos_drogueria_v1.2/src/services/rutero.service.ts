@@ -979,33 +979,38 @@ export class RuteroService {
         const ruteroDB = await connectRuteroDB();
         const fechaVal = fechaEntrega ? `'${fechaEntrega.substring(0, 10)}'` : 'GETDATE()';
 
-        await ruteroDB.request()
+        // Solo facturas sin fecha aún (las que ya tienen fecha no se tocan)
+        const sinFecha = await ruteroDB.request()
             .input('IDRUTERO', mssql.Int, idrutero)
-            .query(`
-                UPDATE APP_RUTEROS_DETALLE
-                SET FECHARECIBIDO = ${fechaVal}
-                WHERE IDRUTERO = @IDRUTERO AND FECHARECIBIDO IS NULL
-            `);
+            .query(`SELECT NUMSERIE, NUMFACTURA FROM APP_RUTEROS_DETALLE WHERE IDRUTERO = @IDRUTERO AND FECHARECIBIDO IS NULL`);
 
-        const detalles = await ruteroDB.request()
-            .input('IDRUTERO', mssql.Int, idrutero)
-            .query(`SELECT NUMSERIE, NUMFACTURA FROM APP_RUTEROS_DETALLE WHERE IDRUTERO = @IDRUTERO`);
-
-        // Actualizar FACTURASVENTACAMPOSLIBRES fila por fila (evita el JOIN cross-DB que causa timeout)
-        const pool = await connectDb();
-        for (const row of detalles.recordset) {
-            await pool.request()
-                .input('NUMSERIE',   mssql.VarChar(20), row.NUMSERIE)
-                .input('NUMFACTURA', mssql.Int,         row.NUMFACTURA)
+        if (sinFecha.recordset.length > 0) {
+            await ruteroDB.request()
+                .input('IDRUTERO', mssql.Int, idrutero)
                 .query(`
-                    UPDATE FACTURASVENTACAMPOSLIBRES
+                    UPDATE APP_RUTEROS_DETALLE
                     SET FECHARECIBIDO = ${fechaVal}
-                    WHERE NUMSERIE   COLLATE DATABASE_DEFAULT = @NUMSERIE COLLATE DATABASE_DEFAULT
-                      AND NUMFACTURA = @NUMFACTURA
-                      AND FECHARECIBIDO IS NULL
+                    WHERE IDRUTERO = @IDRUTERO AND FECHARECIBIDO IS NULL
                 `);
+
+            // Sincronizar solo las pendientes en FACTURASVENTACAMPOSLIBRES (background)
+            const pool = await connectDb();
+            Promise.all(sinFecha.recordset.map((row: any) =>
+                pool.request()
+                    .input('NUMSERIE',   mssql.VarChar(20), row.NUMSERIE)
+                    .input('NUMFACTURA', mssql.Int,         row.NUMFACTURA)
+                    .query(`
+                        UPDATE FACTURASVENTACAMPOSLIBRES
+                        SET FECHARECIBIDO = ${fechaVal}
+                        WHERE NUMSERIE   COLLATE DATABASE_DEFAULT = @NUMSERIE COLLATE DATABASE_DEFAULT
+                          AND NUMFACTURA = @NUMFACTURA
+                          AND FECHARECIBIDO IS NULL
+                    `)
+                    .catch((e: any) => console.warn(`[confirmarRutero] FVCL ${row.NUMSERIE}-${row.NUMFACTURA}:`, e?.message))
+            )).catch(() => {});
         }
 
+        // Siempre cerrar el rutero
         await ruteroDB.request()
             .input('IDRUTERO', mssql.Int, idrutero)
             .query(`UPDATE APP_RUTEROS SET ESTADO = 'ENTREGADO' WHERE ID = @IDRUTERO`);
@@ -1051,9 +1056,12 @@ export class RuteroService {
             .input('IDRUTERO', mssql.Int, idrutero)
             .query(`SELECT NUMSERIE, NUMFACTURA FROM APP_RUTEROS_DETALLE WHERE IDRUTERO = @IDRUTERO`);
 
+        await RuteroService.registrarLog('CAMBIAR_FECHA_RUTERO', usuario, idrutero, `=> ${fechaVal}`);
+
+        // Sincronizar FACTURASVENTACAMPOSLIBRES en background (no bloquea la respuesta)
         const pool = await connectDb();
-        for (const d of detalles.recordset) {
-            await pool.request()
+        Promise.all(detalles.recordset.map((d: any) =>
+            pool.request()
                 .input('NUMSERIE',   mssql.VarChar(20), d.NUMSERIE)
                 .input('NUMFACTURA', mssql.Int,         d.NUMFACTURA)
                 .input('FECHA',      mssql.Date,        fechaVal)
@@ -1062,10 +1070,9 @@ export class RuteroService {
                     SET FECHARECIBIDO = @FECHA
                     WHERE NUMSERIE   COLLATE DATABASE_DEFAULT = @NUMSERIE COLLATE DATABASE_DEFAULT
                       AND NUMFACTURA = @NUMFACTURA
-                `);
-        }
-
-        await RuteroService.registrarLog('CAMBIAR_FECHA_RUTERO', usuario, idrutero, `=> ${fechaVal}`);
+                `)
+                .catch((e: any) => console.warn(`[actualizarFechaRutero] FVCL ${d.NUMSERIE}-${d.NUMFACTURA}:`, e?.message))
+        )).catch(() => {});
     }
 
     static async actualizarFechaFactura(idrutero: number, numserie: string, numfactura: number, fechaEntrega: string, usuario = ''): Promise<void> {
