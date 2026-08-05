@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { FtpController } from '../controllers/ftp.controller';
-import { authMiddleware, adminMiddleware } from '../middleware/auth.middleware';
+import { authMiddleware, adminMiddleware, ftpUsuariosMiddleware } from '../middleware/auth.middleware';
 
 const ftpRouter = Router();
 
@@ -18,18 +18,16 @@ ftpRouter.post('/servidor/config',    adminMiddleware, FtpController.guardarServ
 ftpRouter.post('/servidor/iniciar',   adminMiddleware, FtpController.iniciarServidor);
 ftpRouter.post('/servidor/detener',   adminMiddleware, FtpController.detenerServidor);
 
-// Usuarios FTP
-ftpRouter.get('/usuarios',                    adminMiddleware, FtpController.getUsuarios);
-ftpRouter.post('/usuarios',                   adminMiddleware, FtpController.crearUsuario);
-ftpRouter.delete('/usuarios/:id',             adminMiddleware, FtpController.eliminarUsuario);
-ftpRouter.patch('/usuarios/:id/toggle',       adminMiddleware, FtpController.toggleUsuario);
-ftpRouter.patch('/usuarios/:id/password',     adminMiddleware, FtpController.cambiarPassword);
+// Usuarios FTP — admin o permiso de gestión FTP (bit 131072)
+ftpRouter.get('/usuarios',                    ftpUsuariosMiddleware, FtpController.getUsuarios);
+ftpRouter.post('/usuarios',                   ftpUsuariosMiddleware, FtpController.crearUsuario);
+ftpRouter.delete('/usuarios/:id',             ftpUsuariosMiddleware, FtpController.eliminarUsuario);
+ftpRouter.patch('/usuarios/:id/toggle',       ftpUsuariosMiddleware, FtpController.toggleUsuario);
+ftpRouter.patch('/usuarios/:id/password',     ftpUsuariosMiddleware, FtpController.cambiarPassword);
+ftpRouter.post('/usuarios/importar',           ftpUsuariosMiddleware, FtpController.importarUsuarios);
+ftpRouter.post('/usuarios/sincronizar-claves', ftpUsuariosMiddleware, FtpController.sincronizarClaves);
 
 // Ciclo manual (inventario + facturas + pedidos)
 ftpRouter.post('/ciclo', adminMiddleware, FtpController.ejecutarCiclo);
-
-// Carga masiva de usuarios desde Excel
-ftpRouter.post('/usuarios/importar',           adminMiddleware, FtpController.importarUsuarios);
-ftpRouter.post('/usuarios/sincronizar-claves', adminMiddleware, FtpController.sincronizarClaves);
 
 export default ftpRouter;

@@ -83,9 +83,10 @@ export const useAuthStore = defineStore('auth', () => {
     };
 
     const isAuthenticated = computed(() => !!token.value && !!usuario.value);
-    const esAdmin              = computed(() => usuario.value?.es_admin ?? false);
-    const puedeDescuentoLinea  = computed(() => (Number(usuario.value?.visibilidad ?? 0) & 512) !== 0);
-    const puedeRuteroAdmin     = computed(() => (Number(usuario.value?.visibilidad ?? 0) & 65536) !== 0);
+    const esAdmin                   = computed(() => usuario.value?.es_admin ?? false);
+    const puedeDescuentoLinea       = computed(() => (Number(usuario.value?.visibilidad ?? 0) & 512) !== 0);
+    const puedeRuteroAdmin          = computed(() => (Number(usuario.value?.visibilidad ?? 0) & 65536) !== 0);
+    const puedeGestionarFtpUsuarios = computed(() => (Number(usuario.value?.visibilidad ?? 0) & 131072) !== 0);
 
     const modulosVisibles = computed<ModuloPermiso[]>(() =>
         (usuario.value?.modulos ?? [])
@@ -121,5 +122,5 @@ export const useAuthStore = defineStore('auth', () => {
         stopActivityWatcher();
     };
 
-    return { token, usuario, isAuthenticated, esAdmin, puedeDescuentoLinea, puedeRuteroAdmin, modulosVisibles, tienePermiso, login, logout, modoPruebas, toggleModoPruebas, resetInactivityTimer };
+    return { token, usuario, isAuthenticated, esAdmin, puedeDescuentoLinea, puedeRuteroAdmin, puedeGestionarFtpUsuarios, modulosVisibles, tienePermiso, login, logout, modoPruebas, toggleModoPruebas, resetInactivityTimer };
 });

@@ -20,7 +20,7 @@
 
       <v-list density="comfortable" nav class="px-3">
         <v-list-item
-          v-for="modulo in authStore.modulosVisibles.filter(m => !m.ruta || router.getRoutes().some(r => r.path === m.ruta))"
+          v-for="modulo in authStore.modulosVisibles.filter(m => m.ruta && router.getRoutes().some(r => r.path === m.ruta))"
           :key="modulo.codigo"
           :to="modulo.ruta"
           :prepend-icon="modulo.icono"
@@ -34,6 +34,25 @@
           </template>
         </v-list-item>
       </v-list>
+
+      <!-- Permisos informativos (sin página propia) -->
+      <template v-if="authStore.modulosVisibles.filter(m => !m.ruta || !router.getRoutes().some(r => r.path === m.ruta)).length">
+        <v-divider class="mx-4 my-2 opacity-20" />
+        <div class="px-4 pb-1">
+          <span class="text-caption text-cyan-lighten-4" style="opacity:0.6;letter-spacing:0.5px;">PERMISOS</span>
+        </div>
+        <div class="px-3 pb-3 d-flex flex-column gap-1">
+          <div
+            v-for="modulo in authStore.modulosVisibles.filter(m => !m.ruta || !router.getRoutes().some(r => r.path === m.ruta))"
+            :key="modulo.codigo"
+            class="d-flex align-center gap-2 px-3 py-2 rounded-lg"
+            style="opacity:0.65;"
+          >
+            <v-icon size="18" color="cyan-lighten-3">{{ modulo.icono }}</v-icon>
+            <span class="text-caption text-cyan-lighten-3">{{ modulo.nombre }}</span>
+          </div>
+        </div>
+      </template>
 
       <template v-slot:append>
         <div class="pa-4 text-center">

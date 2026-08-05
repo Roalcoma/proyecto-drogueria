@@ -10,7 +10,7 @@
     </div>
 
     <!-- Estado + control -->
-    <v-card rounded="xl" elevation="2" class="pa-6 mb-4">
+    <v-card v-if="authStore.esAdmin" rounded="xl" elevation="2" class="pa-6 mb-4">
       <div class="d-flex align-center mb-4">
         <div class="text-subtitle-1 font-weight-bold">
           <v-icon start color="primary">mdi-server-network</v-icon>
@@ -47,7 +47,7 @@
     </v-card>
 
     <!-- Configuración de red -->
-    <v-card rounded="xl" elevation="2" class="pa-6 mb-4">
+    <v-card v-if="authStore.esAdmin" rounded="xl" elevation="2" class="pa-6 mb-4">
       <div class="text-subtitle-1 font-weight-bold mb-4">
         <v-icon start color="primary">mdi-cog-outline</v-icon>
         Configuración de red
@@ -128,14 +128,16 @@
             hide-details="auto"
           />
         </v-col>
-        <v-col cols="12" sm="4" class="text-caption text-medium-emphasis">
-          Este valor aparece en el campo <strong>Dirección FTP</strong> del TXT que se entrega al cliente.
+        <v-col cols="12" sm="4" class="d-flex align-center gap-2">
+          <v-btn color="primary" variant="tonal" prepend-icon="mdi-content-save-outline" @click="guardarIpConexion" block>
+            Guardar dirección
+          </v-btn>
         </v-col>
       </v-row>
     </v-card>
 
     <!-- Gestión de usuarios -->
-    <v-card rounded="xl" elevation="2" class="pa-6">
+    <v-card v-if="authStore.esAdmin || authStore.puedeGestionarFtpUsuarios" rounded="xl" elevation="2" class="pa-6">
       <div class="d-flex align-center mb-4">
         <div class="text-subtitle-1 font-weight-bold">
           <v-icon start color="primary">mdi-account-multiple</v-icon>
@@ -336,8 +338,10 @@ import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
 import axios from 'axios';
 import { useBrandingStore } from '../stores/useBrandingStore';
+import { useAuthStore } from '../stores/useAuthStore';
 
 const brandingStore = useBrandingStore();
+const authStore     = useAuthStore();
 const API = `${import.meta.env.VITE_API_URL}/ftp`;
 
 const snack = ref({ show: false, text: '', color: 'success' });
@@ -620,8 +624,15 @@ const sincronizarClaves = async (e: Event) => {
   }
 };
 
+const guardarIpConexion = () => {
+  localStorage.setItem('ftp_ip_conexion', ipConexionClientes.value);
+  mostrarSnack('Dirección guardada correctamente', 'success');
+};
+
 onMounted(async () => {
-  await Promise.all([cargarEstadoServidor(), cargarUsuarios()]);
+  const tasks: Promise<any>[] = [cargarUsuarios()];
+  if (authStore.esAdmin) tasks.push(cargarEstadoServidor());
+  await Promise.all(tasks);
 });
 </script>
 
