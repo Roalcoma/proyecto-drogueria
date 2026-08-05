@@ -310,7 +310,7 @@
             <v-text-field
               v-model.number="modalCantidad.nuevaCantidad"
               type="number" variant="outlined" autofocus class="mt-2"
-              hide-details
+              hide-details min="1"
               @keyup.enter="guardarCantidad"
             />
           </v-card-text>

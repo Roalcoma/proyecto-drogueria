@@ -233,6 +233,8 @@ export class PedidosServices {
                     PORCENTAJEIVA, MONTOIVA
                 } = lineas[i];
 
+                if (!cantidad || cantidad < 1) throw new Error(`Cantidad inválida (${cantidad}) en artículo ${codarticulo}`);
+
                 tablaLineas.rows.add(
                     orderId,
                     codarticulo,
@@ -657,6 +659,7 @@ export class PedidosServices {
                 const { codarticulo, referencia, codalmacen, idtarifav, cantidad, precio,
                         DESCUENTO1, DESCUENTO2, DESCUENTO3, DESCUENTO4, PRECIOBRUTO,
                         PORCENTAJEIVA, MONTOIVA } = lineas[i];
+                if (!cantidad || cantidad < 1) throw new Error(`Cantidad inválida (${cantidad}) en artículo ${codarticulo}`);
                 const insReq = new mssql.Request(transaction);
                 insReq.input('ORDERID',        mssql.VarChar(50),    orderId);
                 insReq.input('CODARTICULO',    mssql.Int,            codarticulo);

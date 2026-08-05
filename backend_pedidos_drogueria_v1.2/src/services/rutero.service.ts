@@ -249,12 +249,10 @@ export class RuteroService {
         const pool     = await connectDb();
         const ruteroDB = await connectRuteroDB();
 
-        // Facturas ya asignadas a un rutero PENDIENTE (en BD de rutero)
+        // Facturas ya asignadas a cualquier rutero (sin importar estado)
         const pendRes = await ruteroDB.request().query(`
-            SELECT ARD.NUMSERIE, ARD.NUMFACTURA
-            FROM APP_RUTEROS_DETALLE ARD
-            INNER JOIN APP_RUTEROS AR ON AR.ID = ARD.IDRUTERO
-            WHERE AR.ESTADO IN ('PENDIENTE', 'EN_RUTA')
+            SELECT NUMSERIE, NUMFACTURA
+            FROM APP_RUTEROS_DETALLE
         `);
         const pendSet = new Set<string>(
             pendRes.recordset.map((r: any) => `${r.NUMSERIE}|${r.NUMFACTURA}`)

@@ -134,12 +134,13 @@
       <v-card class="rounded-xl text-center pa-4">
         <v-card-title class="font-weight-bold">Ajustar Cantidad</v-card-title>
         <v-card-text>
-          <v-text-field 
-            v-model.number="modalEdicion.nuevaCantidad" 
-            type="number" 
-            variant="outlined" 
-            autofocus 
+          <v-text-field
+            v-model.number="modalEdicion.nuevaCantidad"
+            type="number"
+            variant="outlined"
+            autofocus
             class="mt-2"
+            min="1"
             :error="modalEdicion.nuevaCantidad > modalEdicion.stockMax"
             :error-messages="modalEdicion.nuevaCantidad > modalEdicion.stockMax ? 'Excede stock' : ''"
             hide-details="auto"
