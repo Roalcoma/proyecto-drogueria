@@ -86,8 +86,8 @@ export class RuteroController {
         }
         try {
             const usuario = req.usuario?.usuario ?? '';
-            await RuteroService.confirmarFacturaRutero(Number(idrutero), String(numserie), Number(numfactura), fechaEntrega ? String(fechaEntrega) : undefined, usuario);
-            res.json({ success: true, message: 'Factura confirmada' });
+            const { ruteroCompletado } = await RuteroService.confirmarFacturaRutero(Number(idrutero), String(numserie), Number(numfactura), fechaEntrega ? String(fechaEntrega) : undefined, usuario);
+            res.json({ success: true, message: 'Factura confirmada', ruteroCompletado });
         } catch (error) {
             res.status(500).json({ success: false, message: 'Error al confirmar factura', error: error instanceof Error ? error.message : String(error) });
         }

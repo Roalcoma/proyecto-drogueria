@@ -620,7 +620,7 @@ export class RuteroService {
         });
     }
 
-    static async confirmarFacturaRutero(idrutero: number, numserie: string, numfactura: number, fechaEntrega?: string, usuario = ''): Promise<void> {
+    static async confirmarFacturaRutero(idrutero: number, numserie: string, numfactura: number, fechaEntrega?: string, usuario = ''): Promise<{ ruteroCompletado: boolean }> {
         const ruteroDB = await connectRuteroDB();
         const fechaVal = fechaEntrega ? `'${fechaEntrega.substring(0, 10)}'` : 'GETDATE()';
 
@@ -650,7 +650,7 @@ export class RuteroService {
             `);
 
         // Auto-cierra el rutero si todas las facturas fueron entregadas
-        await ruteroDB.request()
+        const cierre = await ruteroDB.request()
             .input('IDRUTERO', mssql.Int, idrutero)
             .query(`
                 UPDATE APP_RUTEROS SET ESTADO = 'ENTREGADO'
@@ -660,7 +660,10 @@ export class RuteroService {
                     WHERE IDRUTERO = @IDRUTERO AND FECHARECIBIDO IS NULL
                   )
             `);
+        const ruteroCompletado = (cierre.rowsAffected[0] ?? 0) > 0;
+        if (ruteroCompletado) await RuteroService.registrarLog('CONFIRMAR_RUTERO', usuario, idrutero, 'auto-cierre');
         await RuteroService.registrarLog('CONFIRMAR_FACTURA', usuario, idrutero, `${numserie}-${numfactura}`);
+        return { ruteroCompletado };
     }
 
     static async getEstadoPicking(idrutero: number): Promise<{
@@ -988,20 +991,18 @@ export class RuteroService {
             .input('IDRUTERO', mssql.Int, idrutero)
             .query(`SELECT NUMSERIE, NUMFACTURA FROM APP_RUTEROS_DETALLE WHERE IDRUTERO = @IDRUTERO`);
 
+        // Actualizar FACTURASVENTACAMPOSLIBRES fila por fila (evita el JOIN cross-DB que causa timeout)
         const pool = await connectDb();
-        if (detalles.recordset.length > 0) {
-            const cfg = getDbConfig();
+        for (const row of detalles.recordset) {
             await pool.request()
-                .input('IDRUTERO', mssql.Int, idrutero)
+                .input('NUMSERIE',   mssql.VarChar(20), row.NUMSERIE)
+                .input('NUMFACTURA', mssql.Int,         row.NUMFACTURA)
                 .query(`
-                    UPDATE FVCL
-                    SET FVCL.FECHARECIBIDO = ${fechaVal}
-                    FROM FACTURASVENTACAMPOSLIBRES FVCL
-                    INNER JOIN [${cfg.dbRutero}]..APP_RUTEROS_DETALLE ARD
-                        ON ARD.NUMSERIE   COLLATE DATABASE_DEFAULT = FVCL.NUMSERIE   COLLATE DATABASE_DEFAULT
-                       AND ARD.NUMFACTURA = FVCL.NUMFACTURA
-                    WHERE ARD.IDRUTERO = @IDRUTERO
-                      AND FVCL.FECHARECIBIDO IS NULL
+                    UPDATE FACTURASVENTACAMPOSLIBRES
+                    SET FECHARECIBIDO = ${fechaVal}
+                    WHERE NUMSERIE   COLLATE DATABASE_DEFAULT = @NUMSERIE COLLATE DATABASE_DEFAULT
+                      AND NUMFACTURA = @NUMFACTURA
+                      AND FECHARECIBIDO IS NULL
                 `);
         }
 
