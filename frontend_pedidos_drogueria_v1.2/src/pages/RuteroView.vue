@@ -1570,6 +1570,7 @@ const cargarFacturasRutero = async (idrutero: number) => {
 const confirmarFactura = async (idrutero: number, item: any, fechaEntrega?: string) => {
   const k = clave(item);
   confirmandoFactura.value = k;
+  let todasEntregadas = false;
   try {
     await axios.put(`${API}/rutero/confirmar-factura`, {
       idrutero,
@@ -1579,12 +1580,16 @@ const confirmarFactura = async (idrutero: number, item: any, fechaEntrega?: stri
     });
     item.FECHARECIBIDO = fechaEntrega ?? new Date().toISOString();
     const r = ruteros.value.find(x => x.ID === idrutero);
-    if (r) r.ENTREGADAS = (r.ENTREGADAS || 0) + 1;
+    if (r) {
+      r.ENTREGADAS = (r.ENTREGADAS || 0) + 1;
+      todasEntregadas = r.ENTREGADAS >= r.TOTAL_FACTURAS;
+    }
   } catch (e: any) {
     notify(e.response?.data?.error || e.message || 'Error al confirmar', 'error');
   } finally {
     confirmandoFactura.value = null;
   }
+  if (todasEntregadas) await confirmarRuteroCompleto(idrutero, fechaEntrega);
 };
 
 const confirmarFacturaConFecha = async () => {
