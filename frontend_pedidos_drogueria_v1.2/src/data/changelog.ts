@@ -11,9 +11,10 @@ export interface CommitEntry {
   texto: string;
 }
 
-export const APP_VERSION = '1.2.9';
+export const APP_VERSION = '1.2.10';
 
 export const VERSIONES: VersionEntry[] = [
+  { version: '1.2.10', fecha: '2026-08-07', desde: '2026-08-07' },
   { version: '1.2.9', fecha: '2026-08-07', desde: '2026-08-07' },
   { version: '1.2.8', fecha: '2026-07-30', desde: '2026-07-30' },
   { version: '1.2.7', fecha: '2026-07-29', desde: '2026-07-28' },
@@ -27,6 +28,7 @@ export const VERSIONES: VersionEntry[] = [
 ];
 
 export const COMMITS: CommitEntry[] = [
+  { hash: 'pending', date: '2026-08-07', tipo: 'fix',     texto: 'rutero: upsert en FACTURASVENTACAMPOSLIBRES al confirmar/cambiar fecha (factura sin fila no se perdía)' },
   { hash: 'pending', date: '2026-08-07', tipo: 'feat',    texto: 'control de estatus: botón formato de factura (Python) en pedidos facturados' },
   { hash: 'pending', date: '2026-08-07', tipo: 'fix',     texto: 'pedidos duplicados: APP_PEDIDO_LOG y CLIENTESENVIO/CLIENTESCAMPOSLIBRES pasan a OUTER APPLY TOP 1' },
   { hash: 'pending', date: '2026-08-07', tipo: 'fix',     texto: 'fusión: log registraba EST_ANTERIOR=null causando duplicado visual del pedido maestro' },

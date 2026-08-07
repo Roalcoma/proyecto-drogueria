@@ -622,15 +622,16 @@ export class RuteroService {
 
     static async confirmarFacturaRutero(idrutero: number, numserie: string, numfactura: number, fechaEntrega?: string, usuario = ''): Promise<{ ruteroCompletado: boolean }> {
         const ruteroDB = await connectRuteroDB();
-        const fechaVal = fechaEntrega ? `'${fechaEntrega.substring(0, 10)}'` : 'GETDATE()';
+        const fechaDate = fechaEntrega ? new Date(fechaEntrega.substring(0, 10)) : new Date();
 
         await ruteroDB.request()
             .input('IDRUTERO',   mssql.Int,         idrutero)
             .input('NUMSERIE',   mssql.VarChar(20),  numserie)
             .input('NUMFACTURA', mssql.Int,          numfactura)
+            .input('FECHA',      mssql.Date,         fechaDate)
             .query(`
                 UPDATE APP_RUTEROS_DETALLE
-                SET FECHARECIBIDO = ${fechaVal}
+                SET FECHARECIBIDO = @FECHA
                 WHERE IDRUTERO = @IDRUTERO
                   AND NUMSERIE   COLLATE DATABASE_DEFAULT = @NUMSERIE   COLLATE DATABASE_DEFAULT
                   AND NUMFACTURA = @NUMFACTURA
@@ -638,16 +639,7 @@ export class RuteroService {
             `);
 
         const pool = await connectDb();
-        await pool.request()
-            .input('NUMSERIE',   mssql.VarChar(20), numserie)
-            .input('NUMFACTURA', mssql.Int,         numfactura)
-            .query(`
-                UPDATE FACTURASVENTACAMPOSLIBRES
-                SET FECHARECIBIDO = ${fechaVal}
-                WHERE NUMSERIE   COLLATE DATABASE_DEFAULT = @NUMSERIE COLLATE DATABASE_DEFAULT
-                  AND NUMFACTURA = @NUMFACTURA
-                  AND FECHARECIBIDO IS NULL
-            `);
+        await RuteroService.upsertFechaFVCL(pool, numserie, numfactura, fechaDate, true);
 
         // Auto-cierra el rutero si todas las facturas fueron entregadas
         const cierre = await ruteroDB.request()
@@ -977,7 +969,7 @@ export class RuteroService {
 
     static async confirmarRutero(idrutero: number, fechaEntrega?: string, usuario = ''): Promise<void> {
         const ruteroDB = await connectRuteroDB();
-        const fechaVal = fechaEntrega ? `'${fechaEntrega.substring(0, 10)}'` : 'GETDATE()';
+        const fechaDate = fechaEntrega ? new Date(fechaEntrega.substring(0, 10)) : new Date();
 
         // Solo facturas sin fecha aún (las que ya tienen fecha no se tocan)
         const sinFecha = await ruteroDB.request()
@@ -987,25 +979,17 @@ export class RuteroService {
         if (sinFecha.recordset.length > 0) {
             await ruteroDB.request()
                 .input('IDRUTERO', mssql.Int, idrutero)
+                .input('FECHA',    mssql.Date, fechaDate)
                 .query(`
                     UPDATE APP_RUTEROS_DETALLE
-                    SET FECHARECIBIDO = ${fechaVal}
+                    SET FECHARECIBIDO = @FECHA
                     WHERE IDRUTERO = @IDRUTERO AND FECHARECIBIDO IS NULL
                 `);
 
             // Sincronizar solo las pendientes en FACTURASVENTACAMPOSLIBRES (background)
             const pool = await connectDb();
             Promise.all(sinFecha.recordset.map((row: any) =>
-                pool.request()
-                    .input('NUMSERIE',   mssql.VarChar(20), row.NUMSERIE)
-                    .input('NUMFACTURA', mssql.Int,         row.NUMFACTURA)
-                    .query(`
-                        UPDATE FACTURASVENTACAMPOSLIBRES
-                        SET FECHARECIBIDO = ${fechaVal}
-                        WHERE NUMSERIE   COLLATE DATABASE_DEFAULT = @NUMSERIE COLLATE DATABASE_DEFAULT
-                          AND NUMFACTURA = @NUMFACTURA
-                          AND FECHARECIBIDO IS NULL
-                    `)
+                RuteroService.upsertFechaFVCL(pool, row.NUMSERIE, row.NUMFACTURA, fechaDate, true)
                     .catch((e: any) => console.warn(`[confirmarRutero] FVCL ${row.NUMSERIE}-${row.NUMFACTURA}:`, e?.message))
             )).catch(() => {});
         }
@@ -1060,17 +1044,9 @@ export class RuteroService {
 
         // Sincronizar FACTURASVENTACAMPOSLIBRES en background (no bloquea la respuesta)
         const pool = await connectDb();
+        const fechaDate = new Date(fechaVal);
         Promise.all(detalles.recordset.map((d: any) =>
-            pool.request()
-                .input('NUMSERIE',   mssql.VarChar(20), d.NUMSERIE)
-                .input('NUMFACTURA', mssql.Int,         d.NUMFACTURA)
-                .input('FECHA',      mssql.Date,        fechaVal)
-                .query(`
-                    UPDATE FACTURASVENTACAMPOSLIBRES
-                    SET FECHARECIBIDO = @FECHA
-                    WHERE NUMSERIE   COLLATE DATABASE_DEFAULT = @NUMSERIE COLLATE DATABASE_DEFAULT
-                      AND NUMFACTURA = @NUMFACTURA
-                `)
+            RuteroService.upsertFechaFVCL(pool, d.NUMSERIE, d.NUMFACTURA, fechaDate)
                 .catch((e: any) => console.warn(`[actualizarFechaRutero] FVCL ${d.NUMSERIE}-${d.NUMFACTURA}:`, e?.message))
         )).catch(() => {});
     }
@@ -1093,17 +1069,36 @@ export class RuteroService {
             `);
 
         const pool = await connectDb();
+        await RuteroService.upsertFechaFVCL(pool, numserie, numfactura, new Date(fechaVal));
+
+        await RuteroService.registrarLog('CAMBIAR_FECHA', usuario, idrutero, `${numserie}-${numfactura} => ${fechaVal}`);
+    }
+
+    // UPDATE si existe fila, INSERT si no existe. soloSiNull=true: solo toca si FECHARECIBIDO era NULL.
+    private static async upsertFechaFVCL(
+        pool: sql.ConnectionPool,
+        numserie: string,
+        numfactura: number,
+        fecha: Date,
+        soloSiNull = false
+    ): Promise<void> {
+        const condNull    = soloSiNull ? 'AND FECHARECIBIDO IS NULL' : '';
+        const insertGuard = soloSiNull
+            ? 'AND NOT EXISTS (SELECT 1 FROM FACTURASVENTACAMPOSLIBRES WHERE NUMSERIE COLLATE DATABASE_DEFAULT = @NUMSERIE COLLATE DATABASE_DEFAULT AND NUMFACTURA = @NUMFACTURA)'
+            : '';
         await pool.request()
             .input('NUMSERIE',   mssql.VarChar(20), numserie)
             .input('NUMFACTURA', mssql.Int,         numfactura)
-            .input('FECHA',      mssql.Date,        fechaVal)
+            .input('FECHA',      mssql.Date,        fecha)
             .query(`
                 UPDATE FACTURASVENTACAMPOSLIBRES
                 SET FECHARECIBIDO = @FECHA
-                WHERE NUMSERIE   COLLATE DATABASE_DEFAULT = @NUMSERIE COLLATE DATABASE_DEFAULT
+                WHERE NUMSERIE COLLATE DATABASE_DEFAULT = @NUMSERIE COLLATE DATABASE_DEFAULT
                   AND NUMFACTURA = @NUMFACTURA
+                  ${condNull};
+                IF @@ROWCOUNT = 0 ${insertGuard}
+                    INSERT INTO FACTURASVENTACAMPOSLIBRES (NUMSERIE, NUMFACTURA, FECHARECIBIDO)
+                    VALUES (@NUMSERIE, @NUMFACTURA, @FECHA);
             `);
-
-        await RuteroService.registrarLog('CAMBIAR_FECHA', usuario, idrutero, `${numserie}-${numfactura} => ${fechaVal}`);
     }
 }
