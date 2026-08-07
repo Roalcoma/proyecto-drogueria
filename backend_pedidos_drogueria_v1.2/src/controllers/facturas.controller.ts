@@ -90,12 +90,16 @@ export class FacturasControllers {
         if (!serie || !numero)
             return res.status(400).json({ success: false, message: 'serie y numero son requeridos' });
 
-        const scriptDir  = path.join(__dirname, '..', '..', 'impresion_facturas');
-        const scriptPath = path.join(scriptDir, 'generate_for_web.py');
+        const scriptDir = path.join(__dirname, '..', '..', 'impresion_facturas');
+        const exePath   = path.join(scriptDir, 'dist', 'generate_for_web.exe');
+        const pyPath    = path.join(scriptDir, 'generate_for_web.py');
+        const useExe    = fs.existsSync(exePath);
+        const cmd       = useExe ? exePath : 'python';
+        const cmdArgs   = useExe ? [String(serie), String(numero)] : [pyPath, String(serie), String(numero)];
         const cfg = getDbConfig();
 
         return new Promise<void>((resolve) => {
-            const py = spawn('python', [scriptPath, String(serie), String(numero)], {
+            const py = spawn(cmd, cmdArgs, {
                 cwd: scriptDir,
                 env: {
                     ...process.env,
@@ -110,7 +114,8 @@ export class FacturasControllers {
             let stderr = '';
             py.stdout.on('data', (d: Buffer) => stdout += d.toString());
             py.stderr.on('data', (d: Buffer) => stderr += d.toString());
-            py.on('close', () => {
+            py.on('close', (code) => {
+                if (stderr) console.error(`[imprimir-formato] stderr:\n${stderr}`);
                 try {
                     const lastLine = stdout.trim().split('\n').pop() || '';
                     const result = JSON.parse(lastLine);

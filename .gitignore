@@ -34,3 +34,5 @@ __pycache__/
 *.pyc
 *.pyo
 impresion_facturas/settings.cfg
+impresion_facturas/build/
+impresion_facturas/dist/
