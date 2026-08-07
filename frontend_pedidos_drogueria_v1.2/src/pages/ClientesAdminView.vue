@@ -17,9 +17,13 @@
       <!-- ===================== CLIENTES ===================== -->
       <v-window-item value="clientes">
         <v-card rounded="xl" elevation="2">
-          <v-card-title class="pa-4">
+          <v-card-title class="pa-4 d-flex align-center gap-3 flex-wrap">
             <v-text-field v-model="busquedaCliente" label="Buscar por nombre o CIF" prepend-inner-icon="mdi-magnify"
               variant="outlined" density="compact" hide-details clearable @keyup.enter="cargarClientes" style="max-width: 320px;" />
+            <v-select v-model="filtroRuta" :items="rutas" item-title="label" item-value="codruta"
+              label="Filtrar por ruta" variant="outlined" density="compact" hide-details clearable
+              prepend-inner-icon="mdi-map-marker-path" style="max-width: 260px;"
+              @update:model-value="cargarClientes" />
           </v-card-title>
           <v-divider />
           <v-data-table-server
@@ -29,6 +33,12 @@
             <template v-slot:item.cliente_concat="{ item }">
               <span class="font-weight-medium">{{ item.CODCLIENTE }}</span>
               <span class="text-grey ml-1">— {{ item.NOMBRECLIENTE }}</span>
+            </template>
+            <template v-slot:item.ruta_display="{ item }">
+              <v-chip v-if="item.ZONA" size="x-small" color="blue-grey" variant="tonal" label>
+                {{ item.ZONA }}<span v-if="item.RUTA_NOMBRE"> — {{ item.RUTA_NOMBRE }}</span>
+              </v-chip>
+              <span v-else class="text-grey text-caption">—</span>
             </template>
             <template v-slot:item.DESCUENTO="{ item }">
               <div class="d-flex align-center" style="max-width: 140px;">
@@ -228,6 +238,8 @@ const lanzarAviso = (texto: string, color = 'success') => aviso.value = { mostra
 
 // ---------- CLIENTES ----------
 const busquedaCliente = ref('');
+const filtroRuta = ref<number | null>(null);
+const rutas = ref<{ codruta: number; descripcion: string; label: string }[]>([]);
 const clientes = ref<any[]>([]);
 const totalClientes = ref(0);
 const cargandoClientes = ref(false);
@@ -239,6 +251,7 @@ const headersClientes = [
   { title: 'Cliente', key: 'cliente_concat', sortable: false },
   { title: 'CIF', key: 'CIF' },
   { title: 'Teléfono', key: 'TELF' },
+  { title: 'Ruta', key: 'ruta_display', sortable: false },
   { title: 'Descuento D1', key: 'DESCUENTO', sortable: false },
   { title: 'Descuento D3 fijo', key: 'DESCUENTO_D3', sortable: false },
   { title: 'FTP', key: 'ftp', sortable: false },
@@ -247,7 +260,9 @@ const headersClientes = [
 const cargarClientes = async () => {
   cargandoClientes.value = true;
   try {
-    const res = await axios.get(`${API}/clientes/paginado`, { params: { search: busquedaCliente.value, page: paginaClientes.value, limit: itemsPerPageClientes.value } });
+    const params: any = { search: busquedaCliente.value, page: paginaClientes.value, limit: itemsPerPageClientes.value };
+    if (filtroRuta.value !== null) params.ruta = filtroRuta.value;
+    const res = await axios.get(`${API}/clientes/paginado`, { params });
     if (res.data.success) { clientes.value = res.data.data; totalClientes.value = res.data.total; }
   } finally { cargandoClientes.value = false; }
 };
@@ -479,8 +494,18 @@ const quitarMiembro = async (codCliente: number) => {
   } catch { lanzarAviso('Error al quitar cliente', 'error'); }
 };
 
+const cargarRutas = async () => {
+  try {
+    const res = await axios.get(`${API}/facturas/rutas`);
+    if (res.data.success) {
+      rutas.value = res.data.data.map((r: any) => ({ ...r, label: `${r.codruta} - ${r.descripcion}` }));
+    }
+  } catch {}
+};
+
 onMounted(() => {
   cargarCamposDisponibles();
   cargarFtpUsuarios();
+  cargarRutas();
 });
 </script>

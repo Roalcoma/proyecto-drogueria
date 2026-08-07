@@ -120,7 +120,19 @@ export class PedidosControllers {
         }
     }
 
-    static async deletePedido(req: Request, res: Response) {
+    static async fusionarPedidos(req: RequestConUsuario, res: Response) {
+        try {
+            const { orderIds } = req.body;
+            if (!Array.isArray(orderIds) || orderIds.length < 2)
+                return res.status(400).json({ success: false, message: 'Se requieren al menos 2 orderIds' });
+            const result = await PedidosServices.fusionarPedidos(orderIds, req.usuario?.id, req.usuario?.usuario);
+            return res.status(result.success ? 200 : 400).json(result);
+        } catch (error) {
+            return res.status(500).json({ success: false, message: 'Error al fusionar pedidos' });
+        }
+    }
+
+    static async deletePedido(req: RequestConUsuario, res: Response) {
         try {
             const { orderId } = req.query
 
@@ -132,7 +144,7 @@ export class PedidosControllers {
                 })
             }
 
-            const deletePedido = await PedidosServices.deletePedido(orderId as string)
+            const deletePedido = await PedidosServices.deletePedido(orderId as string, req.usuario?.id, req.usuario?.usuario)
 
             if(deletePedido.success === false) {
                 console.error('Hubo un error al eliminar el pedido', deletePedido.message)

@@ -61,6 +61,16 @@
         >
           PDF ({{ pedidosSeleccionados.length }})
         </v-btn>
+        <v-btn
+          v-if="pedidosSeleccionados.length >= 2 && puedenFusionarse"
+          prepend-icon="mdi-merge"
+          variant="elevated"
+          color="deep-purple"
+          class="rounded-pill px-6 ml-2"
+          @click="modalFusion.mostrar = true"
+        >
+          Fusionar ({{ pedidosSeleccionados.length }})
+        </v-btn>
       </v-col>
     </v-row>
 
@@ -222,6 +232,18 @@
 
             <template v-slot:item.vendedor_col="{ item }">
               <span class="text-caption">{{ item.NOMVENDEDOR || item.CODVENDEDOR || '—' }}</span>
+              <div v-if="item.ZONA" class="text-caption text-medium-emphasis mt-1">
+                <v-chip size="x-small" color="teal" variant="tonal" label>
+                  {{ item.ZONA }}<span v-if="item.RUTA"> — {{ item.RUTA }}</span>
+                </v-chip>
+              </div>
+            </template>
+
+            <template v-slot:item.creado_por_col="{ item }">
+              <v-chip v-if="item.CREADO_POR === 'FTP'" size="x-small" color="orange" variant="tonal" label>FTP</v-chip>
+              <v-chip v-else-if="item.CREADO_POR && item.CREADO_POR.toLowerCase().includes('ecommerce') || item.CREADO_POR && item.CREADO_POR.toLowerCase().includes('icompras')" size="x-small" color="purple" variant="tonal" label>ICOMPRAS</v-chip>
+              <span v-else-if="item.CREADO_POR" class="text-caption">{{ item.CREADO_POR }}</span>
+              <span v-else class="text-grey text-caption">—</span>
             </template>
 
             <template v-slot:item.RIESGO="{ item }">
@@ -334,6 +356,16 @@
                   color="red-darken-2"
                   :loading="pdfCargando === item.ORDERID"
                   @click="imprimirPDF(item)"
+                ></v-btn>
+                <v-btn
+                  v-if="item.FACTURADO === 'T' && item.SERIE_FAC && item.NROFAC"
+                  icon="mdi-receipt-text"
+                  variant="text"
+                  size="small"
+                  color="green-darken-3"
+                  title="Formato de Factura"
+                  :loading="formatoCargando === item.ORDERID"
+                  @click="imprimirFormato(item)"
                 ></v-btn>
               </div>
             </template>
@@ -586,6 +618,42 @@
       </v-card>
     </v-dialog>
 
+    <!-- Dialog: fusionar pedidos -->
+    <v-dialog v-model="modalFusion.mostrar" max-width="500" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 bg-deep-purple text-white d-flex align-center">
+          <v-icon start>mdi-merge</v-icon>
+          Fusionar pedidos
+        </v-card-title>
+        <v-card-text class="pa-4">
+          <p class="text-body-2 mb-3">
+            Se fusionarán los siguientes pedidos en <strong>{{ pedidosSeleccionados[0]?.ORDERID }}</strong>
+            (el primero seleccionado actúa como maestro):
+          </p>
+          <v-chip v-for="p in pedidosSeleccionados" :key="p.ORDERID" class="mr-1 mb-1" size="small"
+            :color="p.ESTATUS === 'PENDIENTE POR AUTORIZACION' ? 'orange' : 'blue-grey'" variant="tonal" label>
+            {{ p.ORDERID }}
+            <span class="ml-1 text-caption">({{ p.ESTATUS === 'PENDIENTE POR AUTORIZACION' ? 'PSICO' : 'PEND.' }})</span>
+          </v-chip>
+          <v-alert v-if="pedidosSeleccionados.some(p => p.ESTATUS === 'PENDIENTE POR AUTORIZACION')"
+            type="warning" variant="tonal" density="compact" class="mt-3" icon="mdi-alert">
+            El resultado quedará en <strong>PENDIENTE POR AUTORIZACIÓN</strong> porque al menos un pedido lo requiere.
+          </v-alert>
+          <v-alert v-if="!puedenFusionarse" type="error" variant="tonal" density="compact" class="mt-3">
+            {{ errorFusion }}
+          </v-alert>
+        </v-card-text>
+        <v-card-actions class="pa-4">
+          <v-spacer />
+          <v-btn variant="text" @click="modalFusion.mostrar = false">Cancelar</v-btn>
+          <v-btn color="deep-purple" variant="elevated" :loading="modalFusion.cargando"
+            :disabled="!puedenFusionarse" @click="ejecutarFusion">
+            Confirmar fusión
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-snackbar v-model="snackbar.show" :color="snackbar.color" rounded="pill">
       {{ snackbar.text }}
     </v-snackbar>
@@ -613,7 +681,8 @@ const vis = computed(() => Number(authStore.usuario?.visibilidad ?? 0));
 const puedeAutorizar = computed(() => (vis.value & BIT_AUTORIZADOR) !== 0 || (vis.value & BIT_BACKOFFICE) !== 0);
 const puedeEditar    = computed(() => (vis.value & BIT_EDICION)     !== 0 || (vis.value & BIT_BACKOFFICE) !== 0);
 const pedidos      = ref<any[]>([]);
-const pdfCargando  = ref<string | null>(null);
+const pdfCargando     = ref<string | null>(null);
+const formatoCargando = ref<string | null>(null);
 const formatoPDF   = ref<FormatoPDF>('completo');
 const FORMATOS_PDF = [
     { value: 'completo',      label: 'Con descuentos, PVP y totales' },
@@ -624,6 +693,45 @@ const FORMATOS_PDF = [
 const totalPedidos = ref(0);
 const pedidosSeleccionados = ref<any[]>([]);
 const pdfMultipleCargando  = ref(false);
+
+const modalFusion = ref({ mostrar: false, cargando: false });
+
+const sufijo = (id: string) => (id.match(/[A-Za-z]*$/) || [''])[0];
+const VALIDOS_FUSION = ['PENDIENTE', 'PENDIENTE POR AUTORIZACION'];
+
+const errorFusion = computed(() => {
+  const sel = pedidosSeleccionados.value;
+  if (sel.length < 2) return 'Selecciona al menos 2 pedidos';
+  const clientes = [...new Set(sel.map((p: any) => p.CLIENTEID))];
+  if (clientes.length > 1) return 'Los pedidos deben ser del mismo cliente';
+  const invalido = sel.find((p: any) => !VALIDOS_FUSION.includes(p.ESTATUS));
+  if (invalido) return `"${invalido.ORDERID}" tiene estado "${invalido.ESTATUS}"`;
+  const sufijos = [...new Set(sel.map((p: any) => sufijo(p.ORDERID)))];
+  if (sufijos.length > 1) return 'Los pedidos deben ser del mismo tipo (mismo sufijo)';
+  return '';
+});
+const puedenFusionarse = computed(() => errorFusion.value === '');
+
+const ejecutarFusion = async () => {
+  if (!puedenFusionarse.value) return;
+  modalFusion.value.cargando = true;
+  try {
+    const orderIds = pedidosSeleccionados.value.map((p: any) => p.ORDERID);
+    const res = await axios.post(`${import.meta.env.VITE_API_URL}/pedidos/fusionar`, { orderIds });
+    if (res.data.success) {
+      lanzarNotificacion(`Pedidos fusionados en ${res.data.orderId}`, 'success');
+      pedidosSeleccionados.value = [];
+      modalFusion.value.mostrar = false;
+      await obtenerPedidos();
+    } else {
+      lanzarNotificacion(res.data.message || 'Error al fusionar', 'error');
+    }
+  } catch (e: any) {
+    lanzarNotificacion(e.response?.data?.message || 'Error al fusionar', 'error');
+  } finally {
+    modalFusion.value.cargando = false;
+  }
+};
 const previewCargando      = ref<string | null>(null);
 const previewModal = ref<{
   show: boolean; orderId: string; estatus: string; cliente: string;
@@ -713,6 +821,7 @@ const headers = [
   { title: 'REGISTRO',    key: 'FECHA',          align: 'start'  as const },
   { title: 'CLIENTE',     key: 'cliente_col',    align: 'start'  as const, sortable: false },
   { title: 'VENDEDOR',    key: 'vendedor_col',  align: 'start'  as const, sortable: false },
+  { title: 'USUARIO APP', key: 'creado_por_col', align: 'start' as const, sortable: false },
   { title: 'RIESGO',      key: 'RIESGO',        align: 'center' as const, sortable: false },
   { title: 'ESTADO ACTUAL', key: 'ESTATUS',     align: 'center' as const, sortable: false },
   { title: 'UNIDADES',    key: 'TOTALUNIDADES', align: 'center' as const, sortable: false },
@@ -942,6 +1051,24 @@ const imprimirPDF = async (item: any) => {
   }
 };
 
+const imprimirFormato = async (item: any) => {
+  formatoCargando.value = item.ORDERID;
+  try {
+    const url = `${import.meta.env.VITE_API_URL}/facturas/imprimir-formato?serie=${encodeURIComponent(item.SERIE_FAC)}&numero=${encodeURIComponent(item.NROFAC)}`;
+    const res = await axios.get(url, { responseType: 'blob', headers: { Authorization: `Bearer ${authStore.token}` } });
+    const blob = new Blob([res.data], { type: 'application/pdf' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.target = '_blank';
+    link.click();
+    URL.revokeObjectURL(link.href);
+  } catch {
+    lanzarNotificacion('Error al generar el formato de factura', 'error');
+  } finally {
+    formatoCargando.value = null;
+  }
+};
+
 const imprimirPDFMultiple = async () => {
   if (pedidosSeleccionados.value.length === 0) return;
   pdfMultipleCargando.value = true;
@@ -1019,7 +1146,7 @@ onMounted(async () => {
     const res = await axios.get(`${import.meta.env.VITE_API_URL}/rutero/zonas`);
     zonas.value = res.data.data ?? [];
   } catch { /* silencioso */ }
-  refreshInterval = setInterval(() => obtenerPedidos(), 60_000);
+  refreshInterval = setInterval(() => obtenerPedidos(), 15 * 60_000);
 });
 onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval); });
 </script>

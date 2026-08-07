@@ -28,3 +28,9 @@ _backups/
 _restore_tmp/
 _update_tmp/
 _update_tmp.zip
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+impresion_facturas/settings.cfg

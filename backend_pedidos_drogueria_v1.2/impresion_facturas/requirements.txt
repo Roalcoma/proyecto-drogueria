@@ -1,0 +1,7 @@
+reportlab
+python-barcode
+pyinstaller
+pymssql
+pywin32
+pymupdf
+Pillow

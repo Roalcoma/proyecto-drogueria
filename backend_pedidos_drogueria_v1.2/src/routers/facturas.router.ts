@@ -10,7 +10,8 @@ facturasRouter.get('/rutas',    FacturasControllers.getRutas);
 facturasRouter.get('/config',   FacturasControllers.getConfig);
 facturasRouter.put('/config',   FacturasControllers.setConfig);
 facturasRouter.post('/guardar-pdf', FacturasControllers.guardarPDF);
-facturasRouter.get('/detalle',  FacturasControllers.getFacturaDetalle);
+facturasRouter.get('/detalle',        FacturasControllers.getFacturaDetalle);
+facturasRouter.get('/imprimir-formato', FacturasControllers.imprimirFormato);
 facturasRouter.put('/nocontrol', FacturasControllers.asignarNoControl);
 facturasRouter.get('/',         FacturasControllers.getFacturas);
 

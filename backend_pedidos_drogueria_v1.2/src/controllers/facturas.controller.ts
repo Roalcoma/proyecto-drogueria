@@ -1,5 +1,9 @@
 import { Request, Response } from 'express';
 import { FacturasService } from '../services/facturas.service';
+import { spawn } from 'child_process';
+import * as path from 'path';
+import * as fs from 'fs';
+import { getDbConfig } from '../services/dbconfig.service';
 
 export class FacturasControllers {
 
@@ -79,5 +83,56 @@ export class FacturasControllers {
         } catch {
             return res.status(500).json({ success: false, message: 'Error al obtener rutas' });
         }
+    }
+
+    static async imprimirFormato(req: Request, res: Response) {
+        const { serie, numero } = req.query;
+        if (!serie || !numero)
+            return res.status(400).json({ success: false, message: 'serie y numero son requeridos' });
+
+        const scriptDir  = path.join(__dirname, '..', '..', 'impresion_facturas');
+        const scriptPath = path.join(scriptDir, 'generate_for_web.py');
+        const cfg = getDbConfig();
+
+        return new Promise<void>((resolve) => {
+            const py = spawn('python', [scriptPath, String(serie), String(numero)], {
+                cwd: scriptDir,
+                env: {
+                    ...process.env,
+                    DB_SERVER:   cfg.server,
+                    DB_PORT:     String(cfg.port || 1433),
+                    DB_USER:     cfg.user,
+                    DB_PASSWORD: cfg.password,
+                    DB_DATABASE: cfg.dbName,
+                },
+            });
+            let stdout = '';
+            let stderr = '';
+            py.stdout.on('data', (d: Buffer) => stdout += d.toString());
+            py.stderr.on('data', (d: Buffer) => stderr += d.toString());
+            py.on('close', () => {
+                try {
+                    const lastLine = stdout.trim().split('\n').pop() || '';
+                    const result = JSON.parse(lastLine);
+                    if (result.error) {
+                        res.status(500).json({ success: false, message: result.error });
+                        return resolve();
+                    }
+                    const pdfPath = result.path;
+                    res.setHeader('Content-Type', 'application/pdf');
+                    res.setHeader('Content-Disposition', `inline; filename="factura_${serie}_${numero}.pdf"`);
+                    const stream = fs.createReadStream(pdfPath);
+                    stream.pipe(res);
+                    stream.on('end', () => { fs.unlink(pdfPath, () => {}); resolve(); });
+                    stream.on('error', () => {
+                        res.status(500).json({ success: false, message: 'Error leyendo PDF generado' });
+                        resolve();
+                    });
+                } catch {
+                    res.status(500).json({ success: false, message: 'Error en generador de factura', stderr });
+                    resolve();
+                }
+            });
+        });
     }
 }

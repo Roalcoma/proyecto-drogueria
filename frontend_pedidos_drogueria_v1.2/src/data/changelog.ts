@@ -11,9 +11,10 @@ export interface CommitEntry {
   texto: string;
 }
 
-export const APP_VERSION = '1.2.8';
+export const APP_VERSION = '1.2.9';
 
 export const VERSIONES: VersionEntry[] = [
+  { version: '1.2.9', fecha: '2026-08-07', desde: '2026-08-07' },
   { version: '1.2.8', fecha: '2026-07-30', desde: '2026-07-30' },
   { version: '1.2.7', fecha: '2026-07-29', desde: '2026-07-28' },
   { version: '1.2.6', fecha: '2026-07-27', desde: '2026-07-27' },
@@ -26,6 +27,15 @@ export const VERSIONES: VersionEntry[] = [
 ];
 
 export const COMMITS: CommitEntry[] = [
+  { hash: 'pending', date: '2026-08-07', tipo: 'feat',    texto: 'control de estatus: botón formato de factura (Python) en pedidos facturados' },
+  { hash: 'pending', date: '2026-08-07', tipo: 'fix',     texto: 'pedidos duplicados: APP_PEDIDO_LOG y CLIENTESENVIO/CLIENTESCAMPOSLIBRES pasan a OUTER APPLY TOP 1' },
+  { hash: 'pending', date: '2026-08-07', tipo: 'fix',     texto: 'fusión: log registraba EST_ANTERIOR=null causando duplicado visual del pedido maestro' },
+  { hash: 'pending', date: '2026-08-07', tipo: 'feat',    texto: 'pedidos eliminados se archivan en APP_CABECERA_PED_ELIMINADOS y APP_LINEA_PED_ELIMINADOS antes de borrarse' },
+  { hash: 'pending', date: '2026-08-07', tipo: 'feat',    texto: 'fusión de pedidos: mismo cliente + sufijo + estado PENDIENTE/PENDIENTE POR AUTORIZACIÓN' },
+  { hash: 'pending', date: '2026-08-07', tipo: 'feat',    texto: 'control de estatus: columna USUARIO APP muestra chip FTP, ICOMPRAS o usuario del aplicativo' },
+  { hash: 'pending', date: '2026-08-07', tipo: 'feat',    texto: 'control de estatus: chip de zona (CODZONA — descripción) bajo el vendedor' },
+  { hash: 'pending', date: '2026-08-07', tipo: 'improve', texto: 'control de estatus: auto-refresh cada 15 minutos en lugar de 60 segundos' },
+  { hash: 'pending', date: '2026-08-07', tipo: 'feat',    texto: 'gestión de clientes: columna de ruta y filtro por zona' },
   { hash: 'pending', date: '2026-07-30', tipo: 'improve', texto: 'metas: gestión de zonas con lista + modales para nueva meta y detalle de zona' },
   { hash: 'pending', date: '2026-07-30', tipo: 'fix',     texto: 'metas progreso: vendedores aparecían en zona incorrecta — ahora se usan las zonas de APP_METAS_ZONA' },
   { hash: 'a7b2b28', date: '2026-07-30', tipo: 'feat',    texto: 'rutero: filtros de fecha, bloqueo confirmación y permisos admin (RUTERO_ADMIN bit 65536)' },

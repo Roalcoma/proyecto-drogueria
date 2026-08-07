@@ -4,8 +4,11 @@ import { ClientesServices } from "../services/clientes.service";
 export class ClientesController {
 
     static async getClientesPaginado(req: Request, res: Response): Promise<void> {
-        const { search, page, limit } = req.query
-        const result = await ClientesServices.getClientesPaginado((search as string) || '', Number(page) || 1, Number(limit) || 10)
+        const { search, page, limit, ruta } = req.query
+        const result = await ClientesServices.getClientesPaginado(
+            (search as string) || '', Number(page) || 1, Number(limit) || 10,
+            ruta ? Number(ruta) : undefined
+        )
         res.status(result.success ? 200 : 500).json(result)
     }
 

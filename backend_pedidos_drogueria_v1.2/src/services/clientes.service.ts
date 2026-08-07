@@ -4,32 +4,48 @@ import 'dotenv/config'
 
 export class ClientesServices {
 
-    static async getClientesPaginado(search: string, page: number, limit: number): Promise<any> {
+    static async getClientesPaginado(search: string, page: number, limit: number, ruta?: number): Promise<any> {
         try {
             const pool = await connectDb()
             const safeLimit = limit === -1 ? 10000 : Math.max(1, limit)
             const offset = limit === -1 ? 0 : (Math.max(1, page) - 1) * safeLimit
             const filtro = search ? `%${search.toUpperCase()}%` : '%'
+            const rutaFiltro = ruta && !isNaN(ruta) ? ruta : null
+            const rutaWhere = rutaFiltro !== null ? 'AND TRY_CAST(CCL.ZONA AS INT) = @RUTA' : ''
 
-            const result = await pool.request()
+            const dataReq = pool.request()
                 .input('FILTRO', mssql.NVarChar, filtro)
                 .input('OFFSET', mssql.Int, offset)
                 .input('LIMIT', mssql.Int, safeLimit)
-                .query(`
-                    SELECT
-                        CL.CODCLIENTE, CL.NOMBRECLIENTE, ISNULL(CL.NOMBRECOMERCIAL,'') AS NOMBRECOMERCIAL, CL.CIF,
-                        ISNULL(CL.TELEFONO1, '') TELF, ISNULL(CL.E_MAIL, '') EMAIL,
-                        ISNULL((SELECT TOP 1 TRY_CAST(CCL.D1 AS FLOAT) FROM CLIENTESCAMPOSLIBRES CCL WHERE CCL.CODCLIENTE = CL.CODCLIENTE), 0) DESCUENTO,
-                        ISNULL((SELECT TOP 1 TRY_CAST(CCL.D3 AS FLOAT) FROM CLIENTESCAMPOSLIBRES CCL WHERE CCL.CODCLIENTE = CL.CODCLIENTE), 0) DESCUENTO_D3
-                    FROM CLIENTES CL
-                    WHERE UPPER(ISNULL(CL.NOMBRECLIENTE,'')) LIKE @FILTRO OR UPPER(ISNULL(CL.NOMBRECOMERCIAL,'')) LIKE @FILTRO OR UPPER(ISNULL(CL.CIF,'')) LIKE @FILTRO
-                    ORDER BY CL.NOMBRECLIENTE
-                    OFFSET @OFFSET ROWS FETCH NEXT @LIMIT ROWS ONLY
-                `)
+            if (rutaFiltro !== null) dataReq.input('RUTA', mssql.Int, rutaFiltro)
 
-            const countResult = await pool.request()
-                .input('FILTRO', mssql.NVarChar, filtro)
-                .query(`SELECT COUNT(*) AS TOTAL FROM CLIENTES CL WHERE UPPER(ISNULL(CL.NOMBRECLIENTE,'')) LIKE @FILTRO OR UPPER(ISNULL(CL.NOMBRECOMERCIAL,'')) LIKE @FILTRO OR UPPER(ISNULL(CL.CIF,'')) LIKE @FILTRO`)
+            const result = await dataReq.query(`
+                SELECT
+                    CL.CODCLIENTE, CL.NOMBRECLIENTE, ISNULL(CL.NOMBRECOMERCIAL,'') AS NOMBRECOMERCIAL, CL.CIF,
+                    ISNULL(CL.TELEFONO1, '') TELF, ISNULL(CL.E_MAIL, '') EMAIL,
+                    ISNULL(TRY_CAST(CCL.D1 AS FLOAT), 0) DESCUENTO,
+                    ISNULL(TRY_CAST(CCL.D3 AS FLOAT), 0) DESCUENTO_D3,
+                    ISNULL(CCL.ZONA, '') AS ZONA,
+                    ISNULL(RUT.DESCRIPCION, '') AS RUTA_NOMBRE
+                FROM CLIENTES CL
+                LEFT JOIN CLIENTESCAMPOSLIBRES CCL ON CCL.CODCLIENTE = CL.CODCLIENTE
+                LEFT JOIN RUTAS RUT ON RUT.CODRUTA = TRY_CAST(CCL.ZONA AS INT)
+                WHERE (UPPER(ISNULL(CL.NOMBRECLIENTE,'')) LIKE @FILTRO OR UPPER(ISNULL(CL.NOMBRECOMERCIAL,'')) LIKE @FILTRO OR UPPER(ISNULL(CL.CIF,'')) LIKE @FILTRO)
+                ${rutaWhere}
+                ORDER BY CL.NOMBRECLIENTE
+                OFFSET @OFFSET ROWS FETCH NEXT @LIMIT ROWS ONLY
+            `)
+
+            const countReq = pool.request().input('FILTRO', mssql.NVarChar, filtro)
+            if (rutaFiltro !== null) countReq.input('RUTA', mssql.Int, rutaFiltro)
+
+            const countResult = await countReq.query(`
+                SELECT COUNT(*) AS TOTAL
+                FROM CLIENTES CL
+                LEFT JOIN CLIENTESCAMPOSLIBRES CCL ON CCL.CODCLIENTE = CL.CODCLIENTE
+                WHERE (UPPER(ISNULL(CL.NOMBRECLIENTE,'')) LIKE @FILTRO OR UPPER(ISNULL(CL.NOMBRECOMERCIAL,'')) LIKE @FILTRO OR UPPER(ISNULL(CL.CIF,'')) LIKE @FILTRO)
+                ${rutaWhere}
+            `)
 
             return { success: true, data: result.recordset, total: countResult.recordset[0].TOTAL }
         } catch (error) {

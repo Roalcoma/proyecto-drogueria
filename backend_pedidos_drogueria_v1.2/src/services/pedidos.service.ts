@@ -88,6 +88,44 @@ export class PedidosServices {
                 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_PEDLOG_ORDERID' AND object_id=OBJECT_ID('${esquema}.APP_PEDIDO_LOG'))
                     CREATE INDEX IX_PEDLOG_ORDERID ON ${esquema}.APP_PEDIDO_LOG (ORDERID)
             `);
+            await pool.request().query(`
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='APP_CABECERA_PED_ELIMINADOS')
+                    CREATE TABLE ${esquema}.APP_CABECERA_PED_ELIMINADOS (
+                        ID               INT IDENTITY(1,1) PRIMARY KEY,
+                        ORDERID          VARCHAR(50)    NOT NULL,
+                        CLIENTEID        INT            NULL,
+                        FECHA            DATETIME       NULL,
+                        ESTATUS          VARCHAR(50)    NULL,
+                        CODVENDEDOR      INT            NULL,
+                        TOTALPRECIO      FLOAT          NULL,
+                        OBSERVACIONES    NVARCHAR(255)  NULL,
+                        PROMO_NOMBRE     NVARCHAR(500)  NULL,
+                        FECHA_ELIMINADO  DATETIME       NOT NULL DEFAULT GETDATE(),
+                        CODUSUARIO_ELIMINO INT          NULL,
+                        USUARIO_ELIMINO  VARCHAR(100)   NULL
+                    )
+            `);
+            await pool.request().query(`
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='APP_LINEA_PED_ELIMINADOS')
+                    CREATE TABLE ${esquema}.APP_LINEA_PED_ELIMINADOS (
+                        ID               INT IDENTITY(1,1) PRIMARY KEY,
+                        ORDERID          VARCHAR(50)    NOT NULL,
+                        CODARTICULO      INT            NULL,
+                        REFERENCIA       VARCHAR(50)    NULL,
+                        CODALMACEN       VARCHAR(10)    NULL,
+                        IDTARIFAV        INT            NULL,
+                        PRODUCTCOUNT     INT            NULL,
+                        PRECIOUNITARIO   FLOAT          NULL,
+                        DESCUENTO1       FLOAT          NULL,
+                        DESCUENTO2       FLOAT          NULL,
+                        DESCUENTO3       FLOAT          NULL,
+                        DESCUENTO4       FLOAT          NULL,
+                        PRECIOBRUTO      FLOAT          NULL,
+                        PORCENTAJEIVA    FLOAT          NULL,
+                        MONTOIVA         FLOAT          NULL,
+                        FECHA_ELIMINADO  DATETIME       NOT NULL DEFAULT GETDATE()
+                    )
+            `);
             console.log('Tablas de pedidos verificadas.');
         } catch (err) {
             console.error('Advertencia en PedidosServices.initTablas:', err);
@@ -340,18 +378,18 @@ export class PedidosServices {
                     CP.OBSERVACIONES, CP.PROMO_NOMBRE, LG.USUARIO AS CREADO_POR,
                     FAC.FACTURADO, FAC.SERIE_FAC, FAC.NROFAC,
                     CL.NOMBRECLIENTE, ISNULL(CL.NOMBRECOMERCIAL, '') AS NOMBRECOMERCIAL, CL.CIF, ISNULL(CL.NIF20, '') AS NIF20, CL.DIRECCION1, ISNULL(CE.DIRECCION1, CL.DIRECCION1) AS DIRECCION_ENVIO,
-                    ISNULL(RUT.DESCRIPCION, '') AS RUTA,
+                    ISNULL(CLC.ZONA, '') AS ZONA, ISNULL(RUT.DESCRIPCION, '') AS RUTA,
                     V.NOMVENDEDOR,
                     CR.ESTATUS AS RIESGO_ESTATUS,
                     (SELECT SUM(LP.PRODUCTCOUNT) FROM ${esquema}.LINEA_PED LP WHERE LP.ORDERID = CP.ORDERID) AS TOTALUNIDADES
                 FROM
                     ${esquema}.CABECERA_PED CP WITH (NOLOCK)
                     LEFT JOIN CLIENTES CL WITH (NOLOCK) ON CL.CODCLIENTE = CP.CLIENTEID
-                    LEFT JOIN CLIENTESENVIO CE WITH (NOLOCK) ON CE.CODCLIENTE = CP.CLIENTEID
+                    OUTER APPLY (SELECT TOP 1 DIRECCION1 FROM CLIENTESENVIO WITH (NOLOCK) WHERE CODCLIENTE = CP.CLIENTEID) CE
                     LEFT JOIN VENDEDORES V WITH (NOLOCK) ON V.CODVENDEDOR = CP.CODVENDEDOR
-                    LEFT JOIN CLIENTESCAMPOSLIBRES CLC WITH (NOLOCK) ON CLC.CODCLIENTE = CP.CLIENTEID
+                    OUTER APPLY (SELECT TOP 1 ZONA FROM CLIENTESCAMPOSLIBRES WITH (NOLOCK) WHERE CODCLIENTE = CP.CLIENTEID) CLC
                     LEFT JOIN RUTAS RUT WITH (NOLOCK) ON RUT.CODRUTA = TRY_CAST(CLC.ZONA AS INT)
-                    LEFT JOIN ${esquema}.APP_PEDIDO_LOG LG WITH (NOLOCK) ON LG.ORDERID = CP.ORDERID AND LG.EST_ANTERIOR IS NULL
+                    OUTER APPLY (SELECT TOP 1 USUARIO FROM ${esquema}.APP_PEDIDO_LOG WITH (NOLOCK) WHERE ORDERID = CP.ORDERID AND EST_ANTERIOR IS NULL ORDER BY FECHA ASC) LG
                     OUTER APPLY (
                         SELECT TOP 1 AVC.FACTURADO, AVC.NUMSERIEFAC AS SERIE_FAC, AVC.NUMFAC AS NROFAC
                         FROM PEDVENTACAB PVC WITH(NOLOCK)
@@ -414,8 +452,8 @@ export class PedidosServices {
                 SELECT COUNT(*) AS TOTAL, ${sumaUSD} AS TOTAL_USD
                 FROM ${esquema}.CABECERA_PED CP WITH (NOLOCK)
                 LEFT JOIN CLIENTES CL2 WITH (NOLOCK) ON CL2.CODCLIENTE = CP.CLIENTEID
-                LEFT JOIN CLIENTESCAMPOSLIBRES CLC WITH (NOLOCK) ON CLC.CODCLIENTE = CP.CLIENTEID
-                LEFT JOIN ${esquema}.APP_PEDIDO_LOG LG2 WITH (NOLOCK) ON LG2.ORDERID = CP.ORDERID AND LG2.EST_ANTERIOR IS NULL
+                OUTER APPLY (SELECT TOP 1 ZONA FROM CLIENTESCAMPOSLIBRES WITH (NOLOCK) WHERE CODCLIENTE = CP.CLIENTEID) CLC
+                OUTER APPLY (SELECT TOP 1 USUARIO FROM ${esquema}.APP_PEDIDO_LOG WITH (NOLOCK) WHERE ORDERID = CP.ORDERID AND EST_ANTERIOR IS NULL ORDER BY FECHA ASC) LG2
                 LEFT JOIN VENDEDORES V2 WITH (NOLOCK) ON V2.CODVENDEDOR = CP.CODVENDEDOR
                 LEFT JOIN (
                     SELECT DISTINCT RTRIM(LTRIM(PVC.SUPEDIDO)) AS SUPEDIDO
@@ -713,7 +751,113 @@ export class PedidosServices {
         }
     }
 
-    static async deletePedido(orderId: string) {
+    static async fusionarPedidos(orderIds: string[], codusuario?: number, usuario?: string) {
+        if (!orderIds || orderIds.length < 2)
+            return { success: false, message: 'Se necesitan al menos 2 pedidos para fusionar' };
+
+        const pool = await connectDb();
+
+        // 1. Cargar cabeceras
+        const req = pool.request();
+        const placeholders = orderIds.map((id, i) => { req.input(`ID${i}`, mssql.VarChar(50), id); return `@ID${i}`; }).join(',');
+        const ordersRes = await req.query(`
+            SELECT ORDERID, CLIENTEID, ESTATUS FROM ${esquema}.CABECERA_PED WHERE ORDERID IN (${placeholders})
+        `);
+        const orders = ordersRes.recordset;
+
+        if (orders.length !== orderIds.length)
+            return { success: false, message: 'Uno o más pedidos no fueron encontrados' };
+
+        // 2. Mismo cliente
+        const clientes = [...new Set(orders.map((o: any) => o.CLIENTEID))];
+        if (clientes.length > 1)
+            return { success: false, message: 'Los pedidos deben pertenecer al mismo cliente' };
+
+        // 3. Estados válidos
+        const VALIDOS = ['PENDIENTE', 'PENDIENTE POR AUTORIZACION'];
+        const invalido = orders.find((o: any) => !VALIDOS.includes(o.ESTATUS));
+        if (invalido)
+            return { success: false, message: `El pedido ${invalido.ORDERID} tiene estado "${invalido.ESTATUS}" y no puede fusionarse` };
+
+        // 4. Mismo sufijo (caracteres alfabéticos al final del ORDERID)
+        const sufijo = (id: string) => (id.match(/[A-Za-z]*$/) || [''])[0];
+        const sufijos = [...new Set(orders.map((o: any) => sufijo(o.ORDERID)))];
+        if (sufijos.length > 1)
+            return { success: false, message: 'Los pedidos deben ser del mismo tipo (mismo sufijo)' };
+
+        // 5. Maestro = primer orderId del array; resto = fuentes
+        const masterId = orderIds[0];
+        const fuenteIds = orderIds.slice(1);
+
+        // 6. Estado final
+        const hayPsico = orders.some((o: any) => o.ESTATUS === 'PENDIENTE POR AUTORIZACION');
+        const estadoFinal = hayPsico ? 'PENDIENTE POR AUTORIZACION' : 'PENDIENTE';
+
+        let transaction: mssql.Transaction | null = null;
+        try {
+            transaction = new mssql.Transaction(pool);
+            await transaction.begin();
+
+            for (const fuenteId of fuenteIds) {
+                // Mover líneas (incluyendo chunks: fuenteId-2, fuenteId-3…)
+                await new mssql.Request(transaction)
+                    .input('MASTER', mssql.VarChar(50), masterId)
+                    .input('FUENTE', mssql.VarChar(50), fuenteId)
+                    .query(`
+                        UPDATE ${esquema}.LINEA_PED SET ORDERID = @MASTER
+                        WHERE ORDERID = @FUENTE OR ORDERID LIKE @FUENTE + '-%'
+                    `);
+                // Eliminar logs y cabeceras de la fuente (y sus chunks)
+                await new mssql.Request(transaction)
+                    .input('FUENTE', mssql.VarChar(50), fuenteId)
+                    .query(`
+                        DELETE FROM ${esquema}.APP_PEDIDO_LOG  WHERE ORDERID = @FUENTE OR ORDERID LIKE @FUENTE + '-%';
+                        DELETE FROM ${esquema}.APP_PEDIDO_PROMOCIONES WHERE ORDERID = @FUENTE OR ORDERID LIKE @FUENTE + '-%';
+                        DELETE FROM ${esquema}.CABECERA_PED     WHERE ORDERID = @FUENTE OR ORDERID LIKE @FUENTE + '-%'
+                    `);
+            }
+
+            // Mover líneas de los chunks del maestro al maestro, luego borrar los chunks
+            await new mssql.Request(transaction)
+                .input('MASTER', mssql.VarChar(50), masterId)
+                .query(`
+                    UPDATE ${esquema}.LINEA_PED SET ORDERID = @MASTER WHERE ORDERID LIKE @MASTER + '-%';
+                    DELETE FROM ${esquema}.APP_PEDIDO_LOG        WHERE ORDERID LIKE @MASTER + '-%';
+                    DELETE FROM ${esquema}.APP_PEDIDO_PROMOCIONES WHERE ORDERID LIKE @MASTER + '-%';
+                    DELETE FROM ${esquema}.CABECERA_PED           WHERE ORDERID LIKE @MASTER + '-%'
+                `);
+
+            // Recalcular total y actualizar estado del maestro
+            await new mssql.Request(transaction)
+                .input('MASTER', mssql.VarChar(50), masterId)
+                .input('ESTADO', mssql.VarChar(50), estadoFinal)
+                .query(`
+                    UPDATE ${esquema}.CABECERA_PED
+                    SET TOTALPRECIO = (
+                            SELECT ISNULL(SUM(PRODUCTCOUNT * PRECIOUNITARIO), 0)
+                            FROM ${esquema}.LINEA_PED WHERE ORDERID = @MASTER
+                        ),
+                        ESTATUS = @ESTADO
+                    WHERE ORDERID = @MASTER
+                `);
+
+            await transaction.commit();
+
+            const masterEstatus = (orders.find((o: any) => o.ORDERID === masterId) as any).ESTATUS as string;
+            await PedidosServices.registrarLog(
+                masterId, masterEstatus, estadoFinal, codusuario, usuario,
+                `Fusión de pedidos: [${orderIds.join(', ')}] → ${masterId}`
+            );
+
+            return { success: true, message: `Pedidos fusionados en ${masterId}`, orderId: masterId };
+        } catch (error) {
+            if (transaction) try { await transaction.rollback(); } catch {}
+            console.error('Error al fusionar pedidos:', error);
+            return { success: false, message: 'Error al fusionar pedidos', error: error instanceof Error ? error.message : String(error) };
+        }
+    }
+
+    static async deletePedido(orderId: string, codusuario?: number, usuario?: string) {
         let transaction: mssql.Transaction | null = null;
 
         try {
@@ -721,40 +865,61 @@ export class PedidosServices {
             transaction = new mssql.Transaction(pool);
             await transaction.begin();
 
-            // 1. Borrar promociones aplicadas
-            const deletePromoReq = new mssql.Request(transaction);
-            await deletePromoReq
+            // 1. Archivar cabecera y líneas antes de borrar
+            await new mssql.Request(transaction)
+                .input('ORDERID',    mssql.VarChar(50),  orderId)
+                .input('CODUSUARIO', mssql.Int,          codusuario ?? null)
+                .input('USUARIO',    mssql.VarChar(100), usuario ?? null)
+                .query(`INSERT INTO ${esquema}.APP_CABECERA_PED_ELIMINADOS
+                            (ORDERID, CLIENTEID, FECHA, ESTATUS, CODVENDEDOR, TOTALPRECIO,
+                             OBSERVACIONES, PROMO_NOMBRE, FECHA_ELIMINADO, CODUSUARIO_ELIMINO, USUARIO_ELIMINO)
+                        SELECT ORDERID, CLIENTEID, FECHA, ESTATUS, CODVENDEDOR, TOTALPRECIO,
+                               ISNULL(OBSERVACIONES, ''), ISNULL(PROMO_NOMBRE, ''),
+                               GETDATE(), @CODUSUARIO, @USUARIO
+                        FROM ${esquema}.CABECERA_PED WHERE ORDERID = @ORDERID`);
+
+            await new mssql.Request(transaction)
+                .input('ORDERID', mssql.VarChar(50), orderId)
+                .query(`INSERT INTO ${esquema}.APP_LINEA_PED_ELIMINADOS
+                            (ORDERID, CODARTICULO, REFERENCIA, CODALMACEN, IDTARIFAV, PRODUCTCOUNT,
+                             PRECIOUNITARIO, DESCUENTO1, DESCUENTO2, DESCUENTO3, DESCUENTO4,
+                             PRECIOBRUTO, PORCENTAJEIVA, MONTOIVA, FECHA_ELIMINADO)
+                        SELECT ORDERID, CODARTICULO, REFERENCIA, CODALMACEN, IDTARIFAV, PRODUCTCOUNT,
+                               PRECIOUNITARIO, DESCUENTO1, DESCUENTO2, DESCUENTO3, DESCUENTO4,
+                               PRECIOBRUTO, PORCENTAJEIVA, MONTOIVA, GETDATE()
+                        FROM ${esquema}.LINEA_PED WHERE ORDERID = @ORDERID`);
+
+            // 2. Borrar promociones aplicadas
+            await new mssql.Request(transaction)
                 .input('ORDERID', mssql.VarChar(50), orderId)
                 .query(`DELETE FROM ${esquema}.APP_PEDIDO_PROMOCIONES WHERE ORDERID = @ORDERID`);
 
-            // 2. Borrar líneas
-            const deleteLineasReq = new mssql.Request(transaction);
-            await deleteLineasReq
+            // 3. Borrar líneas
+            await new mssql.Request(transaction)
                 .input('ORDERID', mssql.VarChar(50), orderId)
                 .query(`DELETE FROM ${esquema}.LINEA_PED WHERE ORDERID = @ORDERID`);
 
-            // 2. Borrar luego la cabecera (Maestro)
-            const deleteCabeceraReq = new mssql.Request(transaction);
-            const result = await deleteCabeceraReq
+            // 4. Borrar cabecera
+            const result = await new mssql.Request(transaction)
                 .input('ORDERID', mssql.VarChar(50), orderId)
                 .query(`DELETE FROM ${esquema}.CABECERA_PED WHERE ORDERID = @ORDERID`);
 
-            // Verificamos si realmente se borró la cabecera (por si enviaron un ID que no existe)
             if (Number(result.rowsAffected[0]) === 0) {
                 await transaction.rollback();
-                return {
-                    success: false,
-                    message: 'No se pudo eliminar. El pedido no existe.'
-                };
+                return { success: false, message: 'No se pudo eliminar. El pedido no existe.' };
             }
 
-            // 3. Confirmar la transacción si todo salió bien
+            // 5. Registrar eliminación en el log (dentro de la transacción)
+            await new mssql.Request(transaction)
+                .input('ORDERID',    mssql.VarChar(50),  orderId)
+                .input('CODUSUARIO', mssql.Int,          codusuario ?? null)
+                .input('USUARIO',    mssql.VarChar(100), usuario ?? null)
+                .query(`INSERT INTO ${esquema}.APP_PEDIDO_LOG (ORDERID, EST_ANTERIOR, EST_NUEVO, CODUSUARIO, USUARIO, DETALLES)
+                        VALUES (@ORDERID, NULL, 'ELIMINADO', @CODUSUARIO, @USUARIO, 'Pedido eliminado manualmente')`);
+
             await transaction.commit();
 
-            return {
-                success: true,
-                message: 'El pedido y todos sus artículos fueron eliminados de forma satisfactoria'
-            };
+            return { success: true, message: 'El pedido y todos sus artículos fueron eliminados de forma satisfactoria' };
 
         } catch (error) {
             // Revertir en caso de cualquier fallo
