@@ -639,7 +639,7 @@ export class RuteroService {
             `);
 
         const pool = await connectDb();
-        await RuteroService.upsertFechaFVCL(pool, numserie, numfactura, fechaDate, true);
+        await RuteroService.syncFechaFVCL(pool, numserie, numfactura, fechaDate);
 
         // Auto-cierra el rutero si todas las facturas fueron entregadas
         const cierre = await ruteroDB.request()
@@ -989,7 +989,7 @@ export class RuteroService {
             // Sincronizar solo las pendientes en FACTURASVENTACAMPOSLIBRES (background)
             const pool = await connectDb();
             Promise.all(sinFecha.recordset.map((row: any) =>
-                RuteroService.upsertFechaFVCL(pool, row.NUMSERIE, row.NUMFACTURA, fechaDate, true)
+                RuteroService.syncFechaFVCL(pool, row.NUMSERIE, row.NUMFACTURA, fechaDate)
                     .catch((e: any) => console.warn(`[confirmarRutero] FVCL ${row.NUMSERIE}-${row.NUMFACTURA}:`, e?.message))
             )).catch(() => {});
         }
@@ -1046,7 +1046,7 @@ export class RuteroService {
         const pool = await connectDb();
         const fechaDate = new Date(fechaVal);
         Promise.all(detalles.recordset.map((d: any) =>
-            RuteroService.upsertFechaFVCL(pool, d.NUMSERIE, d.NUMFACTURA, fechaDate)
+            RuteroService.syncFechaFVCL(pool, d.NUMSERIE, d.NUMFACTURA, fechaDate)
                 .catch((e: any) => console.warn(`[actualizarFechaRutero] FVCL ${d.NUMSERIE}-${d.NUMFACTURA}:`, e?.message))
         )).catch(() => {});
     }
@@ -1069,23 +1069,17 @@ export class RuteroService {
             `);
 
         const pool = await connectDb();
-        await RuteroService.upsertFechaFVCL(pool, numserie, numfactura, new Date(fechaVal));
+        await RuteroService.syncFechaFVCL(pool, numserie, numfactura, new Date(fechaVal));
 
         await RuteroService.registrarLog('CAMBIAR_FECHA', usuario, idrutero, `${numserie}-${numfactura} => ${fechaVal}`);
     }
 
-    // UPDATE si existe fila, INSERT si no existe. soloSiNull=true: solo toca si FECHARECIBIDO era NULL.
-    private static async upsertFechaFVCL(
+    private static async syncFechaFVCL(
         pool: sql.ConnectionPool,
         numserie: string,
         numfactura: number,
-        fecha: Date,
-        soloSiNull = false
+        fecha: Date
     ): Promise<void> {
-        const condNull    = soloSiNull ? 'AND FECHARECIBIDO IS NULL' : '';
-        const insertGuard = soloSiNull
-            ? 'AND NOT EXISTS (SELECT 1 FROM FACTURASVENTACAMPOSLIBRES WHERE NUMSERIE COLLATE DATABASE_DEFAULT = @NUMSERIE COLLATE DATABASE_DEFAULT AND NUMFACTURA = @NUMFACTURA)'
-            : '';
         await pool.request()
             .input('NUMSERIE',   mssql.VarChar(20), numserie)
             .input('NUMFACTURA', mssql.Int,         numfactura)
@@ -1095,10 +1089,6 @@ export class RuteroService {
                 SET FECHARECIBIDO = @FECHA
                 WHERE NUMSERIE COLLATE DATABASE_DEFAULT = @NUMSERIE COLLATE DATABASE_DEFAULT
                   AND NUMFACTURA = @NUMFACTURA
-                  ${condNull};
-                IF @@ROWCOUNT = 0 ${insertGuard}
-                    INSERT INTO FACTURASVENTACAMPOSLIBRES (NUMSERIE, NUMFACTURA, FECHARECIBIDO)
-                    VALUES (@NUMSERIE, @NUMFACTURA, @FECHA);
             `);
     }
 }
