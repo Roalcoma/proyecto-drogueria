@@ -986,12 +986,11 @@ export class RuteroService {
                     WHERE IDRUTERO = @IDRUTERO AND FECHARECIBIDO IS NULL
                 `);
 
-            // Sincronizar solo las pendientes en FACTURASVENTACAMPOSLIBRES (background)
             const pool = await connectDb();
-            Promise.all(sinFecha.recordset.map((row: any) =>
+            await Promise.all(sinFecha.recordset.map((row: any) =>
                 RuteroService.syncFechaFVCL(pool, row.NUMSERIE, row.NUMFACTURA, fechaDate)
                     .catch((e: any) => console.warn(`[confirmarRutero] FVCL ${row.NUMSERIE}-${row.NUMFACTURA}:`, e?.message))
-            )).catch(() => {});
+            ));
         }
 
         // Siempre cerrar el rutero
@@ -1042,13 +1041,12 @@ export class RuteroService {
 
         await RuteroService.registrarLog('CAMBIAR_FECHA_RUTERO', usuario, idrutero, `=> ${fechaVal}`);
 
-        // Sincronizar FACTURASVENTACAMPOSLIBRES en background (no bloquea la respuesta)
         const pool = await connectDb();
         const fechaDate = new Date(fechaVal);
-        Promise.all(detalles.recordset.map((d: any) =>
+        await Promise.all(detalles.recordset.map((d: any) =>
             RuteroService.syncFechaFVCL(pool, d.NUMSERIE, d.NUMFACTURA, fechaDate)
                 .catch((e: any) => console.warn(`[actualizarFechaRutero] FVCL ${d.NUMSERIE}-${d.NUMFACTURA}:`, e?.message))
-        )).catch(() => {});
+        ));
     }
 
     static async actualizarFechaFactura(idrutero: number, numserie: string, numfactura: number, fechaEntrega: string, usuario = ''): Promise<void> {
