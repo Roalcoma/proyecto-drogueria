@@ -622,7 +622,7 @@ export class RuteroService {
 
     static async confirmarFacturaRutero(idrutero: number, numserie: string, numfactura: number, fechaEntrega?: string, usuario = ''): Promise<{ ruteroCompletado: boolean }> {
         const ruteroDB = await connectRuteroDB();
-        const fechaDate = fechaEntrega ? new Date(fechaEntrega.substring(0, 10)) : new Date();
+        const fechaDate = RuteroService.localDate(fechaEntrega?.substring(0, 10));
 
         await ruteroDB.request()
             .input('IDRUTERO',   mssql.Int,         idrutero)
@@ -969,7 +969,7 @@ export class RuteroService {
 
     static async confirmarRutero(idrutero: number, fechaEntrega?: string, usuario = ''): Promise<void> {
         const ruteroDB = await connectRuteroDB();
-        const fechaDate = fechaEntrega ? new Date(fechaEntrega.substring(0, 10)) : new Date();
+        const fechaDate = RuteroService.localDate(fechaEntrega?.substring(0, 10));
 
         // Solo facturas sin fecha aún (las que ya tienen fecha no se tocan)
         const sinFecha = await ruteroDB.request()
@@ -1028,7 +1028,7 @@ export class RuteroService {
 
         await ruteroDB.request()
             .input('IDRUTERO', mssql.Int,  idrutero)
-            .input('FECHA',    mssql.Date, fechaVal)
+            .input('FECHA',    mssql.Date, RuteroService.localDate(fechaVal))
             .query(`
                 UPDATE APP_RUTEROS_DETALLE
                 SET FECHARECIBIDO = @FECHA
@@ -1042,22 +1042,22 @@ export class RuteroService {
         await RuteroService.registrarLog('CAMBIAR_FECHA_RUTERO', usuario, idrutero, `=> ${fechaVal}`);
 
         const pool = await connectDb();
-        const fechaDate = new Date(fechaVal);
         await Promise.all(detalles.recordset.map((d: any) =>
-            RuteroService.syncFechaFVCL(pool, d.NUMSERIE, d.NUMFACTURA, fechaDate)
+            RuteroService.syncFechaFVCL(pool, d.NUMSERIE, d.NUMFACTURA, RuteroService.localDate(fechaVal))
                 .catch((e: any) => console.warn(`[actualizarFechaRutero] FVCL ${d.NUMSERIE}-${d.NUMFACTURA}:`, e?.message))
         ));
     }
 
     static async actualizarFechaFactura(idrutero: number, numserie: string, numfactura: number, fechaEntrega: string, usuario = ''): Promise<void> {
         const ruteroDB = await connectRuteroDB();
-        const fechaVal = fechaEntrega.substring(0, 10);
+        const fechaVal  = fechaEntrega.substring(0, 10);
+        const fechaDate = RuteroService.localDate(fechaVal);
 
         await ruteroDB.request()
             .input('IDRUTERO',   mssql.Int,        idrutero)
             .input('NUMSERIE',   mssql.VarChar(20), numserie)
             .input('NUMFACTURA', mssql.Int,         numfactura)
-            .input('FECHA',      mssql.Date,        fechaVal)
+            .input('FECHA',      mssql.Date,        fechaDate)
             .query(`
                 UPDATE APP_RUTEROS_DETALLE
                 SET FECHARECIBIDO = @FECHA
@@ -1067,9 +1067,19 @@ export class RuteroService {
             `);
 
         const pool = await connectDb();
-        await RuteroService.syncFechaFVCL(pool, numserie, numfactura, new Date(fechaVal));
+        await RuteroService.syncFechaFVCL(pool, numserie, numfactura, fechaDate);
 
         await RuteroService.registrarLog('CAMBIAR_FECHA', usuario, idrutero, `${numserie}-${numfactura} => ${fechaVal}`);
+    }
+
+    // new Date('YYYY-MM-DD') parses as UTC midnight; in UTC-4 tedious serializes local components → one day less
+    private static localDate(dateStr?: string): Date {
+        if (!dateStr) {
+            const n = new Date();
+            return new Date(n.getFullYear(), n.getMonth(), n.getDate());
+        }
+        const [y, m, d] = dateStr.split('-').map(Number);
+        return new Date(y, m - 1, d);
     }
 
     private static async syncFechaFVCL(
