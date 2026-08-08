@@ -205,7 +205,21 @@ export class ProductsService {
                     ISNULL(M.DESCRIPCION, '') AS MARCA,
                     ISNULL(S.DESCRIPCION, '') AS SECCION,
                     ISNULL(PR.NOMPROVEEDOR, '') AS PROVEEDOR,
-                    PV.PNETO AS PRECIO_BASE,
+                    (
+                        SELECT TOP 1 PV2.PNETO
+                        FROM PRECIOSVENTA PV2 WITH(NOLOCK)
+                        INNER JOIN ARTICULOSLIN AL2 WITH(NOLOCK)
+                            ON AL2.CODARTICULO = PV2.CODARTICULO
+                            AND AL2.TALLA = PV2.TALLA
+                            AND AL2.COLOR = PV2.COLOR
+                        WHERE PV2.CODARTICULO = A.CODARTICULO
+                          AND PV2.IDTARIFAV = @TARIFA
+                        ORDER BY COALESCE(
+                            TRY_CONVERT(DATE, AL2.GARANTIACOMPRA, 103),
+                            TRY_CONVERT(DATE, AL2.GARANTIACOMPRA, 23),
+                            '9999-12-31'
+                        ) ASC
+                    ) AS PRECIO_BASE,
                     ISNULL(A.NODTOAPLICABLE, 0) AS NODTOAPLICABLE,
                     ISNULL(PCL.DIASPROTECCION, 0) AS DIASPROTECCION,
                     (SELECT TOP 1 COALESCE(TRY_CONVERT(DATE, AL.GARANTIACOMPRA, 103), TRY_CONVERT(DATE, AL.GARANTIACOMPRA, 23))
@@ -226,8 +240,6 @@ export class ProductsService {
                     ) AS D2_PORCENTAJE
                 FROM ARTICULOS A WITH(NOLOCK)
                     INNER JOIN ARTICULOSCAMPOSLIBRES ACL WITH(NOLOCK) ON A.CODARTICULO = ACL.CODARTICULO
-                    INNER JOIN PRECIOSVENTA PV WITH(NOLOCK) ON PV.CODARTICULO = A.CODARTICULO
-                        AND PV.IDTARIFAV = @TARIFA
                     LEFT JOIN MARCA M WITH(NOLOCK) ON M.CODMARCA = A.MARCA
                     LEFT JOIN SECCIONES S WITH(NOLOCK) ON S.NUMDPTO = A.DPTO AND S.NUMSECCION = A.SECCION
                     LEFT JOIN PROVEEDORES PR WITH(NOLOCK) ON PR.CODPROVEEDOR = ACL.CODPROVEEDORICG
@@ -238,6 +250,7 @@ export class ProductsService {
                     AND A.DPTO = 1
                     AND UPPER(ISNULL(S.DESCRIPCION, '')) NOT LIKE '%GASTO%'
                     AND ${STOCK_DISPONIBLE_SQL} > 0
+                    AND EXISTS (SELECT 1 FROM PRECIOSVENTA WITH(NOLOCK) WHERE CODARTICULO = A.CODARTICULO AND IDTARIFAV = @TARIFA)
                 ORDER BY ACL.DESCRIPCIONLARGA
             `);
         return result.recordset;
