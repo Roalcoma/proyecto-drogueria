@@ -358,6 +358,15 @@
                   @click="imprimirPDF(item)"
                 ></v-btn>
                 <v-btn
+                  icon="mdi-content-copy"
+                  variant="text"
+                  size="small"
+                  color="deep-purple-darken-2"
+                  title="Replicar pedido en carrito"
+                  :loading="replicarCargando === item.ORDERID"
+                  @click="replicarPedido(item)"
+                ></v-btn>
+                <v-btn
                   v-if="item.FACTURADO === 'T' && item.SERIE_FAC && item.NROFAC"
                   icon="mdi-receipt-text"
                   variant="text"
@@ -1113,6 +1122,27 @@ const imprimirPDFMultiple = async () => {
     lanzarNotificacion('Error al generar PDFs', 'error');
   } finally {
     pdfMultipleCargando.value = false;
+  }
+};
+
+const replicarCargando = ref<string | null>(null);
+const replicarPedido = async (item: any) => {
+  replicarCargando.value = item.ORDERID;
+  try {
+    const res = await axios.get(`${import.meta.env.VITE_API_URL}/pedidos?orderId=${item.ORDERID}`);
+    if (!res.data.success) { lanzarNotificacion('No se pudo cargar el pedido', 'error'); return; }
+    const pedido = res.data.data;
+    const cliente = {
+      CODCLIENTE: item.CLIENTEID,
+      NOMBRECLIENTE: item.NOMBRECLIENTE || `Cliente ${item.CLIENTEID}`,
+      ID: String(item.CLIENTEID),
+    };
+    carritoStore.cargarDesdeOrden(cliente, pedido.lineas || []);
+    router.push('/carrito');
+  } catch {
+    lanzarNotificacion('Error al replicar el pedido', 'error');
+  } finally {
+    replicarCargando.value = null;
   }
 };
 

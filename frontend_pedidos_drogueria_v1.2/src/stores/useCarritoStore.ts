@@ -106,6 +106,36 @@ export const useCarritoStore = defineStore('carrito', () => {
         sessionStorage.removeItem(SESSION_KEY);
     };
 
+    // Carga un pedido existente en el carrito conservando los descuentos originales
+    // (no llama recalcularPromociones para no pisar D1-D4 guardados)
+    const cargarDesdeOrden = (cliente: Cliente, lineas: any[]) => {
+        limpiarCarrito();
+        clienteSeleccionado.value = cliente;
+        articulos.value = lineas.map(l => {
+            const d = [
+                Number(l.DESCUENTO1 ?? 0),
+                Number(l.DESCUENTO2 ?? 0),
+                Number(l.DESCUENTO3 ?? 0),
+                Number(l.DESCUENTO4 ?? 0),
+            ];
+            while (d.length > 0 && !d[d.length - 1]) d.pop();
+            return {
+                CODARTICULO: l.CODARTICULO,
+                DESCRIPCION: l.DESCRIPCION,
+                REFERENCIA: l.REFERENCIA,
+                CODALMACEN: l.CODALMACEN,
+                IDTARIFAV: l.IDTARIFAV,
+                NODTOAPLICABLE: l.NODTOAPLICABLE,
+                PRECIOBRUTO: l.PRECIOBRUTO,
+                PRECIOUNITARIO: l.PRECIOUNITARIO,
+                PORCENTAJEIVA: l.PORCENTAJEIVA,
+                MONTOIVA: l.MONTOIVA,
+                cantidad: Number(l.PRODUCTCOUNT),
+                descuentos: d,
+            };
+        });
+    };
+
     return {
         clienteSeleccionado,
         articulos,
@@ -115,6 +145,7 @@ export const useCarritoStore = defineStore('carrito', () => {
         actualizarDescuentosPorCliente,
         recalcularPromociones,
         limpiarCarrito,
+        cargarDesdeOrden,
         setTasa
     };
 });

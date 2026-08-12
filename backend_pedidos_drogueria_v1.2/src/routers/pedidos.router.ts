@@ -6,11 +6,11 @@ const pedidosRouter = Router()
 
 pedidosRouter.post('/reservar-numero', PedidosControllers.reservarNumero)
 
-pedidosRouter.post('/', PedidosControllers.postPedidos)
+pedidosRouter.post('/', authMiddleware, PedidosControllers.postPedidos)
 
 pedidosRouter.get('/', PedidosControllers.getPedidos)
 
-pedidosRouter.put('/', PedidosControllers.updatePedido)
+pedidosRouter.put('/', authMiddleware, PedidosControllers.updatePedido)
 
 pedidosRouter.delete('/', authMiddleware, PedidosControllers.deletePedido)
 

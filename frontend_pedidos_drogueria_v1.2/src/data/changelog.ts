@@ -11,9 +11,12 @@ export interface CommitEntry {
   texto: string;
 }
 
-export const APP_VERSION = '1.2.12';
+export const APP_VERSION = '1.2.15';
 
 export const VERSIONES: VersionEntry[] = [
+  { version: '1.2.15', fecha: '2026-08-11', desde: '2026-08-11' },
+  { version: '1.2.14', fecha: '2026-08-11', desde: '2026-08-11' },
+  { version: '1.2.13', fecha: '2026-08-11', desde: '2026-08-11' },
   { version: '1.2.12', fecha: '2026-08-08', desde: '2026-08-08' },
   { version: '1.2.11', fecha: '2026-08-07', desde: '2026-08-07' },
   { version: '1.2.10', fecha: '2026-08-07', desde: '2026-08-07' },
@@ -30,6 +33,9 @@ export const VERSIONES: VersionEntry[] = [
 ];
 
 export const COMMITS: CommitEntry[] = [
+  { hash: 'pending', date: '2026-08-11', tipo: 'fix',     texto: 'límite de líneas: fusión rechaza si el resultado supera el límite; autorización bloqueada si el pedido excede el límite; edición validada' },
+  { hash: 'pending', date: '2026-08-11', tipo: 'feat',    texto: 'auditoría: toda edición o actualización de código de aprobación queda registrada en APP_PEDIDO_LOG con usuario y detalle' },
+  { hash: 'pending', date: '2026-08-11', tipo: 'fix',     texto: 'pedidos: agregar authMiddleware al POST de creación para que el usuario quede registrado en APP_PEDIDO_LOG' },
   { hash: 'pending', date: '2026-08-08', tipo: 'fix',     texto: 'catalogo Excel: artículos duplicados con precios distintos — PRECIOSVENTA tiene filas múltiples por tarifa; reemplazado JOIN por subquery TOP 1' },
   { hash: 'pending', date: '2026-08-07', tipo: 'fix',     texto: 'rutero: parseo de fecha como hora local (evita desfase de un día en UTC-4)' },
   { hash: 'pending', date: '2026-08-07', tipo: 'fix',     texto: 'rutero: upsert en FACTURASVENTACAMPOSLIBRES al confirmar/cambiar fecha (factura sin fila no se perdía)' },

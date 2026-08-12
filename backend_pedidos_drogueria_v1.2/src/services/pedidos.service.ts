@@ -389,7 +389,7 @@ export class PedidosServices {
                     LEFT JOIN VENDEDORES V WITH (NOLOCK) ON V.CODVENDEDOR = CP.CODVENDEDOR
                     OUTER APPLY (SELECT TOP 1 ZONA FROM CLIENTESCAMPOSLIBRES WITH (NOLOCK) WHERE CODCLIENTE = CP.CLIENTEID) CLC
                     LEFT JOIN RUTAS RUT WITH (NOLOCK) ON RUT.CODRUTA = TRY_CAST(CLC.ZONA AS INT)
-                    OUTER APPLY (SELECT TOP 1 USUARIO FROM ${esquema}.APP_PEDIDO_LOG WITH (NOLOCK) WHERE ORDERID = CP.ORDERID AND EST_ANTERIOR IS NULL ORDER BY FECHA ASC) LG
+                    OUTER APPLY (SELECT TOP 1 USUARIO FROM ${esquema}.APP_PEDIDO_LOG WITH (NOLOCK) WHERE ORDERID = CP.ORDERID AND USUARIO IS NOT NULL ORDER BY FECHA ASC) LG
                     OUTER APPLY (
                         SELECT TOP 1 AVC.FACTURADO, AVC.NUMSERIEFAC AS SERIE_FAC, AVC.NUMFAC AS NROFAC
                         FROM PEDVENTACAB PVC WITH(NOLOCK)
@@ -453,7 +453,7 @@ export class PedidosServices {
                 FROM ${esquema}.CABECERA_PED CP WITH (NOLOCK)
                 LEFT JOIN CLIENTES CL2 WITH (NOLOCK) ON CL2.CODCLIENTE = CP.CLIENTEID
                 OUTER APPLY (SELECT TOP 1 ZONA FROM CLIENTESCAMPOSLIBRES WITH (NOLOCK) WHERE CODCLIENTE = CP.CLIENTEID) CLC
-                OUTER APPLY (SELECT TOP 1 USUARIO FROM ${esquema}.APP_PEDIDO_LOG WITH (NOLOCK) WHERE ORDERID = CP.ORDERID AND EST_ANTERIOR IS NULL ORDER BY FECHA ASC) LG2
+                OUTER APPLY (SELECT TOP 1 USUARIO FROM ${esquema}.APP_PEDIDO_LOG WITH (NOLOCK) WHERE ORDERID = CP.ORDERID AND USUARIO IS NOT NULL ORDER BY FECHA ASC) LG2
                 LEFT JOIN VENDEDORES V2 WITH (NOLOCK) ON V2.CODVENDEDOR = CP.CODVENDEDOR
                 LEFT JOIN (
                     SELECT DISTINCT RTRIM(LTRIM(PVC.SUPEDIDO)) AS SUPEDIDO
@@ -645,11 +645,19 @@ export class PedidosServices {
         }
     }
 
-    static async updatePedidoCompleto(orderId: string, pedido: any) {
+    static async updatePedidoCompleto(orderId: string, pedido: any, codusuario?: number, usuario?: string) {
         let transaction: mssql.Transaction | null = null;
-        
+
         try {
             const { clienteId, codVendedor, totalPed, lineas } = pedido;
+
+            const maxLineasEdit = getDbConfig().maxLineasPorPedido ?? 0;
+            if (maxLineasEdit > 0 && lineas.length > maxLineasEdit) {
+                return {
+                    success: false,
+                    message: `El pedido tiene ${lineas.length} líneas, superando el límite de ${maxLineasEdit} por pedido.`
+                };
+            }
             
             const pool = await connectDb();
             transaction = new mssql.Transaction(pool);
@@ -728,6 +736,8 @@ export class PedidosServices {
             // 6. Si todo salió perfecto, confirmamos los cambios en la base de datos
             await transaction.commit();
 
+            await PedidosServices.registrarLog(orderId, null, 'EDITADO', codusuario, usuario, `Pedido editado: cliente=${clienteId}, total=${totalPed}, líneas=${lineas.length}`);
+
             return {
                 success: true,
                 message: 'El pedido fue actualizado de forma satisfactoria'
@@ -785,7 +795,25 @@ export class PedidosServices {
         if (sufijos.length > 1)
             return { success: false, message: 'Los pedidos deben ser del mismo tipo (mismo sufijo)' };
 
-        // 5. Maestro = primer orderId del array; resto = fuentes
+        // 5. Verificar límite de líneas en el resultado de la fusión
+        const maxLineas = getDbConfig().maxLineasPorPedido ?? 0;
+        if (maxLineas > 0) {
+            const cntReq = pool.request();
+            const cntConds = orderIds.map((id, i) => {
+                cntReq.input(`CNT_ID${i}`, mssql.VarChar(50), id);
+                return `ORDERID = @CNT_ID${i} OR ORDERID LIKE @CNT_ID${i} + '-%'`;
+            }).join(' OR ');
+            const cntRes = await cntReq.query(`SELECT COUNT(*) AS TOTAL FROM ${esquema}.LINEA_PED WHERE ${cntConds}`);
+            const totalLineas = Number(cntRes.recordset[0].TOTAL);
+            if (totalLineas > maxLineas) {
+                return {
+                    success: false,
+                    message: `La fusión resultaría en ${totalLineas} líneas, superando el límite de ${maxLineas} por pedido. Reduzca los artículos antes de fusionar.`
+                };
+            }
+        }
+
+        // 6. Maestro = primer orderId del array; resto = fuentes
         const masterId = orderIds[0];
         const fuenteIds = orderIds.slice(1);
 
@@ -987,6 +1015,22 @@ export class PedidosServices {
                 };
             }
 
+            // Verificar límite de líneas antes de cualquier avance en el flujo de autorización
+            const maxLineasAuth = getDbConfig().maxLineasPorPedido ?? 0;
+            if (maxLineasAuth > 0 && ['PENDIENTE POR AUTORIZACION', 'AUTORIZADO'].includes(estatusLimpio)) {
+                const cntRes = await pool.request()
+                    .input('ORDERID_CNT', mssql.VarChar(50), orderId)
+                    .query(`SELECT COUNT(*) AS TOTAL FROM ${esquema}.LINEA_PED
+                            WHERE ORDERID = @ORDERID_CNT OR ORDERID LIKE @ORDERID_CNT + '-%'`);
+                const totalLineas = Number(cntRes.recordset[0].TOTAL);
+                if (totalLineas > maxLineasAuth) {
+                    return {
+                        success: false,
+                        message: `Este pedido tiene ${totalLineas} líneas, superando el límite de ${maxLineasAuth}. Divídalo antes de autorizar.`
+                    };
+                }
+            }
+
             // Al pasar a PENDIENTE POR AUTORIZACION, verificar stock disponible por línea
             // (mientras estuvo en PENDIENTE no reservaba stock, otro pedido pudo haberlo agotado)
             if (estatusLimpio === 'PENDIENTE POR AUTORIZACION') {
@@ -1114,7 +1158,7 @@ export class PedidosServices {
         }
     }
 
-    static async actualizarCodigoAprobacion(orderId: string, codigo: string): Promise<{ success: boolean; message?: string }> {
+    static async actualizarCodigoAprobacion(orderId: string, codigo: string, codusuario?: number, usuario?: string): Promise<{ success: boolean; message?: string }> {
         try {
             const pool = await connectDb();
             const check = await pool.request()
@@ -1125,6 +1169,7 @@ export class PedidosServices {
                 .input('ORDERID', mssql.VarChar(50), orderId)
                 .input('CODIGO', mssql.NVarChar(255), codigo.trim())
                 .query(`UPDATE ${esquema}.CABECERA_PED SET OBSERVACIONES = @CODIGO WHERE ORDERID = @ORDERID`);
+            await PedidosServices.registrarLog(orderId, null, 'CODIGO_APROBACION', codusuario, usuario, `Código de aprobación actualizado`);
             return { success: true };
         } catch (error) {
             return { success: false, message: String(error) };

@@ -88,7 +88,7 @@ export class PedidosControllers {
         }
     }
 
-    static async updatePedido(req: Request, res: Response) {
+    static async updatePedido(req: RequestConUsuario, res: Response) {
         try {
             const { pedidos } = req.body
             const orderId = pedidos.orderId
@@ -101,7 +101,7 @@ export class PedidosControllers {
                 })
             }
 
-            const updatePedido = await PedidosServices.updatePedidoCompleto(orderId, pedidos)
+            const updatePedido = await PedidosServices.updatePedidoCompleto(orderId, pedidos, req.usuario?.id, req.usuario?.usuario)
 
             if(updatePedido.success === false) {
                 console.error('Hubo un error al actualizar el pedido', updatePedido.message)
@@ -222,11 +222,11 @@ export class PedidosControllers {
         }
     }
 
-    static async actualizarCodigoAprobacion(req: Request, res: Response) {
+    static async actualizarCodigoAprobacion(req: RequestConUsuario, res: Response) {
         try {
             const { orderId, codigo } = req.body;
             if (!orderId) return res.status(400).json({ success: false, message: 'Falta orderId' });
-            const result = await PedidosServices.actualizarCodigoAprobacion(orderId, codigo ?? '');
+            const result = await PedidosServices.actualizarCodigoAprobacion(orderId, codigo ?? '', req.usuario?.id, req.usuario?.usuario);
             return res.status(result.success ? 200 : 400).json(result);
         } catch (error) {
             return res.status(500).json({ success: false, message: String(error) });
