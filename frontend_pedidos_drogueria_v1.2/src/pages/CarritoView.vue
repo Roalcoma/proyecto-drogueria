@@ -232,7 +232,10 @@ const lanzarAviso = (text: string, color = 'orange-darken-3') => {
 };
 
 const obtenerPrecioBase = (item: any): number => {
-  return (item.prices && item.prices.length > 0) ? parseFloat(item.prices[0].PNETO) : 0;
+  if (item.prices && item.prices.length > 0) return parseFloat(item.prices[0].PNETO);
+  if (item.PRECIOBRUTO) return parseFloat(String(item.PRECIOBRUTO));
+  if (item.PRECIOUNITARIO) return parseFloat(String(item.PRECIOUNITARIO));
+  return 0;
 };
 
 const calcularPrecioConDescuento = (item: any): number => {

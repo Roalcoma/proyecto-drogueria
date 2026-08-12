@@ -128,6 +128,7 @@ export const useCarritoStore = defineStore('carrito', () => {
                 NODTOAPLICABLE: l.NODTOAPLICABLE,
                 PRECIOBRUTO: l.PRECIOBRUTO,
                 PRECIOUNITARIO: l.PRECIOUNITARIO,
+                prices: [{ PNETO: l.PRECIOBRUTO ?? l.PRECIOUNITARIO }],
                 PORCENTAJEIVA: l.PORCENTAJEIVA,
                 MONTOIVA: l.MONTOIVA,
                 cantidad: Number(l.PRODUCTCOUNT),
