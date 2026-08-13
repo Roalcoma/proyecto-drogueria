@@ -11,8 +11,9 @@
     </div>
 
     <v-tabs v-model="tab" color="primary" class="mb-4">
-      <v-tab value="pedidos" prepend-icon="mdi-cart">Pedidos</v-tab>
-      <v-tab value="rutero"  prepend-icon="mdi-truck-delivery">Rutero</v-tab>
+      <v-tab value="pedidos"  prepend-icon="mdi-cart">Pedidos</v-tab>
+      <v-tab value="rutero"   prepend-icon="mdi-truck-delivery">Rutero</v-tab>
+      <v-tab value="grupos"   prepend-icon="mdi-account-group">Grupos / Clientes</v-tab>
     </v-tabs>
 
     <!-- ── TAB PEDIDOS ── -->
@@ -104,6 +105,47 @@
           </v-data-table-server>
         </v-card>
       </v-window-item>
+
+      <!-- ── TAB GRUPOS / CLIENTES ── -->
+      <v-window-item value="grupos">
+        <v-card rounded="xl" elevation="1" class="mb-4 pa-4">
+          <div class="d-flex gap-3 align-end flex-wrap">
+            <div style="min-width:240px">
+              <div class="text-caption text-grey mb-1">Buscar (usuario, detalle)</div>
+              <v-text-field v-model="filtroBuscarGrupos" placeholder="Buscar..." variant="outlined" density="compact" hide-details clearable prepend-inner-icon="mdi-magnify" @keyup.enter="cargar" />
+            </div>
+            <v-btn color="primary" variant="tonal" @click="cargar">Buscar</v-btn>
+            <v-btn v-if="filtroBuscarGrupos" variant="text" color="grey" @click="limpiarGrupos">Limpiar</v-btn>
+          </div>
+        </v-card>
+        <v-card rounded="xl" elevation="2">
+          <v-data-table-server
+            :headers="headersGrupos"
+            :items="registrosGrupos"
+            :items-length="totalGrupos"
+            :loading="cargando"
+            v-model:items-per-page="itemsPerPage"
+            @update:options="onOptions"
+            :items-per-page-options="[10, 25, 50, 100, 200]"
+          >
+            <template v-slot:item.FECHA="{ item }">
+              <span class="text-caption">{{ new Date(item.FECHA).toLocaleString('es-VE', { timeZone: brandingStore.zonaHoraria }) }}</span>
+            </template>
+            <template v-slot:item.ACCION="{ item }">
+              <v-chip :color="colorAccionGrupo(item.ACCION)" size="x-small" variant="tonal">{{ item.ACCION }}</v-chip>
+            </template>
+            <template v-slot:item.NOMBREGRUPO="{ item }">
+              <span class="text-caption font-weight-medium">{{ item.NOMBREGRUPO || `Grupo #${item.IDGRUPO}` }}</span>
+            </template>
+            <template v-slot:item.USUARIO="{ item }">
+              <span class="text-caption">{{ item.USUARIO ?? '—' }}</span>
+            </template>
+            <template v-slot:item.DETALLES="{ item }">
+              <span class="text-caption text-grey">{{ item.DETALLES ?? '' }}</span>
+            </template>
+          </v-data-table-server>
+        </v-card>
+      </v-window-item>
     </v-window>
   </v-container>
 </template>
@@ -132,6 +174,11 @@ const filtroUsuario    = ref('');
 const registrosRutero    = ref<any[]>([]);
 const totalRutero        = ref(0);
 const filtroBuscarRutero = ref('');
+
+// Grupos / Clientes
+const registrosGrupos    = ref<any[]>([]);
+const totalGrupos        = ref(0);
+const filtroBuscarGrupos = ref('');
 
 const headersPedidos = [
   { title: 'Fecha',           key: 'FECHA',        sortable: false },
@@ -168,6 +215,22 @@ const colorAccion = (accion: string) => {
   return map[accion] ?? 'grey';
 };
 
+const headersGrupos = [
+  { title: 'Fecha',   key: 'FECHA',       sortable: false },
+  { title: 'Acción',  key: 'ACCION',      sortable: false },
+  { title: 'Grupo',   key: 'NOMBREGRUPO', sortable: false },
+  { title: 'Usuario', key: 'USUARIO',     sortable: false },
+  { title: 'Detalles',key: 'DETALLES',    sortable: false },
+];
+
+const colorAccionGrupo = (accion: string) => {
+  const map: Record<string, string> = {
+    'CREAR_GRUPO': 'green', 'EDITAR_GRUPO': 'blue', 'IMPORTAR_EXCEL': 'teal',
+    'AGREGAR_CLIENTE': 'cyan', 'QUITAR_CLIENTE': 'red',
+  };
+  return map[accion] ?? 'grey';
+};
+
 const cargar = async () => {
   cargando.value = true;
   try {
@@ -176,11 +239,16 @@ const cargar = async () => {
         params: { orderId: filtroOrder.value || undefined, usuario: filtroUsuario.value || undefined, page: pagina.value, limit: itemsPerPage.value },
       });
       if (res.data.success) { registrosPedidos.value = res.data.data; totalPedidos.value = res.data.total; }
-    } else {
+    } else if (tab.value === 'rutero') {
       const res = await axios.get(`${API}/rutero/auditoria`, {
         params: { buscar: filtroBuscarRutero.value || undefined, page: pagina.value, limit: itemsPerPage.value },
       });
       if (res.data.success) { registrosRutero.value = res.data.data; totalRutero.value = res.data.total; }
+    } else {
+      const res = await axios.get(`${API}/promociones/grupos-clientes/auditoria`, {
+        params: { buscar: filtroBuscarGrupos.value || undefined, page: pagina.value, limit: itemsPerPage.value },
+      });
+      if (res.data.success) { registrosGrupos.value = res.data.data; totalGrupos.value = res.data.total; }
     }
   } finally {
     cargando.value = false;
@@ -189,6 +257,7 @@ const cargar = async () => {
 
 const limpiarPedidos = () => { filtroOrder.value = ''; filtroUsuario.value = ''; cargar(); };
 const limpiarRutero  = () => { filtroBuscarRutero.value = ''; cargar(); };
+const limpiarGrupos  = () => { filtroBuscarGrupos.value = ''; cargar(); };
 
 const onOptions = (opt: any) => { pagina.value = opt.page; itemsPerPage.value = opt.itemsPerPage; cargar(); };
 

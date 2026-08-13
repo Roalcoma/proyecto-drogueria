@@ -171,13 +171,19 @@
                 </template>
               </v-list-item>
             </v-list>
-            <div class="d-flex align-center mb-3 gap-2">
+            <div class="d-flex align-center mb-3 gap-2 flex-wrap">
               <v-btn prepend-icon="mdi-microsoft-excel" color="success" variant="tonal" size="small" @click="$refs.excelClientes.click()" :loading="importandoExcel">
                 Importar Excel
               </v-btn>
               <input ref="excelClientes" type="file" accept=".xlsx,.xls" style="display:none" @change="importarExcel" />
               <span v-if="resultadoImport" class="text-caption">{{ resultadoImport }}</span>
             </div>
+            <v-alert v-if="noEncontradosList.length" type="warning" variant="tonal" density="compact" class="mb-3 text-caption" closable @click:close="noEncontradosList = []">
+              <strong>Códigos no encontrados ({{ noEncontradosList.length }}):</strong>
+              <div class="mt-1" style="max-height:80px;overflow-y:auto;word-break:break-all;">
+                {{ noEncontradosList.join(' · ') }}
+              </div>
+            </v-alert>
             <v-divider class="mb-3" />
           </template>
           <div class="text-subtitle-2 font-weight-bold mb-2">Clientes en el grupo ({{ totalMiembros }})</div>
@@ -418,20 +424,23 @@ const miembros = ref<any[]>([]);
 const totalMiembros = ref(0);
 const cargandoMiembros = ref(false);
 const itemsPerPageMiembros = usePageSize('clientes-miembros');
-const importandoExcel = ref(false);
-const resultadoImport = ref('');
+const importandoExcel   = ref(false);
+const resultadoImport   = ref('');
+const noEncontradosList = ref<string[]>([]);
 
 const importarExcel = async (e: Event) => {
   const file = (e.target as HTMLInputElement).files?.[0];
   if (!file || !modalMiembros.value.grupo) return;
   importandoExcel.value = true;
   resultadoImport.value = '';
+  noEncontradosList.value = [];
   try {
     const fd = new FormData();
     fd.append('archivo', file);
     const res = await axios.post(`${API}/promociones/grupos-clientes/${modalMiembros.value.grupo.ID}/importar-excel`, fd);
     const d = res.data;
     resultadoImport.value = `✓ ${d.insertados} nuevos` + (d.noEncontrados.length ? ` · ${d.noEncontrados.length} no encontrados` : '') + (d.yaEnGrupo.length ? ` · ${d.yaEnGrupo.length} ya estaban` : '');
+    noEncontradosList.value = d.noEncontrados ?? [];
     cargarPaginaMiembros({ page: 1, itemsPerPage: itemsPerPageMiembros.value });
   } catch (err: any) {
     lanzarAviso(err.response?.data?.message || 'Error al importar', 'error');

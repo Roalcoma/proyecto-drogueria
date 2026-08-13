@@ -116,6 +116,17 @@ export class PromocionesService {
                     CONSTRAINT UQ_GRUPOCLI_DETALLE UNIQUE(IDGRUPO, CODCLIENTE)
                 );
 
+                IF NOT EXISTS (SELECT 1 FROM sysobjects WHERE name='APP_GRUPOS_LOG' AND xtype='U')
+                CREATE TABLE APP_GRUPOS_LOG (
+                    ID INT IDENTITY PRIMARY KEY,
+                    IDGRUPO INT NULL,
+                    ACCION NVARCHAR(50) NOT NULL,
+                    CODUSUARIO INT NULL,
+                    USUARIO NVARCHAR(100) NULL,
+                    FECHA DATETIME NOT NULL DEFAULT GETDATE(),
+                    DETALLES NVARCHAR(500) NULL
+                );
+
                 IF NOT EXISTS (SELECT 1 FROM sysobjects WHERE name='APP_PROMOCIONES' AND xtype='U')
                 CREATE TABLE APP_PROMOCIONES (
                     ID INT IDENTITY PRIMARY KEY,
@@ -621,7 +632,7 @@ export class PromocionesService {
         return { data: result.recordset, total: countResult.recordset[0].TOTAL };
     }
 
-    static async crearGrupoClientes(nombre: string, tipo: 'MANUAL' | 'CONDICION', condiciones?: CondicionInput[]) {
+    static async crearGrupoClientes(nombre: string, tipo: 'MANUAL' | 'CONDICION', condiciones?: CondicionInput[], codusuario?: number, usuario?: string) {
         const pool = await connectDb();
         const transaction = new mssql.Transaction(pool);
         await transaction.begin();
@@ -645,6 +656,7 @@ export class PromocionesService {
                 }
             }
             await transaction.commit();
+            await this.registrarLogGrupo(id, 'CREAR_GRUPO', codusuario, usuario, `Grupo "${nombre}" (${tipo}) creado`);
             return id;
         } catch (err) {
             await transaction.rollback();
@@ -652,7 +664,7 @@ export class PromocionesService {
         }
     }
 
-    static async actualizarGrupoClientes(id: number, nombre: string, activo: boolean, tipo?: 'MANUAL' | 'CONDICION', condiciones?: CondicionInput[]) {
+    static async actualizarGrupoClientes(id: number, nombre: string, activo: boolean, tipo?: 'MANUAL' | 'CONDICION', condiciones?: CondicionInput[], codusuario?: number, usuario?: string) {
         const pool = await connectDb();
         const transaction = new mssql.Transaction(pool);
         await transaction.begin();
@@ -679,6 +691,7 @@ export class PromocionesService {
                 }
             }
             await transaction.commit();
+            await this.registrarLogGrupo(id, 'EDITAR_GRUPO', codusuario, usuario, `Grupo "${nombre}" actualizado (activo=${activo})`);
         } catch (err) {
             await transaction.rollback();
             throw err;
@@ -773,7 +786,7 @@ export class PromocionesService {
         return { data: result.recordset, total: countResult.recordset[0].TOTAL };
     }
 
-    static async agregarClienteAGrupo(idGrupo: number, codCliente: number) {
+    static async agregarClienteAGrupo(idGrupo: number, codCliente: number, codusuario?: number, usuario?: string) {
         const tipo = await this.getTipoGrupoClientes(idGrupo);
         if (tipo === 'CONDICION') throw new Error('Grupo dinámico: edita las condiciones, no se agregan clientes manualmente.');
         const pool = await connectDb();
@@ -784,9 +797,10 @@ export class PromocionesService {
                 IF NOT EXISTS (SELECT 1 FROM APP_GRUPOS_CLIENTES_DETALLE WHERE IDGRUPO = @IDGRUPO AND CODCLIENTE = @CODCLIENTE)
                 INSERT INTO APP_GRUPOS_CLIENTES_DETALLE (IDGRUPO, CODCLIENTE) VALUES (@IDGRUPO, @CODCLIENTE)
             `);
+        await this.registrarLogGrupo(idGrupo, 'AGREGAR_CLIENTE', codusuario, usuario, `Cliente ${codCliente} agregado`);
     }
 
-    static async importarClientesExcel(idGrupo: number, buffer: Buffer): Promise<{ insertados: number; noEncontrados: string[]; yaEnGrupo: string[] }> {
+    static async importarClientesExcel(idGrupo: number, buffer: Buffer, codusuario?: number, usuario?: string): Promise<{ insertados: number; noEncontrados: string[]; yaEnGrupo: string[] }> {
         const tipo = await this.getTipoGrupoClientes(idGrupo);
         if (tipo === 'CONDICION') throw new Error('Grupo dinámico: edita las condiciones.');
         const XLSX = await import('xlsx');
@@ -794,7 +808,13 @@ export class PromocionesService {
         const ws = wb.Sheets[wb.SheetNames[0]];
         const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
         // Acepta CODCLIENTE (número), CIF o NIF20 (texto)
-        const valores: string[] = rows.map(r => String(r[0] ?? '').trim()).filter(v => v.length > 0);
+        // Códigos puramente numéricos: strip leading zeros (ej. "02345" → "2345")
+        const valores: string[] = rows
+            .map(r => {
+                const raw = String(r[0] ?? '').trim();
+                return /^\d+$/.test(raw) ? String(parseInt(raw, 10)) : raw;
+            })
+            .filter(v => v.length > 0);
         if (valores.length === 0) return { insertados: 0, noEncontrados: [], yaEnGrupo: [] };
 
         const pool = await connectDb();
@@ -836,10 +856,13 @@ export class PromocionesService {
                 .input('CODCLIENTE', mssql.Int, cod)
                 .query(`INSERT INTO APP_GRUPOS_CLIENTES_DETALLE (IDGRUPO, CODCLIENTE) VALUES (@IDGRUPO, @CODCLIENTE)`);
         }
+        await this.registrarLogGrupo(idGrupo, 'IMPORTAR_EXCEL', codusuario, usuario,
+            `Importados: ${aNuevos.length} | No encontrados (${noEncontrados.length}): ${noEncontrados.slice(0, 20).join(', ')}${noEncontrados.length > 20 ? '...' : ''}`
+        );
         return { insertados: aNuevos.length, noEncontrados, yaEnGrupo };
     }
 
-    static async quitarClienteDeGrupo(idGrupo: number, codCliente: number) {
+    static async quitarClienteDeGrupo(idGrupo: number, codCliente: number, codusuario?: number, usuario?: string) {
         const tipo = await this.getTipoGrupoClientes(idGrupo);
         if (tipo === 'CONDICION') throw new Error('Grupo dinámico: edita las condiciones, no se quitan clientes manualmente.');
         const pool = await connectDb();
@@ -847,6 +870,52 @@ export class PromocionesService {
             .input('IDGRUPO', mssql.Int, idGrupo)
             .input('CODCLIENTE', mssql.Int, codCliente)
             .query(`DELETE FROM APP_GRUPOS_CLIENTES_DETALLE WHERE IDGRUPO = @IDGRUPO AND CODCLIENTE = @CODCLIENTE`);
+        await this.registrarLogGrupo(idGrupo, 'QUITAR_CLIENTE', codusuario, usuario, `Cliente ${codCliente} eliminado del grupo`);
+    }
+
+    private static async registrarLogGrupo(idGrupo: number, accion: string, codusuario?: number, usuario?: string, detalles?: string): Promise<void> {
+        try {
+            const pool = await connectDb();
+            await pool.request()
+                .input('IDGRUPO',    mssql.Int,          idGrupo)
+                .input('ACCION',     mssql.NVarChar(50), accion)
+                .input('CODUSUARIO', mssql.Int,          codusuario ?? null)
+                .input('USUARIO',    mssql.NVarChar(100),usuario ?? null)
+                .input('DETALLES',   mssql.NVarChar(500),detalles ?? null)
+                .query(`INSERT INTO APP_GRUPOS_LOG (IDGRUPO, ACCION, CODUSUARIO, USUARIO, DETALLES)
+                        VALUES (@IDGRUPO, @ACCION, @CODUSUARIO, @USUARIO, @DETALLES)`);
+        } catch (e) {
+            console.error('Error al registrar log de grupo:', e);
+        }
+    }
+
+    static async getAuditoriaGrupos(buscar?: string, page = 1, limit = 25) {
+        const pool = await connectDb();
+        const offset = (page - 1) * limit;
+        const filtro = buscar?.trim() ? `%${buscar.trim().toUpperCase()}%` : null;
+        const whereExtra = filtro ? `AND (UPPER(ISNULL(USUARIO,'')) LIKE @FILTRO OR UPPER(ISNULL(DETALLES,'')) LIKE @FILTRO)` : '';
+
+        const dataReq = pool.request()
+            .input('OFFSET', mssql.Int, offset)
+            .input('LIMIT',  mssql.Int, limit);
+        if (filtro) dataReq.input('FILTRO', mssql.NVarChar(200), filtro);
+
+        const data = await dataReq.query(`
+            SELECT L.ID, L.IDGRUPO, G.NOMBRE AS NOMBREGRUPO, L.ACCION, L.USUARIO, L.CODUSUARIO, L.FECHA, L.DETALLES
+            FROM APP_GRUPOS_LOG L WITH (NOLOCK)
+            LEFT JOIN APP_GRUPOS_CLIENTES G WITH (NOLOCK) ON G.ID = L.IDGRUPO
+            WHERE 1=1 ${whereExtra}
+            ORDER BY L.FECHA DESC
+            OFFSET @OFFSET ROWS FETCH NEXT @LIMIT ROWS ONLY
+        `);
+
+        const cntReq = pool.request();
+        if (filtro) cntReq.input('FILTRO', mssql.NVarChar(200), filtro);
+        const count = await cntReq.query(`
+            SELECT COUNT(*) AS TOTAL FROM APP_GRUPOS_LOG WITH (NOLOCK) WHERE 1=1 ${whereExtra}
+        `);
+
+        return { data: data.recordset, total: Number(count.recordset[0].TOTAL) };
     }
 
     // ---------- PROMOCIONES ----------

@@ -11,9 +11,10 @@ export interface CommitEntry {
   texto: string;
 }
 
-export const APP_VERSION = '1.2.15';
+export const APP_VERSION = '1.2.16';
 
 export const VERSIONES: VersionEntry[] = [
+  { version: '1.2.16', fecha: '2026-08-13', desde: '2026-08-13' },
   { version: '1.2.15', fecha: '2026-08-11', desde: '2026-08-11' },
   { version: '1.2.14', fecha: '2026-08-11', desde: '2026-08-11' },
   { version: '1.2.13', fecha: '2026-08-11', desde: '2026-08-11' },
@@ -33,6 +34,10 @@ export const VERSIONES: VersionEntry[] = [
 ];
 
 export const COMMITS: CommitEntry[] = [
+  { hash: 'pending', date: '2026-08-13', tipo: 'feat',    texto: 'grupos de clientes: importar Excel elimina ceros al inicio de CODCLIENTE y muestra los códigos no encontrados; toda operación (crear, editar, agregar/quitar cliente, importar) queda registrada en auditoría' },
+  { hash: 'pending', date: '2026-08-13', tipo: 'feat',    texto: 'auditoría: nueva pestaña Grupos/Clientes con historial de acciones sobre grupos de clientes' },
+  { hash: 'pending', date: '2026-08-13', tipo: 'feat',    texto: 'replicar pedido: botón en control de estatus carga todos los artículos, descuentos y cliente al carrito' },
+  { hash: 'pending', date: '2026-08-13', tipo: 'fix',     texto: 'replicar pedido: precio de artículos aparecía en $0 — obtenerPrecioBase cae a PRECIOBRUTO/PRECIOUNITARIO cuando prices está vacío' },
   { hash: 'pending', date: '2026-08-11', tipo: 'fix',     texto: 'límite de líneas: fusión rechaza si el resultado supera el límite; autorización bloqueada si el pedido excede el límite; edición validada' },
   { hash: 'pending', date: '2026-08-11', tipo: 'feat',    texto: 'auditoría: toda edición o actualización de código de aprobación queda registrada en APP_PEDIDO_LOG con usuario y detalle' },
   { hash: 'pending', date: '2026-08-11', tipo: 'fix',     texto: 'pedidos: agregar authMiddleware al POST de creación para que el usuario quede registrado en APP_PEDIDO_LOG' },

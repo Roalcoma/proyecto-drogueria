@@ -1,6 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import { PromocionesController } from "../controllers/promociones.controller";
+import { authMiddleware } from "../middleware/auth.middleware";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
@@ -20,14 +21,15 @@ promocionesRouter.post('/grupos-articulos/:id/articulos', PromocionesController.
 promocionesRouter.delete('/grupos-articulos/:id/articulos/:codArticulo', PromocionesController.quitarArticuloDeGrupo);
 promocionesRouter.post('/grupos-articulos/:id/importar-excel', upload.single('archivo'), PromocionesController.importarArticulosExcel);
 
+promocionesRouter.get('/grupos-clientes/auditoria', authMiddleware, PromocionesController.getAuditoriaGrupos);
 promocionesRouter.get('/grupos-clientes', PromocionesController.getGruposClientes);
-promocionesRouter.post('/grupos-clientes', PromocionesController.crearGrupoClientes);
-promocionesRouter.put('/grupos-clientes/:id', PromocionesController.actualizarGrupoClientes);
+promocionesRouter.post('/grupos-clientes', authMiddleware, PromocionesController.crearGrupoClientes);
+promocionesRouter.put('/grupos-clientes/:id', authMiddleware, PromocionesController.actualizarGrupoClientes);
 promocionesRouter.get('/grupos-clientes/:id/condiciones', PromocionesController.getCondicionesGrupoClientes);
 promocionesRouter.get('/grupos-clientes/:id/clientes', PromocionesController.getClientesDeGrupo);
-promocionesRouter.post('/grupos-clientes/:id/clientes', PromocionesController.agregarClienteAGrupo);
-promocionesRouter.delete('/grupos-clientes/:id/clientes/:codCliente', PromocionesController.quitarClienteDeGrupo);
-promocionesRouter.post('/grupos-clientes/:id/importar-excel', upload.single('archivo'), PromocionesController.importarClientesExcel);
+promocionesRouter.post('/grupos-clientes/:id/clientes', authMiddleware, PromocionesController.agregarClienteAGrupo);
+promocionesRouter.delete('/grupos-clientes/:id/clientes/:codCliente', authMiddleware, PromocionesController.quitarClienteDeGrupo);
+promocionesRouter.post('/grupos-clientes/:id/importar-excel', authMiddleware, upload.single('archivo'), PromocionesController.importarClientesExcel);
 
 promocionesRouter.get('/', PromocionesController.getPromociones);
 promocionesRouter.post('/', PromocionesController.crearPromocion);

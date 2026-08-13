@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { PromocionesService } from "../services/promociones.service";
+import { RequestConUsuario } from "../middleware/auth.middleware";
 
 export class PromocionesController {
 
@@ -92,22 +93,22 @@ export class PromocionesController {
         res.status(200).json({ success: true, ...result });
     }
 
-    static async crearGrupoClientes(req: Request, res: Response): Promise<void> {
+    static async crearGrupoClientes(req: RequestConUsuario, res: Response): Promise<void> {
         const { nombre, tipo, condiciones } = req.body;
         if (!nombre) { res.status(400).json({ success: false, message: 'Nombre requerido' }); return; }
         try {
-            const id = await PromocionesService.crearGrupoClientes(nombre, tipo || 'MANUAL', condiciones);
+            const id = await PromocionesService.crearGrupoClientes(nombre, tipo || 'MANUAL', condiciones, req.usuario?.id, req.usuario?.usuario);
             res.status(201).json({ success: true, id });
         } catch (error) {
             res.status(400).json({ success: false, message: error instanceof Error ? error.message : 'Error al crear el grupo' });
         }
     }
 
-    static async actualizarGrupoClientes(req: Request, res: Response): Promise<void> {
+    static async actualizarGrupoClientes(req: RequestConUsuario, res: Response): Promise<void> {
         const id = parseInt(req.params['id'] as string);
         const { nombre, activo, tipo, condiciones } = req.body;
         try {
-            await PromocionesService.actualizarGrupoClientes(id, nombre, activo, tipo, condiciones);
+            await PromocionesService.actualizarGrupoClientes(id, nombre, activo, tipo, condiciones, req.usuario?.id, req.usuario?.usuario);
             res.status(200).json({ success: true });
         } catch (error) {
             res.status(400).json({ success: false, message: error instanceof Error ? error.message : 'Error al actualizar el grupo' });
@@ -127,37 +128,47 @@ export class PromocionesController {
         res.status(200).json({ success: true, ...result });
     }
 
-    static async agregarClienteAGrupo(req: Request, res: Response): Promise<void> {
+    static async agregarClienteAGrupo(req: RequestConUsuario, res: Response): Promise<void> {
         const idGrupo = parseInt(req.params['id'] as string);
         const { codCliente } = req.body;
         if (!codCliente) { res.status(400).json({ success: false, message: 'codCliente requerido' }); return; }
         try {
-            await PromocionesService.agregarClienteAGrupo(idGrupo, Number(codCliente));
+            await PromocionesService.agregarClienteAGrupo(idGrupo, Number(codCliente), req.usuario?.id, req.usuario?.usuario);
             res.status(200).json({ success: true });
         } catch (error) {
             res.status(400).json({ success: false, message: error instanceof Error ? error.message : 'Error al agregar cliente' });
         }
     }
 
-    static async quitarClienteDeGrupo(req: Request, res: Response): Promise<void> {
+    static async quitarClienteDeGrupo(req: RequestConUsuario, res: Response): Promise<void> {
         const idGrupo = parseInt(req.params['id'] as string);
         const codCliente = parseInt(req.params['codCliente'] as string);
         try {
-            await PromocionesService.quitarClienteDeGrupo(idGrupo, codCliente);
+            await PromocionesService.quitarClienteDeGrupo(idGrupo, codCliente, req.usuario?.id, req.usuario?.usuario);
             res.status(200).json({ success: true });
         } catch (error) {
             res.status(400).json({ success: false, message: error instanceof Error ? error.message : 'Error al quitar cliente' });
         }
     }
 
-    static async importarClientesExcel(req: Request, res: Response): Promise<void> {
+    static async importarClientesExcel(req: RequestConUsuario, res: Response): Promise<void> {
         const idGrupo = parseInt(req.params['id'] as string);
         if (!req.file) { res.status(400).json({ success: false, message: 'Archivo requerido' }); return; }
         try {
-            const resultado = await PromocionesService.importarClientesExcel(idGrupo, req.file.buffer);
+            const resultado = await PromocionesService.importarClientesExcel(idGrupo, req.file.buffer, req.usuario?.id, req.usuario?.usuario);
             res.status(200).json({ success: true, ...resultado });
         } catch (error) {
             res.status(400).json({ success: false, message: error instanceof Error ? error.message : 'Error al importar' });
+        }
+    }
+
+    static async getAuditoriaGrupos(req: Request, res: Response): Promise<void> {
+        const { buscar, page, limit } = req.query;
+        try {
+            const result = await PromocionesService.getAuditoriaGrupos(buscar as string, Number(page) || 1, Number(limit) || 25);
+            res.json({ success: true, ...result });
+        } catch (error) {
+            res.status(500).json({ success: false, message: String(error) });
         }
     }
 
