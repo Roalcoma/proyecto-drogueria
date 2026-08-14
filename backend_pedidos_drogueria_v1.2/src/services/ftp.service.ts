@@ -398,14 +398,16 @@ export class FtpService {
                     const chunk      = tipoCh[ci];
                     const chunkId    = buildChunkId(tipo, ci + 1);
                     const totalChunk = chunk.reduce((s, l) => s + l.precioTotal, 0);
+                    const estatusInicial = tipo === 'P' ? 'APROBACION PSICOTROPICOS' : 'PENDIENTE';
 
                     await pool.request()
                         .input('OID', mssql.NVarChar(15), chunkId)
                         .input('CLI', mssql.Int, CODCLIENTE)
                         .input('VND', mssql.Int, CODVENDEDOR)
                         .input('TOT', mssql.Decimal(18, 2), totalChunk)
+                        .input('EST', mssql.NVarChar(50), estatusInicial)
                         .query(`INSERT INTO ${esquema}.CABECERA_PED (ORDERID, CLIENTEID, FECHA, ESTATUS, CODVENDEDOR, TOTALPRECIO)
-                                VALUES (@OID, @CLI, GETDATE(), 'PENDIENTE', @VND, @TOT)`);
+                                VALUES (@OID, @CLI, GETDATE(), @EST, @VND, @TOT)`);
 
                     const tabla = new mssql.Table(`${esquema}.LINEA_PED`);
                     tabla.create = false;
@@ -435,7 +437,7 @@ export class FtpService {
 
                     await pool.request()
                         .input('OID', mssql.NVarChar(15), chunkId)
-                        .input('EST', mssql.NVarChar(50), 'PENDIENTE')
+                        .input('EST', mssql.NVarChar(50), estatusInicial)
                         .input('DET', mssql.NVarChar(500),
                             `Pedido FTP desde ${archivo}. Tipo: ${tipo}. Parte ${ci + 1}/${tipoCh.length}.`)
                         .query(`INSERT INTO ${esquema}.APP_PEDIDO_LOG (ORDERID, EST_ANTERIOR, EST_NUEVO, USUARIO, DETALLES)
