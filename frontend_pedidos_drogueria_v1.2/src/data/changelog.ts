@@ -34,6 +34,7 @@ export const VERSIONES: VersionEntry[] = [
 ];
 
 export const COMMITS: CommitEntry[] = [
+  { hash: 'pending', date: '2026-08-14', tipo: 'fix',     texto: 'FTP: pedidos con artículos psicotrópicos se insertan en estatus APROBACION PSICOTROPICOS en lugar de PENDIENTE' },
   { hash: 'pending', date: '2026-08-13', tipo: 'feat',    texto: 'grupos de clientes: importar Excel elimina ceros al inicio de CODCLIENTE y muestra los códigos no encontrados; toda operación (crear, editar, agregar/quitar cliente, importar) queda registrada en auditoría' },
   { hash: 'pending', date: '2026-08-13', tipo: 'feat',    texto: 'auditoría: nueva pestaña Grupos/Clientes con historial de acciones sobre grupos de clientes' },
   { hash: 'pending', date: '2026-08-13', tipo: 'feat',    texto: 'replicar pedido: botón en control de estatus carga todos los artículos, descuentos y cliente al carrito' },
