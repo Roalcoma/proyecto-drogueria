@@ -22,9 +22,14 @@ promocionesRouter.delete('/grupos-articulos/:id/articulos/:codArticulo', Promoci
 promocionesRouter.post('/grupos-articulos/:id/importar-excel', upload.single('archivo'), PromocionesController.importarArticulosExcel);
 
 promocionesRouter.get('/grupos-clientes/auditoria', authMiddleware, PromocionesController.getAuditoriaGrupos);
+promocionesRouter.post('/grupos-clientes/previsualizar-grupos-excel', upload.single('archivo'), PromocionesController.previsualizarGruposExcel);
+promocionesRouter.post('/grupos-clientes/previsualizar-clientes-lote', upload.single('archivo'), PromocionesController.previsualizarClientesLoteExcel);
+promocionesRouter.post('/grupos-clientes/crear-lote', authMiddleware, PromocionesController.crearLoteGrupos);
+promocionesRouter.post('/grupos-clientes/importar-clientes-lote', authMiddleware, upload.single('archivo'), PromocionesController.importarClientesLoteExcel);
 promocionesRouter.get('/grupos-clientes', PromocionesController.getGruposClientes);
 promocionesRouter.post('/grupos-clientes', authMiddleware, PromocionesController.crearGrupoClientes);
 promocionesRouter.put('/grupos-clientes/:id', authMiddleware, PromocionesController.actualizarGrupoClientes);
+promocionesRouter.delete('/grupos-clientes/:id', authMiddleware, PromocionesController.eliminarGrupoClientes);
 promocionesRouter.get('/grupos-clientes/:id/condiciones', PromocionesController.getCondicionesGrupoClientes);
 promocionesRouter.get('/grupos-clientes/:id/clientes', PromocionesController.getClientesDeGrupo);
 promocionesRouter.post('/grupos-clientes/:id/clientes', authMiddleware, PromocionesController.agregarClienteAGrupo);

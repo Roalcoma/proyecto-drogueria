@@ -162,6 +162,57 @@ export class PromocionesController {
         }
     }
 
+    static async previsualizarClientesLoteExcel(req: Request, res: Response): Promise<void> {
+        if (!req.file) { res.status(400).json({ success: false, message: 'Archivo requerido' }); return; }
+        try {
+            const resultado = await PromocionesService.previsualizarClientesLoteExcel(req.file.buffer);
+            res.status(200).json({ success: true, ...resultado });
+        } catch (error) {
+            res.status(400).json({ success: false, message: error instanceof Error ? error.message : 'Error al leer archivo' });
+        }
+    }
+
+    static async previsualizarGruposExcel(req: Request, res: Response): Promise<void> {
+        if (!req.file) { res.status(400).json({ success: false, message: 'Archivo requerido' }); return; }
+        try {
+            const resultado = await PromocionesService.previsualizarGruposExcel(req.file.buffer);
+            res.status(200).json({ success: true, ...resultado });
+        } catch (error) {
+            res.status(400).json({ success: false, message: error instanceof Error ? error.message : 'Error al leer archivo' });
+        }
+    }
+
+    static async crearLoteGrupos(req: RequestConUsuario, res: Response): Promise<void> {
+        const { grupos } = req.body;
+        if (!Array.isArray(grupos) || grupos.length === 0) { res.status(400).json({ success: false, message: 'grupos requerido' }); return; }
+        try {
+            const resultado = await PromocionesService.crearLoteGrupos(grupos, req.usuario?.id, req.usuario?.usuario);
+            res.status(200).json({ success: true, ...resultado });
+        } catch (error) {
+            res.status(400).json({ success: false, message: error instanceof Error ? error.message : 'Error al crear' });
+        }
+    }
+
+    static async importarClientesLoteExcel(req: RequestConUsuario, res: Response): Promise<void> {
+        if (!req.file) { res.status(400).json({ success: false, message: 'Archivo requerido' }); return; }
+        try {
+            const resultado = await PromocionesService.importarClientesLoteExcel(req.file.buffer, req.usuario?.id, req.usuario?.usuario);
+            res.status(200).json({ success: true, ...resultado });
+        } catch (error) {
+            res.status(400).json({ success: false, message: error instanceof Error ? error.message : 'Error al importar' });
+        }
+    }
+
+    static async eliminarGrupoClientes(req: RequestConUsuario, res: Response): Promise<void> {
+        const id = parseInt(req.params['id'] as string);
+        try {
+            await PromocionesService.eliminarGrupoClientes(id, req.usuario?.id, req.usuario?.usuario);
+            res.status(200).json({ success: true });
+        } catch (error) {
+            res.status(400).json({ success: false, message: error instanceof Error ? error.message : 'Error al eliminar' });
+        }
+    }
+
     static async getAuditoriaGrupos(req: Request, res: Response): Promise<void> {
         const { buscar, page, limit } = req.query;
         try {

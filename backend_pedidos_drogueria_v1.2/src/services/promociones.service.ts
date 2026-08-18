@@ -167,6 +167,9 @@ export class PromocionesService {
                 IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='APP_GRUPOS_CLIENTES' AND COLUMN_NAME='TIPO')
                 ALTER TABLE APP_GRUPOS_CLIENTES ADD TIPO VARCHAR(10) NOT NULL DEFAULT 'MANUAL' CHECK (TIPO IN ('MANUAL','CONDICION'));
 
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='APP_GRUPOS_CLIENTES' AND COLUMN_NAME='CODIGO')
+                ALTER TABLE APP_GRUPOS_CLIENTES ADD CODIGO VARCHAR(20) NULL;
+
                 IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='APP_PROMOCIONES' AND COLUMN_NAME='IDGRUPOARTICULOS_EXCLUIR')
                 ALTER TABLE APP_PROMOCIONES ADD IDGRUPOARTICULOS_EXCLUIR INT NULL REFERENCES APP_GRUPOS_ARTICULOS(ID);
 
@@ -619,7 +622,7 @@ export class PromocionesService {
             .input('OFFSET', mssql.Int, offset)
             .input('LIMIT', mssql.Int, safeLimit)
             .query(`
-                SELECT ID, NOMBRE, ACTIVO, TIPO, FECHACREACION,
+                SELECT ID, NOMBRE, ACTIVO, TIPO, FECHACREACION, CODIGO,
                     (SELECT COUNT(*) FROM APP_GRUPOS_CLIENTES_DETALLE WHERE IDGRUPO = G.ID) AS TOTALCLIENTES
                 FROM APP_GRUPOS_CLIENTES G
                 WHERE NOMBRE LIKE @FILTRO
@@ -860,6 +863,189 @@ export class PromocionesService {
             `Importados: ${aNuevos.length} | No encontrados (${noEncontrados.length}): ${noEncontrados.slice(0, 20).join(', ')}${noEncontrados.length > 20 ? '...' : ''}`
         );
         return { insertados: aNuevos.length, noEncontrados, yaEnGrupo };
+    }
+
+    private static parsearGruposExcel(buffer: Buffer, XLSX: any): { codigo: string; nombre: string }[] {
+        const wb = XLSX.read(buffer, { type: 'buffer' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        return rows
+            .map((r: any[]) => {
+                const raw = String(r[0] ?? '').trim();
+                const m = raw.match(/^\((\d+)\)\s+(.+)/);
+                return m ? { codigo: m[1], nombre: m[2].trim() } : null;
+            })
+            .filter((g): g is { codigo: string; nombre: string } => g !== null);
+    }
+
+    static async previsualizarGruposExcel(buffer: Buffer): Promise<{
+        aProcesar: { codigo: string; nombre: string }[];
+        omitidos: { codigo: string; nombre: string; motivo: string }[];
+    }> {
+        const XLSX = await import('xlsx');
+        const grupos = this.parsearGruposExcel(buffer, XLSX);
+        const pool = await connectDb();
+        const existentesDB = new Map<string, boolean>(
+            (await pool.request().query(`SELECT LTRIM(RTRIM(UPPER(NOMBRE))) AS N FROM APP_GRUPOS_CLIENTES`))
+                .recordset.map((r: any) => [r.N as string, true])
+        );
+        const vistos = new Set<string>();
+        const aProcesar: { codigo: string; nombre: string }[] = [];
+        const omitidos: { codigo: string; nombre: string; motivo: string }[] = [];
+        for (const g of grupos) {
+            const key = g.nombre.toUpperCase();
+            if (existentesDB.has(key)) { omitidos.push({ ...g, motivo: 'Ya existe en la base de datos' }); continue; }
+            if (vistos.has(key)) { omitidos.push({ ...g, motivo: 'Nombre duplicado en el Excel' }); continue; }
+            vistos.add(key);
+            aProcesar.push(g);
+        }
+        return { aProcesar, omitidos };
+    }
+
+    static async crearLoteGrupos(grupos: { codigo: string; nombre: string }[], codusuario?: number, usuario?: string): Promise<{
+        creados: { codigo: string; nombre: string }[];
+        errores: { codigo: string; nombre: string; motivo: string }[];
+    }> {
+        const pool = await connectDb();
+        const creados: { codigo: string; nombre: string }[] = [];
+        const errores: { codigo: string; nombre: string; motivo: string }[] = [];
+        for (const g of grupos) {
+            try {
+                const res = await pool.request()
+                    .input('NOMBRE', mssql.NVarChar, g.nombre)
+                    .input('CODIGO', mssql.VarChar(20), g.codigo)
+                    .query(`INSERT INTO APP_GRUPOS_CLIENTES (NOMBRE, TIPO, CODIGO) OUTPUT INSERTED.ID VALUES (@NOMBRE, 'MANUAL', @CODIGO)`);
+                const id = res.recordset[0].ID;
+                await this.registrarLogGrupo(id, 'CREAR_GRUPO', codusuario, usuario, `Grupo "${g.nombre}" (${g.codigo}) creado por importación Excel`);
+                creados.push(g);
+            } catch (e) {
+                errores.push({ ...g, motivo: e instanceof Error ? e.message : 'Error desconocido' });
+            }
+        }
+        return { creados, errores };
+    }
+
+    static async previsualizarClientesLoteExcel(buffer: Buffer): Promise<{
+        totalFilas: number;
+        gruposAfectados: { codigo: string; nombre: string; cantidad: number }[];
+        sinGrupo: { fila: number; codigoGrupo: string }[];
+    }> {
+        const XLSX = await import('xlsx');
+        const wb = XLSX.read(buffer, { type: 'buffer' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        const dataRows = rows.filter(r => {
+            const a = String(r[0] ?? '').trim();
+            const b = String(r[1] ?? '').trim();
+            return /^\d+$/.test(a) && /^\d+$/.test(b);
+        });
+
+        const pool = await connectDb();
+        const normCod = (c: string) => /^\d+$/.test(c.trim()) ? String(parseInt(c.trim(), 10)) : c.trim();
+        const gruposRes = await pool.request().query(`SELECT ID, CODIGO, NOMBRE FROM APP_GRUPOS_CLIENTES WHERE CODIGO IS NOT NULL`);
+        const grupoMap = new Map<string, { nombre: string }>(
+            gruposRes.recordset.map((r: any) => [normCod(String(r.CODIGO)), { nombre: r.NOMBRE as string }])
+        );
+
+        const grupoCount = new Map<string, { codigo: string; nombre: string; cantidad: number }>();
+        const sinGrupo: { fila: number; codigoGrupo: string }[] = [];
+
+        for (let i = 0; i < dataRows.length; i++) {
+            const rawCodGrupo = String(dataRows[i][0] ?? '').trim();
+            const key = normCod(rawCodGrupo);
+            const grupo = grupoMap.get(key);
+            if (!grupo) {
+                sinGrupo.push({ fila: i + 2, codigoGrupo: rawCodGrupo });
+            } else {
+                const entry = grupoCount.get(key) ?? { codigo: rawCodGrupo, nombre: grupo.nombre, cantidad: 0 };
+                entry.cantidad++;
+                grupoCount.set(key, entry);
+            }
+        }
+
+        return {
+            totalFilas: dataRows.length,
+            gruposAfectados: Array.from(grupoCount.values()).sort((a, b) => a.nombre.localeCompare(b.nombre)),
+            sinGrupo,
+        };
+    }
+
+    static async importarClientesLoteExcel(buffer: Buffer, codusuario?: number, usuario?: string): Promise<{
+        insertados: number;
+        errores: { fila: number; codigoGrupo: string; codcliente: string; motivo: string }[];
+    }> {
+        const XLSX = await import('xlsx');
+        const wb = XLSX.read(buffer, { type: 'buffer' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+        // Salta cabecera (primera fila con texto)
+        const dataRows = rows.filter(r => {
+            const a = String(r[0] ?? '').trim();
+            const b = String(r[1] ?? '').trim();
+            return /^\d+$/.test(a) && /^\d+$/.test(b);
+        });
+
+        const pool = await connectDb();
+        // Cargar mapa CODIGO → ID de grupo
+        const gruposRes = await pool.request().query(`SELECT ID, CODIGO FROM APP_GRUPOS_CLIENTES WHERE CODIGO IS NOT NULL`);
+        // Normalizar: strip leading zeros para comparación robusta (0001 == 1)
+        const normCod = (c: string) => /^\d+$/.test(c.trim()) ? String(parseInt(c.trim(), 10)) : c.trim();
+        const grupoMap = new Map<string, number>(
+            gruposRes.recordset.map((r: any) => [normCod(String(r.CODIGO)), Number(r.ID)])
+        );
+
+        let insertados = 0;
+        const errores: { fila: number; codigoGrupo: string; codcliente: string; motivo: string }[] = [];
+
+        for (let i = 0; i < dataRows.length; i++) {
+            const rawCodGrupo = String(dataRows[i][0] ?? '').trim();
+            const rawCodCli   = String(dataRows[i][1] ?? '').trim();
+            const codCli = /^\d+$/.test(rawCodCli) ? String(parseInt(rawCodCli, 10)) : rawCodCli;
+            const fila = i + 2;
+
+            const idGrupo = grupoMap.get(normCod(rawCodGrupo));
+            if (!idGrupo) { errores.push({ fila, codigoGrupo: rawCodGrupo, codcliente: codCli, motivo: `Grupo con código "${rawCodGrupo}" no encontrado` }); continue; }
+
+            // Verificar que el cliente existe
+            const cliRes = await pool.request()
+                .input('COD', mssql.NVarChar, codCli)
+                .query(`SELECT CODCLIENTE FROM CLIENTES WHERE CAST(CODCLIENTE AS VARCHAR) = @COD`);
+            if (!cliRes.recordset.length) { errores.push({ fila, codigoGrupo: rawCodGrupo, codcliente: codCli, motivo: 'Cliente no encontrado' }); continue; }
+
+            const codClienteNum = Number(cliRes.recordset[0].CODCLIENTE);
+            try {
+                await pool.request()
+                    .input('IDGRUPO', mssql.Int, idGrupo)
+                    .input('CODCLIENTE', mssql.Int, codClienteNum)
+                    .query(`IF NOT EXISTS (SELECT 1 FROM APP_GRUPOS_CLIENTES_DETALLE WHERE IDGRUPO=@IDGRUPO AND CODCLIENTE=@CODCLIENTE)
+                            INSERT INTO APP_GRUPOS_CLIENTES_DETALLE (IDGRUPO, CODCLIENTE) VALUES (@IDGRUPO, @CODCLIENTE)`);
+                insertados++;
+            } catch (e) {
+                errores.push({ fila, codigoGrupo: rawCodGrupo, codcliente: codCli, motivo: e instanceof Error ? e.message : 'Error' });
+            }
+        }
+
+        if (insertados > 0) {
+            await this.registrarLogGrupo(0, 'IMPORTAR_EXCEL', codusuario, usuario,
+                `Importación masiva: ${insertados} clientes insertados, ${errores.length} errores`);
+        }
+        return { insertados, errores };
+    }
+
+    static async eliminarGrupoClientes(id: number, codusuario?: number, usuario?: string) {
+        const pool = await connectDb();
+        const grupoRes = await pool.request().input('ID', mssql.Int, id)
+            .query(`SELECT NOMBRE FROM APP_GRUPOS_CLIENTES WHERE ID = @ID`);
+        const nombre = grupoRes.recordset[0]?.NOMBRE ?? `#${id}`;
+        await pool.request().input('ID', mssql.Int, id)
+            .query(`
+                DELETE FROM APP_GRUPOS_CLIENTES_DETALLE       WHERE IDGRUPO = @ID;
+                DELETE FROM APP_GRUPOS_CLIENTES_CONDICIONES   WHERE IDGRUPO = @ID;
+                DELETE FROM APP_PROMOCIONES_GRUPOS_CLIENTES   WHERE IDGRUPO = @ID;
+                DELETE FROM APP_GRUPOS_CLIENTES               WHERE ID      = @ID;
+            `);
+        await this.registrarLogGrupo(id, 'ELIMINAR_GRUPO', codusuario, usuario, `Grupo "${nombre}" eliminado`);
     }
 
     static async quitarClienteDeGrupo(idGrupo: number, codCliente: number, codusuario?: number, usuario?: string) {

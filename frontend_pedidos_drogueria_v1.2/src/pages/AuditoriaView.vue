@@ -226,7 +226,7 @@ const headersGrupos = [
 const colorAccionGrupo = (accion: string) => {
   const map: Record<string, string> = {
     'CREAR_GRUPO': 'green', 'EDITAR_GRUPO': 'blue', 'IMPORTAR_EXCEL': 'teal',
-    'AGREGAR_CLIENTE': 'cyan', 'QUITAR_CLIENTE': 'red',
+    'AGREGAR_CLIENTE': 'cyan', 'QUITAR_CLIENTE': 'orange', 'ELIMINAR_GRUPO': 'red',
   };
   return map[accion] ?? 'grey';
 };

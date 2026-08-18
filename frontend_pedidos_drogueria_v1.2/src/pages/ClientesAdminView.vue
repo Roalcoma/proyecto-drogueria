@@ -87,18 +87,31 @@
       <!-- ===================== GRUPOS DE CLIENTES ===================== -->
       <v-window-item value="grupos">
         <v-card rounded="xl" elevation="2">
-          <v-card-title class="pa-4 d-flex align-center">
+          <v-card-title class="pa-4 d-flex align-center gap-2 flex-wrap">
             <v-text-field v-model="busquedaGrupo" label="Buscar grupo" prepend-inner-icon="mdi-magnify"
               variant="outlined" density="compact" hide-details clearable @keyup.enter="cargarGrupos"
               style="max-width: 320px;" class="mr-3" />
             <v-spacer />
+            <v-btn v-if="gruposSeleccionados.length" color="error" variant="tonal" prepend-icon="mdi-delete-multiple"
+              @click="confirmarEliminarSeleccion">
+              Eliminar ({{ gruposSeleccionados.length }})
+            </v-btn>
+            <v-btn color="teal" variant="tonal" prepend-icon="mdi-account-multiple-plus" @click="$refs.excelClientesLote.click()" :loading="importandoClientesLote">Importar Clientes (masivo)</v-btn>
+            <input ref="excelClientesLote" type="file" accept=".xlsx,.xls" style="display:none" @change="importarClientesLoteExcel" />
+            <v-btn color="success" variant="tonal" prepend-icon="mdi-microsoft-excel" @click="$refs.excelGrupos.click()" :loading="importandoGruposExcel">Importar Grupos</v-btn>
+            <input ref="excelGrupos" type="file" accept=".xlsx,.xls" style="display:none" @change="importarGruposExcel" />
             <v-btn color="primary" prepend-icon="mdi-plus" @click="abrirNuevoGrupo">Nuevo Grupo</v-btn>
           </v-card-title>
           <v-divider />
           <v-data-table-server
             :headers="headersGrupos" :items="grupos" :items-length="totalGrupos" :loading="cargandoGrupos"
             v-model:items-per-page="itemsPerPageGrupos" @update:options="cargarPaginaGrupos"
-            :items-per-page-options="[10, 25, 50, 100, 200]">
+            :items-per-page-options="[10, 25, 50, 100, 200]"
+            show-select v-model="gruposSeleccionados" item-value="ID">
+            <template v-slot:item.CODIGO="{ item }">
+              <v-chip v-if="item.CODIGO" size="x-small" color="cyan-darken-1" variant="tonal" label class="font-weight-bold">{{ item.CODIGO }}</v-chip>
+              <span v-else class="text-caption text-grey">—</span>
+            </template>
             <template v-slot:item.TIPO="{ item }">
               <v-chip size="x-small" :color="item.TIPO === 'CONDICION' ? 'purple-darken-1' : 'blue-grey'" variant="flat">
                 {{ item.TIPO === 'CONDICION' ? 'Por condición' : 'Manual' }}
@@ -109,6 +122,7 @@
               <v-btn size="small" color="primary" variant="tonal" prepend-icon="mdi-account-multiple" @click="abrirMiembros(item)">
                 Clientes
               </v-btn>
+              <v-btn icon="mdi-delete" variant="text" size="small" color="error" @click="confirmarEliminarGrupo(item)" />
             </template>
           </v-data-table-server>
         </v-card>
@@ -150,6 +164,125 @@
           <v-spacer /><v-btn variant="text" @click="modalGrupo.mostrar = false">Cancelar</v-btn>
           <v-btn color="primary" variant="elevated" :loading="guardandoGrupo" @click="guardarGrupo">Guardar</v-btn>
         </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog: confirmar eliminación de grupo -->
+    <v-dialog v-model="confirmarEliminar.mostrar" max-width="420">
+      <v-card rounded="xl">
+        <v-card-title class="pa-4">Eliminar grupo{{ confirmarEliminar.ids.length > 1 ? 's' : '' }}</v-card-title>
+        <v-card-text>
+          <template v-if="confirmarEliminar.ids.length === 1">
+            ¿Seguro que deseas eliminar el grupo <strong>{{ confirmarEliminar.nombre }}</strong>?
+          </template>
+          <template v-else>
+            ¿Seguro que deseas eliminar <strong>{{ confirmarEliminar.ids.length }} grupos</strong>?
+          </template>
+          Se borrarán también todos sus clientes asociados. Esta acción no se puede deshacer.
+        </v-card-text>
+        <v-card-actions class="pa-4">
+          <v-spacer />
+          <v-btn variant="text" @click="confirmarEliminar.mostrar = false">Cancelar</v-btn>
+          <v-btn color="error" variant="elevated" :loading="eliminandoGrupo" @click="eliminarGrupo">Eliminar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog: importación de grupos (2 fases) -->
+    <v-dialog v-model="modalImportGrupos.mostrar" max-width="620" persistent>
+      <v-card rounded="xl">
+        <!-- FASE: creando (spinner) -->
+        <template v-if="modalImportGrupos.fase === 'creando'">
+          <v-card-title class="pa-4">Creando grupos...</v-card-title>
+          <v-card-text class="d-flex flex-column align-center pa-8 gap-4">
+            <v-progress-circular indeterminate color="primary" size="56" />
+            <span class="text-body-2 text-medium-emphasis">Por favor espera</span>
+          </v-card-text>
+        </template>
+
+        <!-- FASE: resultado -->
+        <template v-else-if="modalImportGrupos.fase === 'resultado'">
+          <v-card-title class="pa-4">Resultado de importación</v-card-title>
+          <v-card-text class="pa-4">
+            <div v-if="modalImportGrupos.creados.length" class="mb-4">
+              <div class="text-subtitle-2 font-weight-bold text-success mb-2">
+                <v-icon size="18" color="success">mdi-check-circle</v-icon>
+                Creados ({{ modalImportGrupos.creados.length }})
+              </div>
+              <div style="max-height:160px;overflow-y:auto;border:1px solid rgba(0,0,0,.08);border-radius:8px;">
+                <v-list density="compact">
+                  <v-list-item v-for="n in modalImportGrupos.creados" :key="n" :title="n" />
+                </v-list>
+              </div>
+            </div>
+            <div v-if="modalImportGrupos.errores.length">
+              <div class="text-subtitle-2 font-weight-bold text-error mb-2">
+                <v-icon size="18" color="error">mdi-close-circle</v-icon>
+                Errores ({{ modalImportGrupos.errores.length }})
+              </div>
+              <div style="max-height:120px;overflow-y:auto;border:1px solid rgba(0,0,0,.08);border-radius:8px;">
+                <v-list density="compact">
+                  <v-list-item v-for="e in modalImportGrupos.errores" :key="e.nombre">
+                    <v-list-item-title>{{ e.nombre }}</v-list-item-title>
+                    <v-list-item-subtitle class="text-error">{{ e.motivo }}</v-list-item-subtitle>
+                  </v-list-item>
+                </v-list>
+              </div>
+            </div>
+          </v-card-text>
+          <v-card-actions class="pa-4">
+            <v-spacer />
+            <v-btn color="primary" variant="elevated" @click="modalImportGrupos.mostrar = false">Cerrar</v-btn>
+          </v-card-actions>
+        </template>
+
+        <!-- FASE: previsualización -->
+        <template v-else>
+          <v-card-title class="pa-4">Vista previa — Importar grupos</v-card-title>
+          <v-card-text class="pa-4">
+            <div v-if="modalImportGrupos.aProcesar.length" class="mb-4">
+              <div class="text-subtitle-2 font-weight-bold mb-2">
+                <v-icon size="18" color="primary">mdi-checkbox-marked-circle-outline</v-icon>
+                Se crearán ({{ modalImportGrupos.seleccionados.length }} / {{ modalImportGrupos.aProcesar.length }})
+              </div>
+              <div style="max-height:220px;overflow-y:auto;border:1px solid rgba(0,0,0,.08);border-radius:8px;">
+                <v-list density="compact" select-strategy="leaf" v-model:selected="modalImportGrupos.seleccionados">
+                  <v-list-item v-for="g in modalImportGrupos.aProcesar" :key="g.nombre" :value="g">
+                    <template v-slot:prepend="{ isSelected }">
+                      <v-checkbox-btn :model-value="isSelected" color="primary" />
+                    </template>
+                    <v-list-item-title>{{ g.nombre }}</v-list-item-title>
+                    <v-list-item-subtitle class="text-medium-emphasis">Código: {{ g.codigo }}</v-list-item-subtitle>
+                  </v-list-item>
+                </v-list>
+              </div>
+            </div>
+            <div v-if="modalImportGrupos.omitidos.length">
+              <div class="text-subtitle-2 font-weight-bold text-warning mb-2">
+                <v-icon size="18" color="warning">mdi-alert-circle</v-icon>
+                Se saltarán ({{ modalImportGrupos.omitidos.length }})
+              </div>
+              <div style="max-height:140px;overflow-y:auto;border:1px solid rgba(0,0,0,.08);border-radius:8px;">
+                <v-list density="compact">
+                  <v-list-item v-for="o in modalImportGrupos.omitidos" :key="o.nombre">
+                    <v-list-item-title>{{ o.nombre }} <span class="text-medium-emphasis text-caption">({{ o.codigo }})</span></v-list-item-title>
+                    <v-list-item-subtitle class="text-warning">{{ o.motivo }}</v-list-item-subtitle>
+                  </v-list-item>
+                </v-list>
+              </div>
+            </div>
+            <div v-if="!modalImportGrupos.aProcesar.length && !modalImportGrupos.omitidos.length" class="text-grey text-center pa-4">
+              No se encontraron grupos para procesar.
+            </div>
+          </v-card-text>
+          <v-card-actions class="pa-4">
+            <v-btn variant="text" @click="modalImportGrupos.mostrar = false">Cancelar</v-btn>
+            <v-spacer />
+            <v-btn color="primary" variant="elevated" :disabled="!modalImportGrupos.seleccionados.length" @click="ejecutarCrearLote">
+              Crear grupos ({{ modalImportGrupos.seleccionados.length }})
+            </v-btn>
+          </v-card-actions>
+        </template>
       </v-card>
     </v-dialog>
 
@@ -225,6 +358,106 @@
           <v-btn variant="text" @click="ftpDialog.mostrar = false">Cancelar</v-btn>
           <v-btn color="primary" variant="flat" :loading="ftpDialog.guardando" @click="crearFtpUsuario">Crear</v-btn>
         </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog: importación masiva de clientes (3 fases) -->
+    <v-dialog v-model="modalImportClientes.mostrar" max-width="640" persistent>
+      <v-card rounded="xl">
+        <!-- FASE: importando -->
+        <template v-if="modalImportClientes.fase === 'importando'">
+          <v-card-title class="pa-4">Importando clientes...</v-card-title>
+          <v-card-text class="d-flex flex-column align-center pa-8 gap-4">
+            <v-progress-circular indeterminate color="teal" size="56" />
+            <span class="text-body-2 text-medium-emphasis">Procesando {{ modalImportClientes.totalFilas }} filas, por favor espera</span>
+          </v-card-text>
+        </template>
+
+        <!-- FASE: resultado -->
+        <template v-else-if="modalImportClientes.fase === 'resultado'">
+          <v-card-title class="pa-4">Resultado de importación</v-card-title>
+          <v-card-text class="pa-4">
+            <v-alert type="success" variant="tonal" density="compact" class="mb-4">
+              <strong>{{ modalImportClientes.insertados }}</strong> cliente(s) insertado(s) correctamente
+            </v-alert>
+            <div v-if="modalImportClientes.errores.length">
+              <div class="text-subtitle-2 font-weight-bold text-error mb-2">
+                <v-icon size="18" color="error">mdi-close-circle</v-icon>
+                Errores ({{ modalImportClientes.errores.length }})
+              </div>
+              <div style="max-height:300px;overflow-y:auto;border:1px solid rgba(0,0,0,.08);border-radius:8px;">
+                <v-table density="compact">
+                  <thead><tr><th>Fila</th><th>Código grupo</th><th>Cod. cliente</th><th>Motivo</th></tr></thead>
+                  <tbody>
+                    <tr v-for="e in modalImportClientes.errores" :key="`${e.fila}-${e.codcliente}`">
+                      <td class="text-caption">{{ e.fila }}</td>
+                      <td class="text-caption">{{ e.codigoGrupo }}</td>
+                      <td class="text-caption">{{ e.codcliente }}</td>
+                      <td class="text-caption text-error">{{ e.motivo }}</td>
+                    </tr>
+                  </tbody>
+                </v-table>
+              </div>
+            </div>
+          </v-card-text>
+          <v-card-actions class="pa-4">
+            <v-spacer />
+            <v-btn color="primary" variant="elevated" @click="modalImportClientes.mostrar = false">Cerrar</v-btn>
+          </v-card-actions>
+        </template>
+
+        <!-- FASE: preview -->
+        <template v-else>
+          <v-card-title class="pa-4">Vista previa — Importar clientes (masivo)</v-card-title>
+          <v-card-text class="pa-4">
+            <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+              <strong>{{ modalImportClientes.totalFilas }}</strong> filas detectadas en el archivo
+            </v-alert>
+
+            <div v-if="modalImportClientes.gruposAfectados.length" class="mb-4">
+              <div class="text-subtitle-2 font-weight-bold mb-2">
+                <v-icon size="18" color="teal">mdi-account-group</v-icon>
+                Grupos a actualizar ({{ modalImportClientes.gruposAfectados.length }})
+              </div>
+              <div style="max-height:220px;overflow-y:auto;border:1px solid rgba(0,0,0,.08);border-radius:8px;">
+                <v-list density="compact">
+                  <v-list-item v-for="g in modalImportClientes.gruposAfectados" :key="g.codigo">
+                    <v-list-item-title>{{ g.nombre }}</v-list-item-title>
+                    <v-list-item-subtitle class="text-medium-emphasis">Código: {{ g.codigo }} · {{ g.cantidad }} cliente(s)</v-list-item-subtitle>
+                    <template v-slot:append>
+                      <v-chip size="x-small" color="teal" variant="tonal">{{ g.cantidad }}</v-chip>
+                    </template>
+                  </v-list-item>
+                </v-list>
+              </div>
+            </div>
+
+            <div v-if="modalImportClientes.sinGrupo.length">
+              <div class="text-subtitle-2 font-weight-bold text-warning mb-2">
+                <v-icon size="18" color="warning">mdi-alert-circle</v-icon>
+                Filas sin grupo reconocido ({{ modalImportClientes.sinGrupo.length }}) — serán ignoradas
+              </div>
+              <div style="max-height:120px;overflow-y:auto;border:1px solid rgba(0,0,0,.08);border-radius:8px;">
+                <v-list density="compact">
+                  <v-list-item v-for="s in modalImportClientes.sinGrupo" :key="s.fila">
+                    <v-list-item-title class="text-caption">Fila {{ s.fila }} — código grupo: <strong>{{ s.codigoGrupo }}</strong></v-list-item-title>
+                  </v-list-item>
+                </v-list>
+              </div>
+            </div>
+
+            <div v-if="!modalImportClientes.gruposAfectados.length && !modalImportClientes.sinGrupo.length" class="text-grey text-center pa-4">
+              No se encontraron datos válidos en el archivo.
+            </div>
+          </v-card-text>
+          <v-card-actions class="pa-4">
+            <v-btn variant="text" @click="modalImportClientes.mostrar = false">Cancelar</v-btn>
+            <v-spacer />
+            <v-btn color="teal" variant="elevated" :disabled="!modalImportClientes.gruposAfectados.length" @click="ejecutarImportarClientesLote">
+              Importar {{ modalImportClientes.totalFilas - modalImportClientes.sinGrupo.length }} cliente(s)
+            </v-btn>
+          </v-card-actions>
+        </template>
       </v-card>
     </v-dialog>
 
@@ -365,7 +598,7 @@ const cargandoGrupos = ref(false);
 const itemsPerPageGrupos = usePageSize('clientes-grupos');
 const paginaGrupos = ref(1);
 const headersGrupos = [
-  { title: 'ID', key: 'ID' },
+  { title: 'Código', key: 'CODIGO', sortable: false },
   { title: 'Nombre', key: 'NOMBRE' },
   { title: 'Tipo', key: 'TIPO', sortable: false },
   { title: 'Clientes', key: 'TOTALCLIENTES' },
@@ -417,6 +650,129 @@ const cargarGrupos = async () => {
   } finally { cargandoGrupos.value = false; }
 };
 const cargarPaginaGrupos = (opt: any) => { paginaGrupos.value = opt.page; itemsPerPageGrupos.value = opt.itemsPerPage; cargarGrupos(); };
+
+const importandoGruposExcel = ref(false);
+type GrupoItem = { codigo: string; nombre: string };
+const modalImportGrupos = ref<{
+  mostrar: boolean;
+  fase: 'preview' | 'creando' | 'resultado';
+  aProcesar: GrupoItem[];
+  seleccionados: GrupoItem[];
+  omitidos: (GrupoItem & { motivo: string })[];
+  creados: string[];
+  errores: (GrupoItem & { motivo: string })[];
+}>({ mostrar: false, fase: 'preview', aProcesar: [], seleccionados: [], omitidos: [], creados: [], errores: [] });
+
+const importarGruposExcel = async (e: Event) => {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  importandoGruposExcel.value = true;
+  try {
+    const fd = new FormData();
+    fd.append('archivo', file);
+    const res = await axios.post(`${API}/promociones/grupos-clientes/previsualizar-grupos-excel`, fd);
+    const d = res.data;
+    modalImportGrupos.value = {
+      mostrar: true, fase: 'preview',
+      aProcesar: d.aProcesar ?? [],
+      seleccionados: [...(d.aProcesar ?? [])],
+      omitidos: d.omitidos ?? [],
+      creados: [], errores: [],
+    };
+  } catch (e: any) { lanzarAviso(e?.response?.data?.message ?? 'Error al leer archivo', 'error'); }
+  finally { importandoGruposExcel.value = false; (e.target as HTMLInputElement).value = ''; }
+};
+
+const ejecutarCrearLote = async () => {
+  modalImportGrupos.value.fase = 'creando';
+  try {
+    const res = await axios.post(`${API}/promociones/grupos-clientes/crear-lote`, {
+      grupos: modalImportGrupos.value.seleccionados,
+    });
+    modalImportGrupos.value.creados = (res.data.creados ?? []).map((g: any) => g.nombre ?? g);
+    modalImportGrupos.value.errores = res.data.errores ?? [];
+    modalImportGrupos.value.fase = 'resultado';
+    if (res.data.creados?.length) cargarGrupos();
+  } catch (e: any) {
+    lanzarAviso(e?.response?.data?.message ?? 'Error al crear grupos', 'error');
+    modalImportGrupos.value.fase = 'preview';
+  }
+};
+
+const importandoClientesLote = ref(false);
+type ErrCliente = { fila: number; codigoGrupo: string; codcliente: string; motivo: string };
+const modalImportClientes = ref<{
+  mostrar: boolean;
+  fase: 'preview' | 'importando' | 'resultado';
+  totalFilas: number;
+  gruposAfectados: { codigo: string; nombre: string; cantidad: number }[];
+  sinGrupo: { fila: number; codigoGrupo: string }[];
+  insertados: number;
+  errores: ErrCliente[];
+  archivoBuffer: File | null;
+}>({ mostrar: false, fase: 'preview', totalFilas: 0, gruposAfectados: [], sinGrupo: [], insertados: 0, errores: [], archivoBuffer: null });
+
+const importarClientesLoteExcel = async (e: Event) => {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  (e.target as HTMLInputElement).value = '';
+  if (!file) return;
+  importandoClientesLote.value = true;
+  try {
+    const fd = new FormData();
+    fd.append('archivo', file);
+    const res = await axios.post(`${API}/promociones/grupos-clientes/previsualizar-clientes-lote`, fd);
+    const d = res.data;
+    modalImportClientes.value = {
+      mostrar: true, fase: 'preview',
+      totalFilas: d.totalFilas ?? 0,
+      gruposAfectados: d.gruposAfectados ?? [],
+      sinGrupo: d.sinGrupo ?? [],
+      insertados: 0, errores: [], archivoBuffer: file,
+    };
+  } catch (e: any) { lanzarAviso(e?.response?.data?.message ?? 'Error al leer archivo', 'error'); }
+  finally { importandoClientesLote.value = false; }
+};
+
+const ejecutarImportarClientesLote = async () => {
+  const file = modalImportClientes.value.archivoBuffer;
+  if (!file) return;
+  modalImportClientes.value.fase = 'importando';
+  try {
+    const fd = new FormData();
+    fd.append('archivo', file);
+    const res = await axios.post(`${API}/promociones/grupos-clientes/importar-clientes-lote`, fd);
+    modalImportClientes.value.insertados = res.data.insertados ?? 0;
+    modalImportClientes.value.errores = res.data.errores ?? [];
+    modalImportClientes.value.fase = 'resultado';
+  } catch (e: any) {
+    lanzarAviso(e?.response?.data?.message ?? 'Error al importar', 'error');
+    modalImportClientes.value.fase = 'preview';
+  }
+};
+
+const gruposSeleccionados = ref<number[]>([]);
+const confirmarEliminar = ref<any>({ mostrar: false, ids: [], nombre: '' });
+const eliminandoGrupo = ref(false);
+
+const confirmarEliminarGrupo = (item: any) => {
+  confirmarEliminar.value = { mostrar: true, ids: [item.ID], nombre: item.NOMBRE };
+};
+const confirmarEliminarSeleccion = () => {
+  confirmarEliminar.value = { mostrar: true, ids: [...gruposSeleccionados.value], nombre: '' };
+};
+const eliminarGrupo = async () => {
+  eliminandoGrupo.value = true;
+  try {
+    await Promise.all(confirmarEliminar.value.ids.map((id: number) =>
+      axios.delete(`${API}/promociones/grupos-clientes/${id}`)
+    ));
+    lanzarAviso(confirmarEliminar.value.ids.length > 1 ? `${confirmarEliminar.value.ids.length} grupos eliminados` : 'Grupo eliminado');
+    confirmarEliminar.value.mostrar = false;
+    gruposSeleccionados.value = [];
+    cargarGrupos();
+  } catch (e: any) { lanzarAviso(e?.response?.data?.message ?? 'Error al eliminar', 'error'); }
+  finally { eliminandoGrupo.value = false; }
+};
 
 // ---------- MIEMBROS DEL GRUPO ----------
 const modalMiembros = ref<any>({ mostrar: false, grupo: null });
