@@ -606,7 +606,7 @@ const headersGrupos = [
 ];
 const camposClientes = ref<any[]>([]);
 const cargarCamposDisponibles = async () => {
-  const res = await axios.get(`${API}/promociones/campos-disponibles`);
+  const res = await axios.get(`${API}/api/promociones/campos-disponibles`);
   if (res.data.success) camposClientes.value = res.data.data.clientes;
 };
 const operadoresPara = (codigoCampo: string) => {
@@ -624,7 +624,7 @@ const abrirNuevoGrupo = () => {
 const abrirEditarGrupo = async (item: any) => {
   modalGrupo.value = { mostrar: true, id: item.ID, nombre: item.NOMBRE, tipo: item.TIPO || 'MANUAL', condiciones: [] };
   if (item.TIPO === 'CONDICION') {
-    const res = await axios.get(`${API}/promociones/grupos-clientes/${item.ID}/condiciones`);
+    const res = await axios.get(`${API}/api/promociones/grupos-clientes/${item.ID}/condiciones`);
     if (res.data.success) modalGrupo.value.condiciones = res.data.data.map((c: any) => ({ campo: c.campo, operador: c.operador, valor: c.valor }));
   }
 };
@@ -633,8 +633,8 @@ const guardarGrupo = async () => {
   guardandoGrupo.value = true;
   try {
     const payload = { nombre: modalGrupo.value.nombre, tipo: modalGrupo.value.tipo, condiciones: modalGrupo.value.condiciones };
-    if (modalGrupo.value.id) await axios.put(`${API}/promociones/grupos-clientes/${modalGrupo.value.id}`, { ...payload, activo: true });
-    else await axios.post(`${API}/promociones/grupos-clientes`, payload);
+    if (modalGrupo.value.id) await axios.put(`${API}/api/promociones/grupos-clientes/${modalGrupo.value.id}`, { ...payload, activo: true });
+    else await axios.post(`${API}/api/promociones/grupos-clientes`, payload);
     lanzarAviso('Grupo guardado');
     modalGrupo.value.mostrar = false;
     cargarGrupos();
@@ -645,7 +645,7 @@ const guardarGrupo = async () => {
 const cargarGrupos = async () => {
   cargandoGrupos.value = true;
   try {
-    const res = await axios.get(`${API}/promociones/grupos-clientes`, { params: { search: busquedaGrupo.value, page: paginaGrupos.value, limit: itemsPerPageGrupos.value } });
+    const res = await axios.get(`${API}/api/promociones/grupos-clientes`, { params: { search: busquedaGrupo.value, page: paginaGrupos.value, limit: itemsPerPageGrupos.value } });
     if (res.data.success) { grupos.value = res.data.data; totalGrupos.value = res.data.total; }
   } finally { cargandoGrupos.value = false; }
 };
@@ -670,7 +670,7 @@ const importarGruposExcel = async (e: Event) => {
   try {
     const fd = new FormData();
     fd.append('archivo', file);
-    const res = await axios.post(`${API}/promociones/grupos-clientes/previsualizar-grupos-excel`, fd);
+    const res = await axios.post(`${API}/api/promociones/grupos-clientes/previsualizar-grupos-excel`, fd);
     const d = res.data;
     modalImportGrupos.value = {
       mostrar: true, fase: 'preview',
@@ -686,7 +686,7 @@ const importarGruposExcel = async (e: Event) => {
 const ejecutarCrearLote = async () => {
   modalImportGrupos.value.fase = 'creando';
   try {
-    const res = await axios.post(`${API}/promociones/grupos-clientes/crear-lote`, {
+    const res = await axios.post(`${API}/api/promociones/grupos-clientes/crear-lote`, {
       grupos: modalImportGrupos.value.seleccionados,
     });
     modalImportGrupos.value.creados = (res.data.creados ?? []).map((g: any) => g.nombre ?? g);
@@ -720,7 +720,7 @@ const importarClientesLoteExcel = async (e: Event) => {
   try {
     const fd = new FormData();
     fd.append('archivo', file);
-    const res = await axios.post(`${API}/promociones/grupos-clientes/previsualizar-clientes-lote`, fd);
+    const res = await axios.post(`${API}/api/promociones/grupos-clientes/previsualizar-clientes-lote`, fd);
     const d = res.data;
     modalImportClientes.value = {
       mostrar: true, fase: 'preview',
@@ -740,7 +740,7 @@ const ejecutarImportarClientesLote = async () => {
   try {
     const fd = new FormData();
     fd.append('archivo', file);
-    const res = await axios.post(`${API}/promociones/grupos-clientes/importar-clientes-lote`, fd);
+    const res = await axios.post(`${API}/api/promociones/grupos-clientes/importar-clientes-lote`, fd);
     modalImportClientes.value.insertados = res.data.insertados ?? 0;
     modalImportClientes.value.errores = res.data.errores ?? [];
     modalImportClientes.value.fase = 'resultado';
@@ -764,7 +764,7 @@ const eliminarGrupo = async () => {
   eliminandoGrupo.value = true;
   try {
     await Promise.all(confirmarEliminar.value.ids.map((id: number) =>
-      axios.delete(`${API}/promociones/grupos-clientes/${id}`)
+      axios.delete(`${API}/api/promociones/grupos-clientes/${id}`)
     ));
     lanzarAviso(confirmarEliminar.value.ids.length > 1 ? `${confirmarEliminar.value.ids.length} grupos eliminados` : 'Grupo eliminado');
     confirmarEliminar.value.mostrar = false;
@@ -793,7 +793,7 @@ const importarExcel = async (e: Event) => {
   try {
     const fd = new FormData();
     fd.append('archivo', file);
-    const res = await axios.post(`${API}/promociones/grupos-clientes/${modalMiembros.value.grupo.ID}/importar-excel`, fd);
+    const res = await axios.post(`${API}/api/promociones/grupos-clientes/${modalMiembros.value.grupo.ID}/importar-excel`, fd);
     const d = res.data;
     resultadoImport.value = `✓ ${d.insertados} nuevos` + (d.noEncontrados.length ? ` · ${d.noEncontrados.length} no encontrados` : '') + (d.yaEnGrupo.length ? ` · ${d.yaEnGrupo.length} ya estaban` : '');
     noEncontradosList.value = d.noEncontrados ?? [];
@@ -830,7 +830,7 @@ const cargarMiembros = async () => {
   if (!modalMiembros.value.grupo) return;
   cargandoMiembros.value = true;
   try {
-    const res = await axios.get(`${API}/promociones/grupos-clientes/${modalMiembros.value.grupo.ID}/clientes`, { params: { page: paginaMiembros.value, limit: itemsPerPageMiembros.value } });
+    const res = await axios.get(`${API}/api/promociones/grupos-clientes/${modalMiembros.value.grupo.ID}/clientes`, { params: { page: paginaMiembros.value, limit: itemsPerPageMiembros.value } });
     if (res.data.success) { miembros.value = res.data.data; totalMiembros.value = res.data.total; }
   } finally { cargandoMiembros.value = false; }
 };
@@ -844,7 +844,7 @@ const buscarClientesParaAgregar = async () => {
 
 const agregarMiembro = async (codCliente: number) => {
   try {
-    await axios.post(`${API}/promociones/grupos-clientes/${modalMiembros.value.grupo.ID}/clientes`, { codCliente });
+    await axios.post(`${API}/api/promociones/grupos-clientes/${modalMiembros.value.grupo.ID}/clientes`, { codCliente });
     lanzarAviso('Cliente agregado');
     cargarMiembros();
     cargarGrupos();
@@ -852,7 +852,7 @@ const agregarMiembro = async (codCliente: number) => {
 };
 const quitarMiembro = async (codCliente: number) => {
   try {
-    await axios.delete(`${API}/promociones/grupos-clientes/${modalMiembros.value.grupo.ID}/clientes/${codCliente}`);
+    await axios.delete(`${API}/api/promociones/grupos-clientes/${modalMiembros.value.grupo.ID}/clientes/${codCliente}`);
     lanzarAviso('Cliente quitado');
     cargarMiembros();
     cargarGrupos();

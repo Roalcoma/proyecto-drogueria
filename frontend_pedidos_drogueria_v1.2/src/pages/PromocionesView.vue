@@ -257,7 +257,7 @@ import { usePageSize } from '../utils/usePageSize';
 import { usePromocionesStore } from '../stores/usePromocionesStore';
 import { useCarritoStore } from '../stores/useCarritoStore';
 
-const API = import.meta.env.VITE_API_URL;
+const API = `${import.meta.env.VITE_API_URL}/api`;
 const promocionesStore = usePromocionesStore();
 const carritoStore = useCarritoStore();
 const refrescarPromocionesGlobal = () => promocionesStore.cargarVigentes().then(() => carritoStore.recalcularPromociones());
