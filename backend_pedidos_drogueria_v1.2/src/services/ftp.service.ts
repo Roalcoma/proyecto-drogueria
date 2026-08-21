@@ -656,16 +656,17 @@ export class FtpService {
             const precio = Number(r.PRECIO);
             const precioFinal = precio * (1 - d1/100) * (1 - d2/100) * (1 - p1/100) * (1 - p2/100);
 
+            const clean = (s: string) => s.replace(/[\r\n\t]/g, ' ').trim();
             lines.push([
                 String(r.CODARTICULO).padStart(5, '0'),
-                r.REFPROVEEDOR || '',
-                (r.DESCRIPCION || '').substring(0, 45).replace(/;/g, ','),
+                clean(r.REFPROVEEDOR || ''),
+                clean(r.DESCRIPCION || '').substring(0, 45).replace(/;/g, ','),
                 r.VENCE || '',
                 precio.toFixed(2),
                 dtoStr,
                 precioFinal.toFixed(2),
                 Math.max(0, Math.round(Number(r.STOCK_DISP))),
-                (r.MARCA || '').substring(0, 30),
+                clean(r.MARCA || '').substring(0, 30),
             ].join(';'));
         }
 
