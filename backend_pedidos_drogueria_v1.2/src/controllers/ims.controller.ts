@@ -1,8 +1,27 @@
 import { Response } from 'express';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import mssql from 'mssql';
 import { connectDb } from '../db/db.conection';
 import { RequestConUsuario } from '../middleware/auth.middleware';
+
+// Colores del formato IMS original
+const HEADER_BG   = '2E75B6';  // azul accent1
+const HEADER_FONT = 'FFFFFF';  // blanco
+
+function aplicarCabecera(ws: ExcelJS.Worksheet, cols: { header: string; key: string; width: number }[]) {
+    ws.columns = cols.map(c => ({ header: c.header, key: c.key, width: c.width }));
+    const headerRow = ws.getRow(1);
+    headerRow.eachCell(cell => {
+        cell.font      = { bold: true, color: { argb: HEADER_FONT }, name: 'Calibri', size: 11 };
+        cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_BG } };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        cell.border    = {
+            bottom: { style: 'thin', color: { argb: '1F4E79' } },
+        };
+    });
+    headerRow.height = 18;
+    ws.views = [{ state: 'frozen', xSplit: 0, ySplit: 1 }];
+}
 
 export class ImsController {
     static async descargarReporte(req: RequestConUsuario, res: Response): Promise<void> {
@@ -53,7 +72,8 @@ export class ImsController {
                                FORMAT(FV.FECHA,'yyyy-MM-dd') FECHA
                         FROM FACTURASVENTA FV WITH(NOLOCK)
                         INNER JOIN ALBVENTACAB AVC WITH(NOLOCK)
-                            ON FV.NUMSERIE = AVC.NUMSERIEFAC AND FV.NUMFACTURA = AVC.NUMFAC AND FV.N = AVC.NFAC
+                            ON FV.NUMSERIE COLLATE DATABASE_DEFAULT = AVC.NUMSERIEFAC
+                           AND FV.NUMFACTURA = AVC.NUMFAC AND FV.N = AVC.NFAC
                         INNER JOIN ALBVENTALIN AVL WITH(NOLOCK)
                             ON AVC.NUMSERIE = AVL.NUMSERIE AND AVC.NUMALBARAN = AVL.NUMALBARAN AND AVC.N = AVL.N
                         INNER JOIN ARTICULOS ART WITH(NOLOCK) ON AVL.CODARTICULO = ART.CODARTICULO
@@ -66,29 +86,52 @@ export class ImsController {
                     `),
             ]);
 
-            const wb = XLSX.utils.book_new();
+            const wb = new ExcelJS.Workbook();
+            wb.creator  = 'Pedidos Droguería';
+            wb.created  = new Date();
 
-            const wsClientes = XLSX.utils.json_to_sheet(clientesRes.recordset,
-                { header: ['Codigo', 'Nombre', 'Direccion', 'Ciudad', 'RIF'] });
-            XLSX.utils.book_append_sheet(wb, wsClientes, 'Clientes');
+            // ── Clientes ──────────────────────────────────────────────────────
+            const wsC = wb.addWorksheet('Clientes', { properties: { tabColor: { argb: '2E75B6' } } });
+            aplicarCabecera(wsC, [
+                { header: 'Codigo',    key: 'Codigo',    width: 9  },
+                { header: 'Nombre',    key: 'Nombre',    width: 54 },
+                { header: 'Direccion', key: 'Direccion', width: 78 },
+                { header: 'Ciudad',    key: 'Ciudad',    width: 18 },
+                { header: 'RIF',       key: 'RIF',       width: 14 },
+            ]);
+            clientesRes.recordset.forEach(r => wsC.addRow(r));
 
-            const wsProductos = XLSX.utils.json_to_sheet(productosRes.recordset,
-                { header: ['CodProducto', 'Presentacion', 'Laboratorio', 'USD', 'EAN'] });
-            XLSX.utils.book_append_sheet(wb, wsProductos, 'Productos');
+            // ── Productos ─────────────────────────────────────────────────────
+            const wsP = wb.addWorksheet('Productos', { properties: { tabColor: { argb: '2E75B6' } } });
+            aplicarCabecera(wsP, [
+                { header: 'CodProducto',  key: 'CodProducto',  width: 13 },
+                { header: 'Presentacion', key: 'Presentacion', width: 82 },
+                { header: 'Laboratorio',  key: 'Laboratorio',  width: 30 },
+                { header: 'USD',          key: 'USD',          width: 9  },
+                { header: 'EAN',          key: 'EAN',          width: 18 },
+            ]);
+            productosRes.recordset.forEach(r => wsP.addRow(r));
 
-            const wsVentas = XLSX.utils.json_to_sheet(ventasRes.recordset,
-                { header: ['CodProdcuto', 'CodCliente', 'Unidades', 'USD', 'FECHA'] });
-            XLSX.utils.book_append_sheet(wb, wsVentas, 'Ventas');
-
-            const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+            // ── Ventas ────────────────────────────────────────────────────────
+            const wsV = wb.addWorksheet('Ventas', { properties: { tabColor: { argb: '2E75B6' } } });
+            aplicarCabecera(wsV, [
+                { header: 'CodProdcuto', key: 'CodProdcuto', width: 13 },
+                { header: 'CodCliente',  key: 'CodCliente',  width: 11 },
+                { header: 'Unidades',    key: 'Unidades',    width: 10 },
+                { header: 'USD',         key: 'USD',         width: 10 },
+                { header: 'FECHA',       key: 'FECHA',       width: 12 },
+            ]);
+            ventasRes.recordset.forEach(r => wsV.addRow(r));
 
             const filename = `IMS ${desde} al ${hasta}.xlsx`;
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
             res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-            res.send(buffer);
+            await wb.xlsx.write(res);
+            res.end();
         } catch (err: any) {
             console.error('[IMS] Error generando reporte:', err);
-            res.status(500).json({ success: false, message: err.message ?? 'Error generando reporte' });
+            if (!res.headersSent)
+                res.status(500).json({ success: false, message: err.message ?? 'Error generando reporte' });
         }
     }
 }
