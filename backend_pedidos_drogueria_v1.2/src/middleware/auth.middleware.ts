@@ -32,9 +32,9 @@ export function adminMiddleware(req: RequestConUsuario, res: Response, next: Nex
     next();
 }
 
-// Bit 65536: reporte IMS
+// Bit 262144: reporte IMS
 export function imsMiddleware(req: RequestConUsuario, res: Response, next: NextFunction): void {
-    if (req.usuario?.es_admin || ((Number(req.usuario?.visibilidad ?? 0) & 65536) !== 0)) {
+    if (req.usuario?.es_admin || ((Number(req.usuario?.visibilidad ?? 0) & 262144) !== 0)) {
         return next();
     }
     res.status(403).json({ success: false, message: 'Acceso restringido' });

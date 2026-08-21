@@ -36,7 +36,7 @@ export const VERSIONES: VersionEntry[] = [
 ];
 
 export const COMMITS: CommitEntry[] = [
-  { hash: 'pending', date: '2026-08-21', tipo: 'feat',    texto: 'reporte IMS: descarga Excel con hojas Clientes, Productos y Ventas por rango de fechas; permiso IMS_REPORTE (bit 65536)' },
+  { hash: 'pending', date: '2026-08-21', tipo: 'feat',    texto: 'reporte IMS: descarga Excel con hojas Clientes, Productos y Ventas por rango de fechas; permiso IMS_REPORTE (bit 262144)' },
   { hash: 'pending', date: '2026-08-21', tipo: 'fix',    texto: 'FTP inventario.txt: limpiar saltos de línea en campos REFPROVEEDOR, DESCRIPCION y MARCA' },
   { hash: 'pending', date: '2026-08-21', tipo: 'fix',    texto: 'backend: fallback de PORT a 9010; frontend y backend servidos desde el mismo puerto' },
   { hash: 'pending', date: '2026-08-18', tipo: 'feat',    texto: 'autorización: validación de anomalías (precio cero, precio negativo, cantidad inválida, artículo duplicado) con modal de confirmación no bloqueante y registro en auditoría' },

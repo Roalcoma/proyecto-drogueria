@@ -29,8 +29,9 @@ export const MODULOS_SISTEMA = [
     { bit: 4096, codigo: 'RUTERO',            nombre: 'Rutero de Entrega',           ruta: '/rutero',                  icono: 'mdi-truck-delivery',        orden: 13 },
     { bit: 8192,  codigo: 'FTP_PEDIDOS',  nombre: 'Pedidos FTP',   ruta: '/ftp-pedidos',   icono: 'mdi-folder-network',  orden: 14 },
     { bit: 16384, codigo: 'FTP_SERVIDOR',     nombre: 'Servidor FTP',      ruta: '/ftp-servidor',     icono: 'mdi-server-network',    orden: 15 },
-    { bit: 32768, codigo: 'METAS_VENDEDOR',   nombre: 'Metas de Vendedores', ruta: '/metas-vendedor', icono: 'mdi-target',            orden: 16 },
-    { bit: 65536, codigo: 'IMS_REPORTE',      nombre: 'Reporte IMS',         ruta: '/ims-reporte',    icono: 'mdi-file-excel',        orden: 17 },
+    { bit: 32768,  codigo: 'METAS_VENDEDOR',   nombre: 'Metas de Vendedores', ruta: '/metas-vendedor', icono: 'mdi-target',            orden: 16 },
+    { bit: 65536,  codigo: 'RUTERO_ADMIN',     nombre: 'Rutero Admin',        ruta: '',                icono: 'mdi-truck-check',       orden: 17 },
+    { bit: 262144, codigo: 'IMS_REPORTE',      nombre: 'Reporte IMS',         ruta: '/ims-reporte',    icono: 'mdi-file-excel',        orden: 18 },
 ];
 
 export interface ModuloPermiso {
