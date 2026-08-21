@@ -30,6 +30,7 @@ export const MODULOS_SISTEMA = [
     { bit: 8192,  codigo: 'FTP_PEDIDOS',  nombre: 'Pedidos FTP',   ruta: '/ftp-pedidos',   icono: 'mdi-folder-network',  orden: 14 },
     { bit: 16384, codigo: 'FTP_SERVIDOR',     nombre: 'Servidor FTP',      ruta: '/ftp-servidor',     icono: 'mdi-server-network',    orden: 15 },
     { bit: 32768, codigo: 'METAS_VENDEDOR',   nombre: 'Metas de Vendedores', ruta: '/metas-vendedor', icono: 'mdi-target',            orden: 16 },
+    { bit: 65536, codigo: 'IMS_REPORTE',      nombre: 'Reporte IMS',         ruta: '/ims-reporte',    icono: 'mdi-file-excel',        orden: 17 },
 ];
 
 export interface ModuloPermiso {

@@ -17,6 +17,7 @@ import ecommerceRouter  from "./routers/ecommerce.router";
 import facturasRouter   from "./routers/facturas.router";
 import ftpRouter        from "./routers/ftp.router";
 import metasRouter      from "./routers/metas.router";
+import imsRouter        from "./routers/ims.router";
 import { ExchangeService }    from "./services/exchange.service";
 import { AuthService }        from "./services/auth.service";
 import { PromocionesService } from "./services/promociones.service";
@@ -107,6 +108,7 @@ app.use('/ecommerce',  ecommerceRouter);
 app.use('/facturas',   facturasRouter);
 app.use('/ftp',        ftpRouter);
 app.use('/metas-vendedor', metasRouter);
+app.use('/ims',            imsRouter);
 
 // ── Frontend estático (SPA) ───────────────────────────────────────────────
 const frontendDist = process.env.FRONTEND_DIST

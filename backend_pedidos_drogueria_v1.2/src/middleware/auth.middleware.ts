@@ -32,6 +32,14 @@ export function adminMiddleware(req: RequestConUsuario, res: Response, next: Nex
     next();
 }
 
+// Bit 65536: reporte IMS
+export function imsMiddleware(req: RequestConUsuario, res: Response, next: NextFunction): void {
+    if (req.usuario?.es_admin || ((Number(req.usuario?.visibilidad ?? 0) & 65536) !== 0)) {
+        return next();
+    }
+    res.status(403).json({ success: false, message: 'Acceso restringido' });
+}
+
 // Bit 131072: gestión de usuarios FTP (sin acceso a config del servidor)
 export function ftpUsuariosMiddleware(req: RequestConUsuario, res: Response, next: NextFunction): void {
     if (req.usuario?.es_admin || ((Number(req.usuario?.visibilidad ?? 0) & 131072) !== 0)) {

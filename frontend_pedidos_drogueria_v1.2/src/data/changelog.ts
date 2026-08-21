@@ -11,9 +11,10 @@ export interface CommitEntry {
   texto: string;
 }
 
-export const APP_VERSION = '1.2.17';
+export const APP_VERSION = '1.2.18';
 
 export const VERSIONES: VersionEntry[] = [
+  { version: '1.2.18', fecha: '2026-08-21', desde: '2026-08-21' },
   { version: '1.2.17', fecha: '2026-08-18', desde: '2026-08-18' },
   { version: '1.2.16', fecha: '2026-08-13', desde: '2026-08-13' },
   { version: '1.2.15', fecha: '2026-08-11', desde: '2026-08-11' },
@@ -35,6 +36,9 @@ export const VERSIONES: VersionEntry[] = [
 ];
 
 export const COMMITS: CommitEntry[] = [
+  { hash: 'pending', date: '2026-08-21', tipo: 'feat',    texto: 'reporte IMS: descarga Excel con hojas Clientes, Productos y Ventas por rango de fechas; permiso IMS_REPORTE (bit 65536)' },
+  { hash: 'pending', date: '2026-08-21', tipo: 'fix',    texto: 'FTP inventario.txt: limpiar saltos de línea en campos REFPROVEEDOR, DESCRIPCION y MARCA' },
+  { hash: 'pending', date: '2026-08-21', tipo: 'fix',    texto: 'backend: fallback de PORT a 9010; frontend y backend servidos desde el mismo puerto' },
   { hash: 'pending', date: '2026-08-18', tipo: 'feat',    texto: 'autorización: validación de anomalías (precio cero, precio negativo, cantidad inválida, artículo duplicado) con modal de confirmación no bloqueante y registro en auditoría' },
   { hash: 'pending', date: '2026-08-18', tipo: 'feat',    texto: 'auditoría: diff de edición muestra líneas eliminadas, modificadas y agregadas con colores; alerta si precio pasó a $0' },
   { hash: 'pending', date: '2026-08-18', tipo: 'fix',     texto: 'actualizador: timeout de 90s en descarga y backup asíncrono vía PowerShell para evitar que la app se cuelgue durante una actualización' },
