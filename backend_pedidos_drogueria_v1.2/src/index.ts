@@ -100,14 +100,14 @@ app.use('/products', productsRouter);
 app.use('/pedidos',  pedidosRouter);
 app.use('/clientes', clientesRouter);
 app.use('/auth',     authRouter);
-app.use('/promociones', promocionesRouter);
-app.use('/reclamos',   reclamosRouter);
+app.use('/api/promociones', promocionesRouter);
+app.use('/api/reclamos',   reclamosRouter);
 app.use('/rutero',     ruteroRouter);
 app.use('/sistema',    sistemaRouter);
 app.use('/ecommerce',  ecommerceRouter);
 app.use('/facturas',   facturasRouter);
 app.use('/ftp',        ftpRouter);
-app.use('/metas-vendedor', metasRouter);
+app.use('/api/metas-vendedor', metasRouter);
 app.use('/ims',            imsRouter);
 
 // ── Frontend estático (SPA) ───────────────────────────────────────────────

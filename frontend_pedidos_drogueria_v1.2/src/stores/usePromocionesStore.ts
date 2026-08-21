@@ -3,7 +3,7 @@ import { ref } from 'vue';
 import axios from 'axios';
 import type { ArticuloCarrito, Cliente } from './useCarritoStore';
 
-const API = `${import.meta.env.VITE_API_URL}/promociones`;
+const API = `${import.meta.env.VITE_API_URL}/api/promociones`;
 
 export interface PromocionVigente {
     id: number;

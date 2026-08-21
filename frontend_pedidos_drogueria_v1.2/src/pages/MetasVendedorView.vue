@@ -683,7 +683,7 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import axios from 'axios';
 
-const API = `${import.meta.env.VITE_API_URL}/metas-vendedor`;
+const API = `${import.meta.env.VITE_API_URL}/api/metas-vendedor`;
 
 const meses = [
   { valor: 1, label: 'Enero' },   { valor: 2, label: 'Febrero' },  { valor: 3, label: 'Marzo' },

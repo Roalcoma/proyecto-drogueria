@@ -187,7 +187,7 @@ import { usePageSize } from '../utils/usePageSize';
 import { useAuthStore } from '../stores/useAuthStore';
 import logoSrc from '../assets/drogueria_logo.png';
 
-const API       = import.meta.env.VITE_API_URL;
+const API       = `${import.meta.env.VITE_API_URL}/api`;
 const authStore = useAuthStore();
 
 const logoBase64 = ref('');
