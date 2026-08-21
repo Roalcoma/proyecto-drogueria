@@ -9,6 +9,17 @@ import { getDbConfig } from './dbconfig.service';
 import { STOCK_DISPONIBLE_SQL } from './products.service';
 import { PromocionesService } from './promociones.service';
 
+// ftp-srv's FileSystem normalizes '/' to '\' on Windows via path.normalize.
+// Subclass it to fix cwd after construction so PWD always returns '/'.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const FtpFileSystem = require('ftp-srv/src/fs');
+class WinFtpFs extends FtpFileSystem {
+    constructor(connection: any, opts: any) {
+        super(connection, opts);
+        if ((this as any).cwd === '\\') (this as any).cwd = '/';
+    }
+}
+
 const getLocalIp = (): string => {
     for (const ifaces of Object.values(os.networkInterfaces())) {
         for (const iface of ifaces ?? []) {
@@ -914,7 +925,7 @@ export class FtpService {
 
         const server = new FtpSrv(serverOpts);
 
-        server.on('login', async ({ username, password }: any, resolve: any, reject: any) => {
+        server.on('login', async ({ connection, username, password }: any, resolve: any, reject: any) => {
             try {
                 const user = await FtpService._getUsuarioPorNombre(username);
                 if (!user || user.ACTIVO !== 'T') {
@@ -932,9 +943,9 @@ export class FtpService {
                     // Regenerar inventario en cada conexión del cliente (datos frescos)
                     FtpService._generarInventarioCliente(cod, ftpPath).catch(console.error);
                     FtpService._generarFacturasCliente(cod, ftpPath).catch(console.error);
-                    resolve({ root: path.join(ftpPath, `c${cod}`) });
+                    resolve({ fs: new WinFtpFs(connection, { root: path.join(ftpPath, `c${cod}`), cwd: '/' }) });
                 } else {
-                    resolve({ root: ftpPath });
+                    resolve({ fs: new WinFtpFs(connection, { root: ftpPath, cwd: '/' }) });
                 }
             } catch (err: any) {
                 reject(err);
