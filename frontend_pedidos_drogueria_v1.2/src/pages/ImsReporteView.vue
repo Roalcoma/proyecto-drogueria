@@ -1,5 +1,5 @@
 <template>
-  <v-overlay :model-value="descargando" class="align-center justify-center" persistent>
+  <v-overlay v-if="descargando" model-value class="align-center justify-center" persistent>
     <div class="d-flex flex-column align-center gap-4">
       <v-progress-circular indeterminate color="success" size="64" width="5" />
       <span class="text-white text-body-1 font-weight-medium">Generando reporte…</span>
