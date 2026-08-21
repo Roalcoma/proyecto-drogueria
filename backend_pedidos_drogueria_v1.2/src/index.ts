@@ -3,6 +3,8 @@ process.env.TZ = 'America/Caracas';
 import Express from "express";
 import morgan from "morgan";
 import cors from "cors";
+import path from "path";
+import fs from "fs";
 import productsRouter from "./routers/products.router";
 import pedidosRouter  from "./routers/pedidos.router";
 import clientesRouter from "./routers/clientes.router";
@@ -41,7 +43,7 @@ app.use(Express.json({ limit: '5mb' }));
 app.use(cors());
 app.use(dbModeMiddleware);
 
-app.get('/', (_req, res) => {
+app.get('/api/status', (_req, res) => {
     res.status(200).json({ success: true, message: "API funcionando correctamente!" });
 });
 
@@ -105,6 +107,19 @@ app.use('/ecommerce',  ecommerceRouter);
 app.use('/facturas',   facturasRouter);
 app.use('/ftp',        ftpRouter);
 app.use('/metas-vendedor', metasRouter);
+
+// ── Frontend estático (SPA) ───────────────────────────────────────────────
+const frontendDist = process.env.FRONTEND_DIST
+    ? path.resolve(process.env.FRONTEND_DIST)
+    : path.resolve(process.cwd(), '..', 'frontend_pedidos_drogueria_v1.2', 'dist');
+
+if (fs.existsSync(frontendDist)) {
+    app.use(Express.static(frontendDist));
+    app.get('/{*path}', (_req, res) => res.sendFile(path.join(frontendDist, 'index.html')));
+    console.log(`[Static] Frontend: ${frontendDist}`);
+} else {
+    console.log(`[Static] Sin frontend (${frontendDist} no existe)`);
+}
 
 app.listen(port, async () => {
     console.log(`Servidor en http://localhost:${port}`);

@@ -11,9 +11,10 @@ export interface CommitEntry {
   texto: string;
 }
 
-export const APP_VERSION = '1.2.16';
+export const APP_VERSION = '1.2.17';
 
 export const VERSIONES: VersionEntry[] = [
+  { version: '1.2.17', fecha: '2026-08-18', desde: '2026-08-18' },
   { version: '1.2.16', fecha: '2026-08-13', desde: '2026-08-13' },
   { version: '1.2.15', fecha: '2026-08-11', desde: '2026-08-11' },
   { version: '1.2.14', fecha: '2026-08-11', desde: '2026-08-11' },
@@ -34,6 +35,10 @@ export const VERSIONES: VersionEntry[] = [
 ];
 
 export const COMMITS: CommitEntry[] = [
+  { hash: 'pending', date: '2026-08-18', tipo: 'feat',    texto: 'autorización: validación de anomalías (precio cero, precio negativo, cantidad inválida, artículo duplicado) con modal de confirmación no bloqueante y registro en auditoría' },
+  { hash: 'pending', date: '2026-08-18', tipo: 'feat',    texto: 'auditoría: diff de edición muestra líneas eliminadas, modificadas y agregadas con colores; alerta si precio pasó a $0' },
+  { hash: 'pending', date: '2026-08-18', tipo: 'fix',     texto: 'actualizador: timeout de 90s en descarga y backup asíncrono vía PowerShell para evitar que la app se cuelgue durante una actualización' },
+  { hash: 'pending', date: '2026-08-18', tipo: 'feat',    texto: 'grupos de clientes: importación masiva con previsualización de grupos afectados antes de ejecutar; CODIGO del grupo visible como chip en la tabla' },
   { hash: 'pending', date: '2026-08-14', tipo: 'fix',     texto: 'FTP: pedidos con artículos psicotrópicos se insertan en estatus APROBACION PSICOTROPICOS en lugar de PENDIENTE' },
   { hash: 'pending', date: '2026-08-13', tipo: 'feat',    texto: 'grupos de clientes: importar Excel elimina ceros al inicio de CODCLIENTE y muestra los códigos no encontrados; toda operación (crear, editar, agregar/quitar cliente, importar) queda registrada en auditoría' },
   { hash: 'pending', date: '2026-08-13', tipo: 'feat',    texto: 'auditoría: nueva pestaña Grupos/Clientes con historial de acciones sobre grupos de clientes' },

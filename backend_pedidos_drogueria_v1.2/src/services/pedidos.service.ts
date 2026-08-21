@@ -88,6 +88,15 @@ export class PedidosServices {
                 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_PEDLOG_ORDERID' AND object_id=OBJECT_ID('${esquema}.APP_PEDIDO_LOG'))
                     CREATE INDEX IX_PEDLOG_ORDERID ON ${esquema}.APP_PEDIDO_LOG (ORDERID)
             `);
+            // Migraciones en APP_PEDIDO_LOG
+            await pool.request().query(`
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='APP_PEDIDO_LOG' AND COLUMN_NAME='SNAPSHOT_ANTES')
+                    ALTER TABLE ${esquema}.APP_PEDIDO_LOG ADD SNAPSHOT_ANTES NVARCHAR(MAX) NULL;
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='APP_PEDIDO_LOG' AND COLUMN_NAME='SNAPSHOT_DESPUES')
+                    ALTER TABLE ${esquema}.APP_PEDIDO_LOG ADD SNAPSHOT_DESPUES NVARCHAR(MAX) NULL;
+                IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='APP_PEDIDO_LOG' AND COLUMN_NAME='DETALLES' AND CHARACTER_MAXIMUM_LENGTH = 500)
+                    ALTER TABLE ${esquema}.APP_PEDIDO_LOG ALTER COLUMN DETALLES NVARCHAR(MAX) NULL;
+            `);
             await pool.request().query(`
                 IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='APP_CABECERA_PED_ELIMINADOS')
                     CREATE TABLE ${esquema}.APP_CABECERA_PED_ELIMINADOS (
@@ -667,17 +676,38 @@ export class PedidosServices {
             const checkReq = new mssql.Request(transaction);
             const checkRes = await checkReq
                 .input('ORDERID', mssql.VarChar(50), orderId)
-                .query(`SELECT ESTATUS FROM ${esquema}.CABECERA_PED WHERE ORDERID = @ORDERID`);
+                .query(`SELECT ESTATUS, TOTALPRECIO, CLIENTEID FROM ${esquema}.CABECERA_PED WHERE ORDERID = @ORDERID`);
 
             if (checkRes.recordset.length === 0) {
                 await transaction.rollback();
                 return { success: false, message: 'El pedido no existe' };
             }
 
-            if (!['PENDIENTE', ESTATUS_APROBACION_PSICOTROPICOS].includes(checkRes.recordset[0].ESTATUS)) {
+            const estatusActual = checkRes.recordset[0].ESTATUS as string;
+            const totalAntes    = Number(checkRes.recordset[0].TOTALPRECIO ?? 0);
+            const clienteAntes  = Number(checkRes.recordset[0].CLIENTEID   ?? 0);
+
+            if (!['PENDIENTE', ESTATUS_APROBACION_PSICOTROPICOS].includes(estatusActual)) {
                 await transaction.rollback();
                 return { success: false, message: 'Solo se pueden editar pedidos en estatus PENDIENTE o APROBACION PSICOTROPICOS' };
             }
+
+            // 1b. Snapshot de las líneas ANTES de cualquier modificación
+            const snapReq = new mssql.Request(transaction);
+            const snapRes = await snapReq
+                .input('ORDERID_SNAP', mssql.VarChar(50), orderId)
+                .query(`SELECT CODARTICULO, REFERENCIA, PRODUCTCOUNT, PRECIOUNITARIO,
+                               DESCUENTO1, DESCUENTO2, DESCUENTO3, DESCUENTO4, PRECIOBRUTO
+                        FROM ${esquema}.LINEA_PED WHERE ORDERID = @ORDERID_SNAP`);
+            const lineasAntes = snapRes.recordset.map((r: any) => ({
+                cod:    r.CODARTICULO,
+                ref:    r.REFERENCIA ?? '',
+                qty:    Number(r.PRODUCTCOUNT),
+                precio: Number(r.PRECIOUNITARIO),
+                d1: Number(r.DESCUENTO1 ?? 0), d2: Number(r.DESCUENTO2 ?? 0),
+                d3: Number(r.DESCUENTO3 ?? 0), d4: Number(r.DESCUENTO4 ?? 0),
+                bruto:  Number(r.PRECIOBRUTO ?? r.PRECIOUNITARIO),
+            }));
 
             // 2. Actualizar la Cabecera (Totales, Vendedor o Cliente si cambió)
             const updateCabeceraReq = new mssql.Request(transaction);
@@ -736,7 +766,52 @@ export class PedidosServices {
             // 6. Si todo salió perfecto, confirmamos los cambios en la base de datos
             await transaction.commit();
 
-            await PedidosServices.registrarLog(orderId, null, 'EDITADO', codusuario, usuario, `Pedido editado: cliente=${clienteId}, total=${totalPed}, líneas=${lineas.length}`);
+            // Snapshot de las líneas DESPUÉS (normalizado igual que el de antes)
+            const lineasDespues = lineas.map((l: any) => ({
+                cod:    l.codarticulo,
+                ref:    l.referencia ?? '',
+                qty:    Number(l.cantidad),
+                precio: Number(l.precio),
+                d1: Number(l.DESCUENTO1 ?? 0), d2: Number(l.DESCUENTO2 ?? 0),
+                d3: Number(l.DESCUENTO3 ?? 0), d4: Number(l.DESCUENTO4 ?? 0),
+                bruto:  Number(l.PRECIOBRUTO ?? l.precio),
+            }));
+
+            // Calcular diff para DETALLES
+            const antesMap  = new Map(lineasAntes.map((l: any)   => [l.cod, l]));
+            const despuesMap = new Map(lineasDespues.map((l: any) => [l.cod, l]));
+            let eliminados = 0, agregados = 0, modificados = 0;
+            const precioCero: number[] = [];
+            for (const [cod, la] of antesMap as Map<number, any>) {
+                if (!despuesMap.has(cod)) { eliminados++; }
+                else {
+                    const ld = despuesMap.get(cod) as any;
+                    if (la.qty !== ld.qty || Math.abs(la.precio - ld.precio) > 0.001 ||
+                        la.d1 !== ld.d1 || la.d2 !== ld.d2 || la.d3 !== ld.d3 || la.d4 !== ld.d4) {
+                        modificados++;
+                        if (ld.precio === 0 && la.precio > 0) precioCero.push(cod);
+                    }
+                }
+            }
+            for (const [cod] of despuesMap as Map<number, any>) {
+                if (!antesMap.has(cod)) {
+                    agregados++;
+                    if ((despuesMap.get(cod) as any).precio === 0) precioCero.push(cod);
+                }
+            }
+            const partesDiff: string[] = [];
+            if (eliminados)        partesDiff.push(`${eliminados} eliminada(s)`);
+            if (agregados)         partesDiff.push(`${agregados} agregada(s)`);
+            if (modificados)       partesDiff.push(`${modificados} modificada(s)`);
+            if (precioCero.length) partesDiff.push(`⚠ precio=0 en art. ${precioCero.join(',')}`);
+            const detallesLog = `total: ${totalAntes} → ${totalPed}${clienteAntes !== Number(clienteId) ? ` | cliente: ${clienteAntes} → ${clienteId}` : ''} | ${partesDiff.join(' | ') || 'sin cambios en líneas'}`;
+
+            await PedidosServices.registrarLog(
+                orderId, estatusActual, 'EDITADO', codusuario, usuario,
+                detallesLog,
+                JSON.stringify({ total: totalAntes, cliente: clienteAntes, lineas: lineasAntes }),
+                JSON.stringify({ total: totalPed,   cliente: clienteId,    lineas: lineasDespues }),
+            );
 
             return {
                 success: true,
@@ -967,7 +1042,42 @@ export class PedidosServices {
         }
     }
 
-    static async updateEstatusPedido(orderId: string, nuevoEstatus: string, codusuario?: number, usuario?: string, visibilidadUsuario?: number) {
+    static async getAnomaliasPedido(orderId: string): Promise<{ tipo: string; descripcion: string; codarticulo?: number }[]> {
+        const pool = await connectDb();
+        const res = await pool.request()
+            .input('OID', mssql.VarChar(50), orderId)
+            .query(`SELECT CODARTICULO, REFERENCIA, PRODUCTCOUNT, PRECIOUNITARIO FROM ${esquema}.LINEA_PED WITH (NOLOCK) WHERE ORDERID = @OID`);
+        const lineas = res.recordset;
+        const anomalias: { tipo: string; descripcion: string; codarticulo?: number }[] = [];
+
+        const conteo = new Map<number, number>();
+        for (const l of lineas) conteo.set(l.CODARTICULO, (conteo.get(l.CODARTICULO) ?? 0) + 1);
+
+        const reportadoDuplicado = new Set<number>();
+        for (const l of lineas) {
+            const cod   = l.CODARTICULO as number;
+            const ref   = (l.REFERENCIA as string | null) ?? `Artículo ${cod}`;
+            const qty   = Number(l.PRODUCTCOUNT);
+            const precio = Number(l.PRECIOUNITARIO);
+
+            if (precio === 0)
+                anomalias.push({ tipo: 'PRECIO_CERO',      descripcion: `"${ref}" (cod ${cod}): precio unitario = 0`, codarticulo: cod });
+            else if (precio < 0)
+                anomalias.push({ tipo: 'PRECIO_NEGATIVO',  descripcion: `"${ref}" (cod ${cod}): precio unitario negativo (${precio})`, codarticulo: cod });
+
+            if (qty <= 0)
+                anomalias.push({ tipo: 'CANTIDAD_INVALIDA', descripcion: `"${ref}" (cod ${cod}): cantidad ${qty} inválida`, codarticulo: cod });
+
+            const veces = conteo.get(cod) ?? 1;
+            if (veces > 1 && !reportadoDuplicado.has(cod)) {
+                anomalias.push({ tipo: 'ARTICULO_DUPLICADO', descripcion: `"${ref}" (cod ${cod}): aparece ${veces} veces en el pedido`, codarticulo: cod });
+                reportadoDuplicado.add(cod);
+            }
+        }
+        return anomalias;
+    }
+
+    static async updateEstatusPedido(orderId: string, nuevoEstatus: string, codusuario?: number, usuario?: string, visibilidadUsuario?: number, anomaliasConfirmadas?: string) {
         try {
             const estatusLimpio = nuevoEstatus.trim().toUpperCase();
             const BIT_AUTORIZADOR = 2048;
@@ -1086,7 +1196,10 @@ export class PedidosServices {
                 };
             }
 
-            await PedidosServices.registrarLog(orderId, estadoActual, estatusLimpio, codusuario, usuario);
+            const detallesEstatus = anomaliasConfirmadas
+                ? `Anomalías confirmadas al autorizar: ${anomaliasConfirmadas}`
+                : undefined;
+            await PedidosServices.registrarLog(orderId, estadoActual, estatusLimpio, codusuario, usuario, detallesEstatus);
 
             return {
                 success: true,
@@ -1109,20 +1222,24 @@ export class PedidosServices {
         estNuevo: string,
         codusuario?: number,
         usuario?: string,
-        detalles?: string
+        detalles?: string,
+        snapshotAntes?: string,
+        snapshotDespues?: string,
     ): Promise<void> {
         try {
             const pool = await connectDb();
             await pool.request()
-                .input('ORDERID',      mssql.VarChar(50),    orderId)
-                .input('EST_ANT',      mssql.VarChar(50),    estAnterior ?? null)
-                .input('EST_NUE',      mssql.VarChar(50),    estNuevo)
-                .input('CODUSUARIO',   mssql.Int,            codusuario ?? null)
-                .input('USUARIO',      mssql.VarChar(100),   usuario ?? null)
-                .input('DETALLES',     mssql.NVarChar(500),  detalles ?? null)
+                .input('ORDERID',      mssql.VarChar(50),            orderId)
+                .input('EST_ANT',      mssql.VarChar(50),            estAnterior ?? null)
+                .input('EST_NUE',      mssql.VarChar(50),            estNuevo)
+                .input('CODUSUARIO',   mssql.Int,                    codusuario ?? null)
+                .input('USUARIO',      mssql.VarChar(100),           usuario ?? null)
+                .input('DETALLES',     mssql.NVarChar(mssql.MAX),    detalles ?? null)
+                .input('SNAP_ANT',     mssql.NVarChar(mssql.MAX),    snapshotAntes ?? null)
+                .input('SNAP_DES',     mssql.NVarChar(mssql.MAX),    snapshotDespues ?? null)
                 .query(`INSERT INTO ${esquema}.APP_PEDIDO_LOG
-                        (ORDERID, EST_ANTERIOR, EST_NUEVO, CODUSUARIO, USUARIO, DETALLES)
-                        VALUES (@ORDERID, @EST_ANT, @EST_NUE, @CODUSUARIO, @USUARIO, @DETALLES)`);
+                        (ORDERID, EST_ANTERIOR, EST_NUEVO, CODUSUARIO, USUARIO, DETALLES, SNAPSHOT_ANTES, SNAPSHOT_DESPUES)
+                        VALUES (@ORDERID, @EST_ANT, @EST_NUE, @CODUSUARIO, @USUARIO, @DETALLES, @SNAP_ANT, @SNAP_DES)`);
         } catch (err) {
             console.error('Error al registrar log de auditoría:', err);
         }
@@ -1141,7 +1258,9 @@ export class PedidosServices {
                 .input('LIMIT',      mssql.Int, safeLimit)
                 .input('OFFSET',     mssql.Int, offset)
                 .query(`
-                    SELECT ID, ORDERID, EST_ANTERIOR, EST_NUEVO, CODUSUARIO, USUARIO, FECHA, DETALLES
+                    SELECT ID, ORDERID, EST_ANTERIOR, EST_NUEVO, CODUSUARIO, USUARIO, FECHA, DETALLES,
+                        CASE WHEN EST_NUEVO = 'EDITADO' THEN SNAPSHOT_ANTES   ELSE NULL END AS SNAPSHOT_ANTES,
+                        CASE WHEN EST_NUEVO = 'EDITADO' THEN SNAPSHOT_DESPUES ELSE NULL END AS SNAPSHOT_DESPUES
                     FROM ${esquema}.APP_PEDIDO_LOG
                     WHERE LOWER(ORDERID) LIKE @ORDERID AND LOWER(ISNULL(USUARIO,'')) LIKE @USUARIO
                     ORDER BY FECHA DESC

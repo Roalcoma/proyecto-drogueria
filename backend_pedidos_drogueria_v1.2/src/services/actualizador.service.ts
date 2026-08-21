@@ -27,24 +27,33 @@ const PROTEGIDOS = [
     '.git',
 ];
 
+const DOWNLOAD_TIMEOUT_MS = 90_000; // 90 s — aborta si GitHub no responde
+
 function descargarZip(url: string, destino: string, redireccionesRestantes = 5): Promise<void> {
     return new Promise((resolve, reject) => {
         if (redireccionesRestantes === 0) return reject(new Error('Demasiadas redirecciones'));
 
         const mod = url.startsWith('https') ? https : http;
-        mod.get(url, { headers: { 'User-Agent': 'pedidos-drogueria-updater' } }, (res) => {
+        const req = mod.get(url, { headers: { 'User-Agent': 'pedidos-drogueria-updater' } }, (res) => {
             if (res.statusCode === 301 || res.statusCode === 302 || res.statusCode === 307 || res.statusCode === 308) {
+                req.destroy();
                 return descargarZip(res.headers.location!, destino, redireccionesRestantes - 1)
                     .then(resolve).catch(reject);
             }
             if (res.statusCode !== 200) {
+                req.destroy();
                 return reject(new Error(`HTTP ${res.statusCode} al descargar ZIP`));
             }
             const file = fs.createWriteStream(destino);
             res.pipe(file);
             file.on('finish', () => file.close(() => resolve()));
-            file.on('error', reject);
-        }).on('error', reject);
+            file.on('error', (err) => { req.destroy(); reject(err); });
+        });
+        // Timeout de socket: si no hay datos en DOWNLOAD_TIMEOUT_MS, abortar
+        req.setTimeout(DOWNLOAD_TIMEOUT_MS, () => {
+            req.destroy(new Error(`Timeout (${DOWNLOAD_TIMEOUT_MS / 1000}s) — GitHub no respondió a tiempo`));
+        });
+        req.on('error', reject);
     });
 }
 
@@ -73,13 +82,13 @@ function limpiar() {
     try { fs.rmSync(EXTRACT_TMP, { recursive: true, force: true }); } catch {}
 }
 
-function run(cmd: string, cwd: string): Promise<string> {
+function run(cmd: string, cwd: string, timeoutMs = 15_000): Promise<string> {
     const env = {
         ...process.env,
         PATH: [process.env.PATH, 'C:\\Program Files\\Git\\cmd'].filter(Boolean).join(';'),
     };
     return new Promise((resolve) => {
-        exec(cmd, { cwd, env }, (_err, stdout, stderr) => resolve((stdout + stderr).trim()));
+        exec(cmd, { cwd, env, timeout: timeoutMs }, (_err, stdout, stderr) => resolve((stdout + stderr).trim()));
     });
 }
 
@@ -119,28 +128,31 @@ function leerVersionActual(): string {
     } catch { return '?'; }
 }
 
-function crearBackup() {
+// Backup via PowerShell Compress-Archive — corre en proceso separado, no bloquea el event loop
+async function crearBackup(): Promise<void> {
     fs.mkdirSync(BACKUPS_DIR, { recursive: true });
     const version = leerVersionActual();
     const iso     = new Date().toISOString();
     const stamp   = iso.slice(0, 10).replace(/-/g, '') + '_' + iso.slice(11, 19).replace(/:/g, '');
     const destino = path.join(BACKUPS_DIR, `backup_${stamp}_v${version}.zip`);
 
-    const zip = new AdmZip();
-    const agregar = (dir: string, dirRel = '') => {
-        for (const entry of fs.readdirSync(dir)) {
-            const relRuta = dirRel ? `${dirRel}/${entry}` : entry;
-            if (protegido(relRuta)) continue;
-            const full = path.join(dir, entry);
-            if (fs.statSync(full).isDirectory()) {
-                agregar(full, relRuta);
-            } else {
-                zip.addLocalFile(full, dirRel);
-            }
-        }
-    };
-    agregar(ROOT);
-    zip.writeZip(destino);
+    // Recopilar items de ROOT que no estén protegidos (primer nivel)
+    const items = fs.readdirSync(ROOT)
+        .filter(f => !protegido(f))
+        .map(f => path.join(ROOT, f));
+
+    if (items.length === 0) return;
+
+    // Escapar rutas para PowerShell (comillas simples → '')
+    const ps = (s: string) => s.replace(/'/g, "''");
+    const pathList = items.map(p => `'${ps(p)}'`).join(',');
+    const cmd = `powershell -NoProfile -NonInteractive -Command "Compress-Archive -Path @(${pathList}) -DestinationPath '${ps(destino)}' -Force"`;
+
+    await new Promise<void>((resolve, reject) => {
+        exec(cmd, { timeout: 120_000, maxBuffer: 2 * 1024 * 1024 }, (err) => {
+            if (err) reject(err); else resolve();
+        });
+    });
 
     // Conservar solo los últimos 5
     const todos = fs.readdirSync(BACKUPS_DIR)
@@ -258,10 +270,10 @@ export async function ejecutarActualizacion(): Promise<ResultadoActualizacion> {
     limpiar();
     paso('Archivos temporales anteriores limpiados.');
 
-    // Backup de la versión actual antes de actualizar
+    // Backup de la versión actual antes de actualizar (async — no bloquea el event loop)
     try {
         paso('Creando backup de la versión actual...');
-        crearBackup();
+        await crearBackup();
         paso('Backup creado correctamente.');
     } catch (err: any) {
         paso(`ADVERTENCIA: No se pudo crear backup: ${err.message}. Continuando de todas formas.`);

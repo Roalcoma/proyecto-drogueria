@@ -60,6 +60,9 @@
             <template v-slot:item.DETALLES="{ item }">
               <span class="text-caption text-grey">{{ item.DETALLES ?? '' }}</span>
             </template>
+            <template v-slot:item.diff_accion="{ item }">
+              <v-btn v-if="item.EST_NUEVO === 'EDITADO' && item.SNAPSHOT_ANTES" icon="mdi-compare" size="x-small" variant="tonal" color="orange" title="Ver cambios del pedido" @click="abrirDiff(item)" />
+            </template>
           </v-data-table-server>
         </v-card>
       </v-window-item>
@@ -147,6 +150,62 @@
         </v-card>
       </v-window-item>
     </v-window>
+  
+    <!-- Modal diff de edición de pedido -->
+    <v-dialog v-model="modalDiff.mostrar" max-width="900">
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 d-flex align-center gap-3">
+          <v-icon color="orange">mdi-compare</v-icon>
+          Cambios en pedido {{ modalDiff.orderid }}
+          <v-spacer />
+          <v-chip
+            :color="modalDiff.totalDespues < modalDiff.totalAntes ? 'error' : modalDiff.totalDespues > modalDiff.totalAntes ? 'success' : 'grey'"
+            variant="tonal" size="small">
+            Total: {{ fmt(modalDiff.totalAntes) }} → {{ fmt(modalDiff.totalDespues) }}
+          </v-chip>
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-0" style="max-height:520px;overflow-y:auto;">
+          <v-table density="compact">
+            <thead>
+              <tr>
+                <th>Estado</th>
+                <th>Artículo</th>
+                <th>Descripción</th>
+                <th class="text-right">Cant. antes</th>
+                <th class="text-right">Cant. después</th>
+                <th class="text-right">Precio antes</th>
+                <th class="text-right">Precio después</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="f in modalDiff.filas" :key="f.cod"
+                  :style="f.estado === 'IGUAL' ? 'opacity:0.45' : ''">
+                <td>
+                  <v-chip :color="colorDiff(f.estado)" size="x-small" variant="tonal" label>{{ f.estado }}</v-chip>
+                </td>
+                <td class="text-caption font-weight-medium">{{ f.cod }}</td>
+                <td class="text-caption" style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ f.ref }}</td>
+                <td class="text-caption text-right">{{ f.qtyAntes ?? '—' }}</td>
+                <td class="text-caption text-right" :class="f.qtyDespues !== f.qtyAntes && f.qtyDespues != null ? 'font-weight-bold' : ''">{{ f.qtyDespues ?? '—' }}</td>
+                <td class="text-caption text-right">{{ fmt(f.precioAntes) }}</td>
+                <td class="text-caption text-right" :class="f.alertaPrecio ? 'text-error font-weight-bold' : (f.precioDespues !== f.precioAntes && f.precioDespues != null ? 'font-weight-bold' : '')">
+                  {{ fmt(f.precioDespues) }}
+                  <v-icon v-if="f.alertaPrecio" size="14" color="error">mdi-alert</v-icon>
+                </td>
+              </tr>
+            </tbody>
+          </v-table>
+        </v-card-text>
+        <v-card-actions class="pa-4">
+          <span class="text-caption text-grey">
+            {{ modalDiff.filas.filter(f => f.estado !== 'IGUAL').length }} cambio(s) detectado(s)
+          </span>
+          <v-spacer />
+          <v-btn variant="text" @click="modalDiff.mostrar = false">Cerrar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-container>
 </template>
 
@@ -187,7 +246,43 @@ const headersPedidos = [
   { title: 'Estado nuevo',    key: 'EST_NUEVO',     sortable: false },
   { title: 'Usuario',         key: 'USUARIO',       sortable: false },
   { title: 'Detalles',        key: 'DETALLES',      sortable: false },
+  { title: '',                key: 'diff_accion',   sortable: false },
 ];
+
+// Modal diff edición
+type LineaSnap = { cod: number; ref: string; qty: number; precio: number; d1: number; d2: number; d3: number; d4: number; bruto: number };
+type FilaDiff  = { cod: number; ref: string; estado: 'ELIMINADO' | 'AGREGADO' | 'MODIFICADO' | 'IGUAL'; qtyAntes: number | null; qtyDespues: number | null; precioAntes: number | null; precioDespues: number | null; alertaPrecio: boolean };
+const modalDiff = ref<{ mostrar: boolean; orderid: string; totalAntes: number; totalDespues: number; filas: FilaDiff[] }>({ mostrar: false, orderid: '', totalAntes: 0, totalDespues: 0, filas: [] });
+
+const abrirDiff = (item: any) => {
+  if (!item.SNAPSHOT_ANTES || !item.SNAPSHOT_DESPUES) return;
+  const snapA: { total: number; lineas: LineaSnap[] } = JSON.parse(item.SNAPSHOT_ANTES);
+  const snapD: { total: number; lineas: LineaSnap[] } = JSON.parse(item.SNAPSHOT_DESPUES);
+  const antesMap  = new Map(snapA.lineas.map(l => [l.cod, l]));
+  const despuesMap = new Map(snapD.lineas.map(l => [l.cod, l]));
+  const filas: FilaDiff[] = [];
+  for (const [cod, la] of antesMap) {
+    const ld = despuesMap.get(cod);
+    if (!ld) {
+      filas.push({ cod, ref: la.ref, estado: 'ELIMINADO', qtyAntes: la.qty, qtyDespues: null, precioAntes: la.precio, precioDespues: null, alertaPrecio: false });
+    } else {
+      const cambia = la.qty !== ld.qty || Math.abs(la.precio - ld.precio) > 0.001 || la.d1 !== ld.d1 || la.d2 !== ld.d2 || la.d3 !== ld.d3 || la.d4 !== ld.d4;
+      filas.push({ cod, ref: la.ref || ld.ref, estado: cambia ? 'MODIFICADO' : 'IGUAL', qtyAntes: la.qty, qtyDespues: ld.qty, precioAntes: la.precio, precioDespues: ld.precio, alertaPrecio: ld.precio === 0 && la.precio > 0 });
+    }
+  }
+  for (const [cod, ld] of despuesMap) {
+    if (!antesMap.has(cod))
+      filas.push({ cod, ref: ld.ref, estado: 'AGREGADO', qtyAntes: null, qtyDespues: ld.qty, precioAntes: null, precioDespues: ld.precio, alertaPrecio: ld.precio === 0 });
+  }
+  filas.sort((a, b) => {
+    const ord: Record<string, number> = { ELIMINADO: 0, MODIFICADO: 1, AGREGADO: 2, IGUAL: 3 };
+    return (ord[a.estado] ?? 9) - (ord[b.estado] ?? 9);
+  });
+  modalDiff.value = { mostrar: true, orderid: item.ORDERID, totalAntes: snapA.total, totalDespues: snapD.total, filas };
+};
+
+const colorDiff = (e: string) => ({ ELIMINADO: 'error', AGREGADO: 'success', MODIFICADO: 'warning', IGUAL: 'grey' } as Record<string, string>)[e] ?? 'grey';
+const fmt = (n: number | null) => n == null ? '—' : n.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const headersRutero = [
   { title: 'Fecha',   key: 'FECHA',         sortable: false },

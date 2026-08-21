@@ -663,6 +663,45 @@
       </v-card>
     </v-dialog>
 
+    <!-- Modal confirmación de anomalías -->
+    <v-dialog v-model="modalAnomalias.mostrar" max-width="560" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="d-flex align-center gap-2 pa-4">
+          <v-icon color="warning" size="24">mdi-alert</v-icon>
+          <span class="text-h6 font-weight-bold">Anomalías detectadas</span>
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-4">
+          <p class="text-body-2 text-medium-emphasis mb-4">
+            Se encontraron los siguientes problemas en el pedido <strong>#{{ modalAnomalias.orderid }}</strong>.
+            Podés confirmar la autorización de todas formas — quedará registrado en auditoría.
+          </p>
+          <v-list density="compact" class="pa-0">
+            <v-list-item v-for="(a, i) in modalAnomalias.anomalias" :key="i"
+              :prepend-icon="iconoAnomalia(a.tipo)"
+              :base-color="colorAnomalia(a.tipo)"
+              rounded="lg" class="mb-1">
+              <v-list-item-title class="text-body-2 font-weight-medium">{{ a.descripcion }}</v-list-item-title>
+              <template v-if="a.codarticulo" v-slot:subtitle>
+                <span class="text-caption text-medium-emphasis">Artículo {{ a.codarticulo }}</span>
+              </template>
+            </v-list-item>
+          </v-list>
+        </v-card-text>
+        <v-divider />
+        <v-card-actions class="pa-4 gap-2">
+          <v-btn variant="text" @click="modalAnomalias.mostrar = false" :disabled="modalAnomalias.confirmando">
+            Cancelar
+          </v-btn>
+          <v-spacer />
+          <v-btn color="warning" variant="elevated" :loading="modalAnomalias.confirmando" @click="confirmarConAnomalias">
+            <v-icon start>mdi-check-circle</v-icon>
+            Autorizar de todas formas
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-snackbar v-model="snackbar.show" :color="snackbar.color" rounded="pill">
       {{ snackbar.text }}
     </v-snackbar>
@@ -922,30 +961,62 @@ const cargarPagina = ({ page, itemsPerPage }: any) => {
   obtenerPedidos(page, itemsPerPage);
 };
 
-const actualizarEstatusBD = async (item: any, nuevoStatus: string) => {
-  const orderId     = item.ORDERID;
-  const statusActual = item.ESTATUS;
+// ── Validación de anomalías al autorizar ──────────────────────────────────
+type Anomalia = { tipo: string; descripcion: string; codarticulo?: number };
+const ESTADOS_CON_VALIDACION = new Set(['AUTORIZADO', 'EMPACADO']);
 
-  // Verificar que la transición esté permitida
-  const permitidos = transicionesPermitidas(statusActual);
-  if (!permitidos.includes(nuevoStatus)) {
-    return lanzarNotificacion(`No se puede cambiar de "${statusActual}" a "${nuevoStatus}"`, 'warning');
-  }
+const modalAnomalias = ref<{
+  mostrar: boolean; orderid: string; item: any; nuevoStatus: string;
+  anomalias: Anomalia[]; confirmando: boolean;
+}>({ mostrar: false, orderid: '', item: null, nuevoStatus: '', anomalias: [], confirmando: false });
 
+const iconoAnomalia = (tipo: string) => ({
+  PRECIO_CERO: 'mdi-currency-usd-off', PRECIO_NEGATIVO: 'mdi-trending-down',
+  CANTIDAD_INVALIDA: 'mdi-close-circle-outline', ARTICULO_DUPLICADO: 'mdi-content-copy',
+} as Record<string, string>)[tipo] ?? 'mdi-alert';
+
+const colorAnomalia = (tipo: string) => ({
+  PRECIO_CERO: 'error', PRECIO_NEGATIVO: 'error', CANTIDAD_INVALIDA: 'error', ARTICULO_DUPLICADO: 'warning',
+} as Record<string, string>)[tipo] ?? 'warning';
+
+const ejecutarCambioEstatus = async (item: any, nuevoStatus: string, anomaliasConfirmadas?: Anomalia[]) => {
   try {
-    const res = await axios.put(`${import.meta.env.VITE_API_URL}/pedidos/status`, {
-      orderId,
-      status: nuevoStatus
-    });
+    const body: any = { orderId: item.ORDERID, status: nuevoStatus };
+    if (anomaliasConfirmadas?.length) body.anomaliasConfirmadas = JSON.stringify(anomaliasConfirmadas);
+    const res = await axios.put(`${import.meta.env.VITE_API_URL}/pedidos/status`, body);
     if (res.data.success) {
-      // Actualizar el item en la lista local para respuesta inmediata
       item.ESTATUS = nuevoStatus;
-      lanzarNotificacion(`Estatus de #${orderId} actualizado a ${nuevoStatus}`, 'success');
+      lanzarNotificacion(`Estatus de #${item.ORDERID} actualizado a ${nuevoStatus}`, 'success');
     }
   } catch (error: any) {
-    const msg = error.response?.data?.message || 'Error al actualizar estatus';
-    lanzarNotificacion(msg, 'error');
+    lanzarNotificacion(error.response?.data?.message || 'Error al actualizar estatus', 'error');
   }
+};
+
+const confirmarConAnomalias = async () => {
+  modalAnomalias.value.confirmando = true;
+  await ejecutarCambioEstatus(modalAnomalias.value.item, modalAnomalias.value.nuevoStatus, modalAnomalias.value.anomalias);
+  modalAnomalias.value.mostrar = false;
+  modalAnomalias.value.confirmando = false;
+};
+
+const actualizarEstatusBD = async (item: any, nuevoStatus: string) => {
+  const permitidos = transicionesPermitidas(item.ESTATUS);
+  if (!permitidos.includes(nuevoStatus))
+    return lanzarNotificacion(`No se puede cambiar de "${item.ESTATUS}" a "${nuevoStatus}"`, 'warning');
+
+  if (ESTADOS_CON_VALIDACION.has(nuevoStatus)) {
+    try {
+      const res = await axios.get(`${import.meta.env.VITE_API_URL}/pedidos/${item.ORDERID}/anomalias`);
+      const anomalias: Anomalia[] = res.data.anomalias ?? [];
+      if (anomalias.length > 0) {
+        modalAnomalias.value = { mostrar: true, orderid: item.ORDERID, item, nuevoStatus, anomalias, confirmando: false };
+        return;
+      }
+    } catch { /* si falla la verificación, continuar de todas formas */ }
+  }
+
+  await ejecutarCambioEstatus(item, nuevoStatus);
 };
 
 const getColores = (status: string) => {

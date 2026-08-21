@@ -162,10 +162,20 @@ export class PedidosControllers {
         }
     }
 
+    static async getAnomaliasPedido(req: Request, res: Response): Promise<void> {
+        const orderId = req.params['orderId'] as string;
+        try {
+            const anomalias = await PedidosServices.getAnomaliasPedido(orderId);
+            res.json({ success: true, anomalias });
+        } catch (error) {
+            res.status(500).json({ success: false, message: String(error) });
+        }
+    }
+
     static async updatePedidoStatus(req: Request, res: Response) {
         try {
             // Extraemos los datos del body
-            const { orderId, status } = req.body;
+            const { orderId, status, anomaliasConfirmadas } = req.body;
 
             // 1. Validación de campos obligatorios con retorno temprano
             if (!orderId) {
@@ -180,7 +190,7 @@ export class PedidosControllers {
 
             // 3. Llamada al servicio
             const reqU = req as RequestConUsuario;
-            const result = await PedidosServices.updateEstatusPedido(orderId, statusFinal, reqU.usuario?.id, reqU.usuario?.usuario, reqU.usuario?.visibilidad);
+            const result = await PedidosServices.updateEstatusPedido(orderId, statusFinal, reqU.usuario?.id, reqU.usuario?.usuario, reqU.usuario?.visibilidad, anomaliasConfirmadas);
 
             // 4. Manejo de respuesta del servicio
             if (!result.success) {

@@ -3,6 +3,10 @@ node_modules/
 
 # Build
 dist/
+# El dist del frontend se trackea para incluirlo en el ZIP de actualizaciones
+!frontend_pedidos_drogueria_v1.2/dist/
+# .env.production del frontend no tiene secretos (solo VITE_API_URL vacío)
+!frontend_pedidos_drogueria_v1.2/.env.production
 
 # Env y credenciales
 .env
