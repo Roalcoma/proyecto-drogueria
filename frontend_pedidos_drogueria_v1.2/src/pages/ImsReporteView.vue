@@ -1,4 +1,11 @@
 <template>
+  <v-overlay :model-value="descargando" class="align-center justify-center" persistent>
+    <div class="d-flex flex-column align-center gap-4">
+      <v-progress-circular indeterminate color="success" size="64" width="5" />
+      <span class="text-white text-body-1 font-weight-medium">Generando reporte…</span>
+    </div>
+  </v-overlay>
+
   <v-container max-width="560" class="py-8">
     <v-card rounded="xl" elevation="2">
       <v-card-title class="d-flex align-center gap-2 pa-5">
@@ -65,8 +72,9 @@ async function descargar() {
   error.value = '';
   descargando.value = true;
   try {
+    const fmt = (d: string) => d.replace(/-/g, '');
     const res = await axios.get(`${import.meta.env.VITE_API_URL}/ims/reporte`, {
-      params: { desde: desde.value, hasta: hasta.value },
+      params: { desde: fmt(desde.value), hasta: fmt(hasta.value) },
       responseType: 'blob',
     });
     const url  = URL.createObjectURL(res.data);

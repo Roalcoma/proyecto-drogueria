@@ -27,8 +27,8 @@ export class ImsController {
     static async descargarReporte(req: RequestConUsuario, res: Response): Promise<void> {
         const { desde, hasta } = req.query as { desde?: string; hasta?: string };
 
-        if (!desde || !hasta || !/^\d{4}-\d{2}-\d{2}$/.test(desde) || !/^\d{4}-\d{2}-\d{2}$/.test(hasta)) {
-            res.status(400).json({ success: false, message: 'Parámetros desde y hasta requeridos (YYYY-MM-DD)' });
+        if (!desde || !hasta || !/^\d{8}$/.test(desde) || !/^\d{8}$/.test(hasta)) {
+            res.status(400).json({ success: false, message: 'Parámetros desde y hasta requeridos (YYYYMMDD)' });
             return;
         }
 
@@ -61,10 +61,7 @@ export class ImsController {
                       AND LTRIM(RTRIM(ISNULL(ART.DESCRIPCION,''))) <> ''
                       AND ART.USASTOCKS = 'T'
                 `),
-                pool.request()
-                    .input('DESDE', mssql.Date, desde)
-                    .input('HASTA', mssql.Date, hasta)
-                    .query(`
+                pool.request().input('DESDE', desde).input('HASTA', hasta).query(`
                         SELECT ART.CODARTICULO CodProdcuto,
                                CASE WHEN CL.NIF20 LIKE 'J%' THEN FV.CODCLIENTE ELSE 2928 END CodCliente,
                                SUM(AVL.UNIDADESTOTAL) Unidades,
@@ -72,15 +69,14 @@ export class ImsController {
                                FORMAT(FV.FECHA,'yyyy-MM-dd') FECHA
                         FROM FACTURASVENTA FV WITH(NOLOCK)
                         INNER JOIN ALBVENTACAB AVC WITH(NOLOCK)
-                            ON FV.NUMSERIE COLLATE DATABASE_DEFAULT = AVC.NUMSERIEFAC
-                           AND FV.NUMFACTURA = AVC.NUMFAC AND FV.N = AVC.NFAC
+                            ON FV.NUMSERIE=AVC.NUMSERIEFAC AND FV.NUMFACTURA=AVC.NUMFAC AND FV.N=AVC.NFAC
                         INNER JOIN ALBVENTALIN AVL WITH(NOLOCK)
-                            ON AVC.NUMSERIE = AVL.NUMSERIE AND AVC.NUMALBARAN = AVL.NUMALBARAN AND AVC.N = AVL.N
-                        INNER JOIN ARTICULOS ART WITH(NOLOCK) ON AVL.CODARTICULO = ART.CODARTICULO
-                        LEFT  JOIN CLIENTES CL WITH(NOLOCK) ON CL.CODCLIENTE = FV.CODCLIENTE
+                            ON AVC.NUMSERIE=AVL.NUMSERIE AND AVC.NUMALBARAN=AVL.NUMALBARAN AND AVC.N=AVL.N
+                        INNER JOIN ARTICULOS ART WITH(NOLOCK) ON AVL.CODARTICULO=ART.CODARTICULO
+                        LEFT  JOIN CLIENTES CL WITH(NOLOCK) ON CL.CODCLIENTE=FV.CODCLIENTE
                         WHERE FV.FECHA BETWEEN @DESDE AND @HASTA
-                          AND ART.TIPOARTICULO = 'A'
-                          AND ART.USASTOCKS = 'T'
+                          AND ART.TIPOARTICULO='A'
+                          AND ART.USASTOCKS='T'
                         GROUP BY ART.CODARTICULO, FV.CODCLIENTE, FV.FECHA, CL.NIF20
                         ORDER BY FV.FECHA, FV.CODCLIENTE, ART.CODARTICULO
                     `),
