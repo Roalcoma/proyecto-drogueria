@@ -1,10 +1,8 @@
 <template>
-  <v-overlay v-if="descargando" model-value class="align-center justify-center" persistent>
-    <div class="d-flex flex-column align-center gap-4">
-      <v-progress-circular indeterminate color="success" size="64" width="5" />
-      <span class="text-white text-body-1 font-weight-medium">Generando reporte…</span>
-    </div>
-  </v-overlay>
+  <div v-if="descargando" class="ims-spinner-overlay">
+    <v-progress-circular indeterminate color="success" size="64" width="5" />
+    <span class="text-white text-body-1 font-weight-medium mt-4">Generando reporte…</span>
+  </div>
 
   <v-container max-width="560" class="py-8">
     <v-card rounded="xl" elevation="2">
@@ -99,3 +97,16 @@ async function descargar() {
   }
 }
 </script>
+
+<style scoped>
+.ims-spinner-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+</style>
