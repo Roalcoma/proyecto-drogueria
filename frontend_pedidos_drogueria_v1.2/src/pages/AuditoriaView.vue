@@ -14,6 +14,7 @@
       <v-tab value="pedidos"  prepend-icon="mdi-cart">Pedidos</v-tab>
       <v-tab value="rutero"   prepend-icon="mdi-truck-delivery">Rutero</v-tab>
       <v-tab value="grupos"   prepend-icon="mdi-account-group">Grupos / Clientes</v-tab>
+      <v-tab value="ims"      prepend-icon="mdi-file-excel">Reporte IMS</v-tab>
     </v-tabs>
 
     <!-- ── TAB PEDIDOS ── -->
@@ -149,8 +150,36 @@
           </v-data-table-server>
         </v-card>
       </v-window-item>
+
+      <!-- ── TAB REPORTE IMS ── -->
+      <v-window-item value="ims">
+        <v-card rounded="xl" elevation="2">
+          <v-data-table-server
+            :headers="headersIms"
+            :items="registrosIms"
+            :items-length="totalIms"
+            :loading="cargando"
+            v-model:items-per-page="itemsPerPage"
+            @update:options="onOptions"
+            :items-per-page-options="[10, 25, 50, 100, 200]"
+          >
+            <template v-slot:item.FECHA="{ item }">
+              <span class="text-caption">{{ new Date(item.FECHA).toLocaleString('es-VE', { timeZone: brandingStore.zonaHoraria }) }}</span>
+            </template>
+            <template v-slot:item.USUARIO="{ item }">
+              <span class="text-caption font-weight-medium">{{ item.USUARIO }}</span>
+            </template>
+            <template v-slot:item.DESDE="{ item }">
+              <span class="text-caption">{{ item.DESDE }}</span>
+            </template>
+            <template v-slot:item.HASTA="{ item }">
+              <span class="text-caption">{{ item.HASTA }}</span>
+            </template>
+          </v-data-table-server>
+        </v-card>
+      </v-window-item>
     </v-window>
-  
+
     <!-- Modal diff de edición de pedido -->
     <v-dialog v-model="modalDiff.mostrar" max-width="900">
       <v-card rounded="xl">
@@ -239,6 +268,10 @@ const registrosGrupos    = ref<any[]>([]);
 const totalGrupos        = ref(0);
 const filtroBuscarGrupos = ref('');
 
+// Reporte IMS
+const registrosIms = ref<any[]>([]);
+const totalIms     = ref(0);
+
 const headersPedidos = [
   { title: 'Fecha',           key: 'FECHA',        sortable: false },
   { title: 'N° Orden',        key: 'ORDERID',      sortable: false },
@@ -318,6 +351,13 @@ const headersGrupos = [
   { title: 'Detalles',key: 'DETALLES',    sortable: false },
 ];
 
+const headersIms = [
+  { title: 'Fecha descarga', key: 'FECHA',   sortable: false },
+  { title: 'Usuario',        key: 'USUARIO', sortable: false },
+  { title: 'Desde',          key: 'DESDE',   sortable: false },
+  { title: 'Hasta',          key: 'HASTA',   sortable: false },
+];
+
 const colorAccionGrupo = (accion: string) => {
   const map: Record<string, string> = {
     'CREAR_GRUPO': 'green', 'EDITAR_GRUPO': 'blue', 'IMPORTAR_EXCEL': 'teal',
@@ -339,11 +379,16 @@ const cargar = async () => {
         params: { buscar: filtroBuscarRutero.value || undefined, page: pagina.value, limit: itemsPerPage.value },
       });
       if (res.data.success) { registrosRutero.value = res.data.data; totalRutero.value = res.data.total; }
-    } else {
-      const res = await axios.get(`${API}/promociones/grupos-clientes/auditoria`, {
+    } else if (tab.value === 'grupos') {
+      const res = await axios.get(`${API}/api/promociones/grupos-clientes/auditoria`, {
         params: { buscar: filtroBuscarGrupos.value || undefined, page: pagina.value, limit: itemsPerPage.value },
       });
       if (res.data.success) { registrosGrupos.value = res.data.data; totalGrupos.value = res.data.total; }
+    } else if (tab.value === 'ims') {
+      const res = await axios.get(`${API}/ims/auditoria`, {
+        params: { page: pagina.value, limit: itemsPerPage.value },
+      });
+      if (res.data.success) { registrosIms.value = res.data.data; totalIms.value = res.data.total; }
     }
   } finally {
     cargando.value = false;

@@ -26,6 +26,7 @@ import { ReclamosService }    from "./services/reclamos.service";
 import { EcommerceService }   from "./services/ecommerce.service";
 import { FtpService }         from "./services/ftp.service";
 import { MetasService }       from "./services/metas.service";
+import { ImsController }      from "./controllers/ims.controller";
 import { RuteroService }      from "./services/rutero.service";
 import { BrandingService }    from "./services/branding.service";
 import { getDbConfig }        from "./services/dbconfig.service";
@@ -134,6 +135,7 @@ app.listen(port, async () => {
     await RuteroService.initTablas();
     await FtpService.initTablas();
     await MetasService.initTablas();
+    await ImsController.initTablas();
     if (getDbConfig().ftpHabilitado) {
         FtpService.iniciarServidor().catch(console.error);
     }

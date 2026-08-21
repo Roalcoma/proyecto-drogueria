@@ -1,8 +1,10 @@
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import ExcelJS from 'exceljs';
 import mssql from 'mssql';
 import { connectDb } from '../db/db.conection';
 import { RequestConUsuario } from '../middleware/auth.middleware';
+
+const esquema = process.env.DB_ESQUEMA || 'dbo';
 
 // Colores del formato IMS original
 const HEADER_BG   = '2E75B6';  // azul accent1
@@ -24,6 +26,48 @@ function aplicarCabecera(ws: ExcelJS.Worksheet, cols: { header: string; key: str
 }
 
 export class ImsController {
+
+    static async initTablas(): Promise<void> {
+        try {
+            const pool = await connectDb();
+            await pool.request().query(`
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='APP_IMS_LOG')
+                CREATE TABLE ${esquema}.APP_IMS_LOG (
+                    ID         INT IDENTITY(1,1) PRIMARY KEY,
+                    CODUSUARIO INT            NULL,
+                    USUARIO    NVARCHAR(100)  NOT NULL,
+                    DESDE      VARCHAR(8)     NOT NULL,
+                    HASTA      VARCHAR(8)     NOT NULL,
+                    FECHA      DATETIME       NOT NULL DEFAULT GETDATE()
+                )
+            `);
+        } catch (err) {
+            console.error('[IMS] initTablas error:', err);
+        }
+    }
+
+    static async getAuditoria(req: Request, res: Response): Promise<void> {
+        const page  = Math.max(1, parseInt(req.query['page']  as string) || 1);
+        const limit = Math.min(200, Math.max(1, parseInt(req.query['limit'] as string) || 50));
+        const offset = (page - 1) * limit;
+        try {
+            const pool = await connectDb();
+            const [data, count] = await Promise.all([
+                pool.request()
+                    .input('LIMIT',  mssql.Int, limit)
+                    .input('OFFSET', mssql.Int, offset)
+                    .query(`SELECT ID, CODUSUARIO, USUARIO, DESDE, HASTA, FECHA
+                            FROM ${esquema}.APP_IMS_LOG
+                            ORDER BY FECHA DESC
+                            OFFSET @OFFSET ROWS FETCH NEXT @LIMIT ROWS ONLY`),
+                pool.request().query(`SELECT COUNT(*) AS TOTAL FROM ${esquema}.APP_IMS_LOG`),
+            ]);
+            res.json({ success: true, data: data.recordset, total: count.recordset[0].TOTAL });
+        } catch (err: any) {
+            res.status(500).json({ success: false, message: err.message });
+        }
+    }
+
     static async descargarReporte(req: RequestConUsuario, res: Response): Promise<void> {
         const { desde, hasta } = req.query as { desde?: string; hasta?: string };
 
@@ -118,6 +162,15 @@ export class ImsController {
                 { header: 'FECHA',       key: 'FECHA',       width: 12 },
             ]);
             ventasRes.recordset.forEach(r => wsV.addRow(r));
+
+            // Auditoría: registrar descarga
+            pool.request()
+                .input('CODUSUARIO', mssql.Int,         req.usuario?.id   ?? null)
+                .input('USUARIO',    mssql.NVarChar(100), req.usuario?.usuario ?? 'desconocido')
+                .input('DESDE',      mssql.VarChar(8),   desde)
+                .input('HASTA',      mssql.VarChar(8),   hasta)
+                .query(`INSERT INTO ${esquema}.APP_IMS_LOG (CODUSUARIO, USUARIO, DESDE, HASTA) VALUES (@CODUSUARIO, @USUARIO, @DESDE, @HASTA)`)
+                .catch(e => console.error('[IMS] log error:', e));
 
             const filename = `IMS ${desde} al ${hasta}.xlsx`;
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
