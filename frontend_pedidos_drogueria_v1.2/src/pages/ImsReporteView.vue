@@ -58,20 +58,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onUnmounted } from 'vue';
+import { ref } from 'vue';
 import axios from 'axios';
 
 const desde      = ref('');
 const hasta      = ref('');
 const descargando = ref(false);
 const error      = ref('');
-
-// Si el componente se destruye mientras el overlay está activo (ej. navegación),
-// Vuetify deja overflow:hidden en el body. Limpiarlo manualmente evita la pantalla en blanco.
-onUnmounted(() => {
-  descargando.value = false;
-  document.body.style.overflow = '';
-});
 
 async function descargar() {
   error.value = '';
