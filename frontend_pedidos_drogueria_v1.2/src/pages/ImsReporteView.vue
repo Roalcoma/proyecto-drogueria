@@ -1,10 +1,9 @@
 <template>
-  <div v-if="descargando" class="ims-spinner-overlay">
-    <v-progress-circular indeterminate color="success" size="64" width="5" />
-    <span class="text-white text-body-1 font-weight-medium mt-4">Generando reporte…</span>
-  </div>
-
   <v-container max-width="560" class="py-8">
+    <div v-if="descargando" class="ims-spinner-overlay">
+      <v-progress-circular indeterminate color="success" size="64" width="5" />
+      <span class="text-white text-body-1 font-weight-medium mt-4">Generando reporte…</span>
+    </div>
     <v-card rounded="xl" elevation="2">
       <v-card-title class="d-flex align-center gap-2 pa-5">
         <v-icon color="success" size="28">mdi-file-excel</v-icon>
