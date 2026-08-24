@@ -81,13 +81,12 @@ export class ImsController {
 
             const [clientesRes, productosRes, ventasRes] = await Promise.all([
                 pool.request().query(`
-                    SELECT CLI.CODCLIENTE Codigo, CLI.NOMBRECLIENTE Nombre,
-                           CLI.DIRECCION1 Direccion, CLI.PROVINCIA Ciudad, CLI.NIF20 RIF
-                    FROM CLIENTES CLI WITH(NOLOCK)
-                    WHERE CLI.CODCLIENTE NOT IN (0,2)
-                      AND CLI.DESCATALOGADO = 'F'
-                      AND CLI.NIF20 LIKE 'J%'
-                    ORDER BY CLI.CODCLIENTE
+                    SELECT CL.CODCLIENTE, NOMBRECLIENTE, DIRECCION1,
+                           CCL.ZONA ESTADO, NIF20 RIF
+                    FROM CLIENTES CL WITH(NOLOCK)
+                    INNER JOIN CLIENTESCAMPOSLIBRES CCL WITH(NOLOCK) ON CCL.CODCLIENTE = CL.CODCLIENTE
+                    WHERE NIF20 NOT LIKE 'V%'
+                      AND ISNULL(CCL.SICM, '') <> ''
                 `),
                 pool.request().query(`
                     SELECT ART.CODARTICULO CodProducto,
@@ -133,11 +132,11 @@ export class ImsController {
             // ── Clientes ──────────────────────────────────────────────────────
             const wsC = wb.addWorksheet('Clientes', { properties: { tabColor: { argb: '2E75B6' } } });
             aplicarCabecera(wsC, [
-                { header: 'Codigo',    key: 'Codigo',    width: 9  },
-                { header: 'Nombre',    key: 'Nombre',    width: 54 },
-                { header: 'Direccion', key: 'Direccion', width: 78 },
-                { header: 'Ciudad',    key: 'Ciudad',    width: 18 },
-                { header: 'RIF',       key: 'RIF',       width: 14 },
+                { header: 'Codigo',    key: 'CODCLIENTE',   width: 9  },
+                { header: 'Nombre',    key: 'NOMBRECLIENTE', width: 54 },
+                { header: 'Direccion', key: 'DIRECCION1',   width: 78 },
+                { header: 'Estado',    key: 'ESTADO',       width: 18 },
+                { header: 'RIF',       key: 'RIF',          width: 14 },
             ]);
             clientesRes.recordset.forEach(r => wsC.addRow(r));
 

@@ -172,7 +172,13 @@ export class FtpService {
             return;
         }
         if (!fs.existsSync(ftpPath)) {
-            console.warn(`[FTP] Ruta no existe: ${ftpPath}`);
+            const esRed = ftpPath.startsWith('\\\\') || ftpPath.startsWith('//');
+            if (esRed) {
+                console.warn(`[FTP] Ruta de red no accesible: ${ftpPath}`);
+                console.warn('[FTP] Para usar rutas de red el proceso debe correr con una cuenta Windows que tenga acceso a la carpeta compartida (no LocalSystem). Alternativa: mapear la unidad de red antes de iniciar el servicio con "net use Z: \\\\servidor\\carpeta /persistent:yes" y usar la letra de unidad (Z:\\).');
+            } else {
+                console.warn(`[FTP] Ruta no existe: ${ftpPath}`);
+            }
             return;
         }
 
@@ -960,12 +966,18 @@ export class FtpService {
             const ftpPath = await FtpService.getConfig();
             if (ftpPath && fs.existsSync(ftpPath)) {
                 let scanTimer: ReturnType<typeof setTimeout> | null = null;
-                FtpService.ftpWatcher = fs.watch(ftpPath, { recursive: true }, (_evt, filename) => {
-                    if (filename && filename.toLowerCase().endsWith('.txt')) {
-                        if (scanTimer) clearTimeout(scanTimer);
-                        scanTimer = setTimeout(() => FtpService.escanearCarpeta().catch(console.error), 3000);
-                    }
-                });
+                try {
+                    FtpService.ftpWatcher = fs.watch(ftpPath, { recursive: true }, (_evt, filename) => {
+                        if (filename && filename.toLowerCase().endsWith('.txt')) {
+                            if (scanTimer) clearTimeout(scanTimer);
+                            scanTimer = setTimeout(() => FtpService.escanearCarpeta().catch(console.error), 3000);
+                        }
+                    });
+                } catch {
+                    // fs.watch con recursive no funciona en rutas de red UNC en Windows.
+                    // El ciclo periódico (iniciarCicloFtp) sigue activo como alternativa.
+                    console.warn('[FTP] fs.watch no disponible en esta ruta (probable ruta de red). Se usará el ciclo periódico.');
+                }
             }
 
             FtpService.iniciarCicloFtp();
