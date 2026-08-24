@@ -94,20 +94,19 @@ export class ImsController {
                       AND ISNULL(CCL.SICM, '') <> ''
                 `),
                 pool.request().query(`
-                    SELECT ART.CODARTICULO CodProducto,
-                           COALESCE(NULLIF(LTRIM(RTRIM(ACL.DESCRIPCIONLARGA)),''), ART.DESCRIPCION)
-                               COLLATE Latin1_General_CS_AI Presentacion,
-                           M.DESCRIPCION Laboratorio,
-                           FORMAT(ISNULL(PV.PNETO,0),'n','es-PA') USD,
-                           ART.REFPROVEEDOR EAN
+                    SELECT
+                        ART.CODARTICULO,
+                        ART.REFPROVEEDOR CODBARRAS,
+                        ARCL.DESCRIPCIONLARGA DESCRIPCION,
+                        M.DESCRIPCION LABORATORIO,
+                        ISNULL(PV.PNETO, 0) PRECIO,
+                        ART.REFPROVEEDOR _CODBARRAS
                     FROM ARTICULOS ART WITH(NOLOCK)
-                    INNER JOIN ARTICULOSCAMPOSLIBRES ACL WITH(NOLOCK) ON ACL.CODARTICULO = ART.CODARTICULO
-                    LEFT  JOIN MARCA M WITH(NOLOCK) ON M.CODMARCA = ART.MARCA
-                    LEFT  JOIN PRECIOSVENTA PV WITH(NOLOCK)
-                        ON PV.CODARTICULO = ART.CODARTICULO AND PV.IDTARIFAV = 1 AND PV.TALLA = '.'
-                    WHERE ART.TIPOARTICULO = 'A'
-                      AND LTRIM(RTRIM(ISNULL(ART.DESCRIPCION,''))) <> ''
-                      AND ART.USASTOCKS = 'T'
+                    LEFT JOIN ARTICULOSCAMPOSLIBRES ARCL WITH(NOLOCK) ON ARCL.CODARTICULO = ART.CODARTICULO
+                    LEFT JOIN PRECIOSVENTA PV WITH(NOLOCK) ON PV.CODARTICULO = ART.CODARTICULO AND PV.IDTARIFAV = 1
+                    LEFT JOIN MARCA M WITH(NOLOCK) ON M.CODMARCA = ART.MARCA
+                    WHERE ART.DPTO = 1
+                      AND (ART.DESCATALOGADO = 'F' OR ART.DESCATALOGADO IS NULL)
                 `),
                 pool.request().input('DESDE', desde).input('HASTA', hasta).query(`
                         SELECT ART.CODARTICULO CodProdcuto,
@@ -148,11 +147,12 @@ export class ImsController {
             // ── Productos ─────────────────────────────────────────────────────
             const wsP = wb.addWorksheet('Productos', { properties: { tabColor: { argb: '2E75B6' } } });
             aplicarCabecera(wsP, [
-                { header: 'CodProducto',  key: 'CodProducto',  width: 13 },
-                { header: 'Presentacion', key: 'Presentacion', width: 82 },
-                { header: 'Laboratorio',  key: 'Laboratorio',  width: 30 },
-                { header: 'USD',          key: 'USD',          width: 9  },
-                { header: 'EAN',          key: 'EAN',          width: 18 },
+                { header: 'CodProducto',  key: 'CODARTICULO',  width: 13 },
+                { header: 'CodBarras',    key: 'CODBARRAS',    width: 18 },
+                { header: 'Descripcion',  key: 'DESCRIPCION',  width: 82 },
+                { header: 'Laboratorio',  key: 'LABORATORIO',  width: 30 },
+                { header: 'Precio',       key: 'PRECIO',       width: 9  },
+                { header: 'EAN',          key: '_CODBARRAS',   width: 18 },
             ]);
             productosRes.recordset.forEach(r => wsP.addRow(r));
 
