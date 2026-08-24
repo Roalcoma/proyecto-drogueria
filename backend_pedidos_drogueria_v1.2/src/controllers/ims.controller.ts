@@ -81,11 +81,16 @@ export class ImsController {
 
             const [clientesRes, productosRes, ventasRes] = await Promise.all([
                 pool.request().query(`
-                    SELECT CL.CODCLIENTE, NOMBRECLIENTE, DIRECCION1,
-                           CCL.ZONA ESTADO, NIF20 RIF
+                    SELECT
+                        CL.CODCLIENTE,
+                        CL.NOMBRECLIENTE,
+                        CASE WHEN ISNULL(CE.DIRECCION1, '') = '' THEN CL.DIRECCION1 ELSE CE.DIRECCION1 END DIRECCION,
+                        COALESCE(NULLIF(CE.PROVINCIA, ''), CL.PROVINCIA) ESTADO,
+                        CL.NIF20 RIF
                     FROM CLIENTES CL WITH(NOLOCK)
                     INNER JOIN CLIENTESCAMPOSLIBRES CCL WITH(NOLOCK) ON CCL.CODCLIENTE = CL.CODCLIENTE
-                    WHERE NIF20 NOT LIKE 'V%'
+                    INNER JOIN CLIENTESENVIO CE WITH(NOLOCK) ON CE.CODCLIENTE = CL.CODCLIENTE AND CE.CODENVIO = 0
+                    WHERE CL.NIF20 NOT LIKE 'V%'
                       AND ISNULL(CCL.SICM, '') <> ''
                 `),
                 pool.request().query(`
@@ -134,7 +139,7 @@ export class ImsController {
             aplicarCabecera(wsC, [
                 { header: 'Codigo',    key: 'CODCLIENTE',   width: 9  },
                 { header: 'Nombre',    key: 'NOMBRECLIENTE', width: 54 },
-                { header: 'Direccion', key: 'DIRECCION1',   width: 78 },
+                { header: 'Direccion', key: 'DIRECCION',    width: 78 },
                 { header: 'Estado',    key: 'ESTADO',       width: 18 },
                 { header: 'RIF',       key: 'RIF',          width: 14 },
             ]);
