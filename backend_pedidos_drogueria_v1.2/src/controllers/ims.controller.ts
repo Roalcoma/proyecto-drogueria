@@ -109,23 +109,28 @@ export class ImsController {
                       AND (ART.DESCATALOGADO = 'F' OR ART.DESCATALOGADO IS NULL)
                 `),
                 pool.request().input('DESDE', desde).input('HASTA', hasta).query(`
-                        SELECT ART.CODARTICULO CodProdcuto,
-                               CASE WHEN CL.NIF20 LIKE 'J%' THEN FV.CODCLIENTE ELSE 2928 END CodCliente,
-                               SUM(AVL.UNIDADESTOTAL) Unidades,
-                               FORMAT(SUM(AVL.TOTAL),'n','es-PA') USD,
-                               FORMAT(FV.FECHA,'yyyy-MM-dd') FECHA
+                        SELECT
+                            ART.CODARTICULO,
+                            CASE WHEN CL.NIF20 LIKE 'V%' OR ISNULL(CCL.SICM, '') = '' THEN 1 ELSE CL.CODCLIENTE END AS CODCLIENTE,
+                            CASE WHEN CL.NIF20 LIKE 'V%' OR ISNULL(CCL.SICM, '') = '' THEN 'FARMACIA LA REALEZA, C. A' ELSE CL.NOMBRECLIENTE END AS NOMBRECLIENTE,
+                            SUM(AVL.UNIDADESTOTAL) AS UNIDADES,
+                            SUM(AVL.TOTAL) AS TOTAL_LINEA,
+                            CAST(FV.FECHA AS DATE) AS FECHA
                         FROM FACTURASVENTA FV WITH(NOLOCK)
-                        INNER JOIN ALBVENTACAB AVC WITH(NOLOCK)
-                            ON FV.NUMSERIE=AVC.NUMSERIEFAC AND FV.NUMFACTURA=AVC.NUMFAC AND FV.N=AVC.NFAC
-                        INNER JOIN ALBVENTALIN AVL WITH(NOLOCK)
-                            ON AVC.NUMSERIE=AVL.NUMSERIE AND AVC.NUMALBARAN=AVL.NUMALBARAN AND AVC.N=AVL.N
-                        INNER JOIN ARTICULOS ART WITH(NOLOCK) ON AVL.CODARTICULO=ART.CODARTICULO
-                        LEFT  JOIN CLIENTES CL WITH(NOLOCK) ON CL.CODCLIENTE=FV.CODCLIENTE
+                        INNER JOIN ALBVENTACAB AVC WITH(NOLOCK) ON AVC.NUMSERIEFAC = FV.NUMSERIE AND AVC.NUMFAC = FV.NUMFACTURA AND AVC.NFAC = FV.N
+                        INNER JOIN ALBVENTALIN AVL WITH(NOLOCK) ON AVL.NUMSERIE = AVC.NUMSERIE AND AVL.NUMALBARAN = AVC.NUMALBARAN AND AVL.N = AVC.N
+                        INNER JOIN CLIENTES CL WITH(NOLOCK) ON CL.CODCLIENTE = FV.CODCLIENTE
+                        INNER JOIN CLIENTESCAMPOSLIBRES CCL WITH(NOLOCK) ON CCL.CODCLIENTE = CL.CODCLIENTE
+                        INNER JOIN ARTICULOS ART WITH(NOLOCK) ON ART.CODARTICULO = AVL.CODARTICULO
                         WHERE FV.FECHA BETWEEN @DESDE AND @HASTA
-                          AND ART.TIPOARTICULO='A'
-                          AND ART.USASTOCKS='T'
-                        GROUP BY ART.CODARTICULO, FV.CODCLIENTE, FV.FECHA, CL.NIF20
-                        ORDER BY FV.FECHA, FV.CODCLIENTE, ART.CODARTICULO
+                          AND CL.CODCLIENTE <> 2
+                          AND AVL.TOTAL > 0
+                          AND ART.DPTO = 1
+                        GROUP BY
+                            ART.CODARTICULO, FV.FECHA,
+                            CASE WHEN CL.NIF20 LIKE 'V%' OR ISNULL(CCL.SICM, '') = '' THEN 1 ELSE CL.CODCLIENTE END,
+                            CASE WHEN CL.NIF20 LIKE 'V%' OR ISNULL(CCL.SICM, '') = '' THEN 'FARMACIA LA REALEZA, C. A' ELSE CL.NOMBRECLIENTE END
+                        ORDER BY ART.CODARTICULO
                     `),
             ]);
 
@@ -159,11 +164,12 @@ export class ImsController {
             // ── Ventas ────────────────────────────────────────────────────────
             const wsV = wb.addWorksheet('Ventas', { properties: { tabColor: { argb: '2E75B6' } } });
             aplicarCabecera(wsV, [
-                { header: 'CodProdcuto', key: 'CodProdcuto', width: 13 },
-                { header: 'CodCliente',  key: 'CodCliente',  width: 11 },
-                { header: 'Unidades',    key: 'Unidades',    width: 10 },
-                { header: 'USD',         key: 'USD',         width: 10 },
-                { header: 'FECHA',       key: 'FECHA',       width: 12 },
+                { header: 'CodProducto',  key: 'CODARTICULO',  width: 13 },
+                { header: 'CodCliente',   key: 'CODCLIENTE',   width: 11 },
+                { header: 'NombreCliente',key: 'NOMBRECLIENTE',width: 40 },
+                { header: 'Unidades',     key: 'UNIDADES',     width: 10 },
+                { header: 'Total',        key: 'TOTAL_LINEA',  width: 12 },
+                { header: 'Fecha',        key: 'FECHA',        width: 12 },
             ]);
             ventasRes.recordset.forEach(r => wsV.addRow(r));
 
