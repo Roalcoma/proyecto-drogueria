@@ -214,6 +214,8 @@ export class ProductsService {
                             AND AL2.COLOR = PV2.COLOR
                         WHERE PV2.CODARTICULO = A.CODARTICULO
                           AND PV2.IDTARIFAV = @TARIFA
+                          AND PV2.COLOR = '.'
+                          AND PV2.TALLA = '.'
                         ORDER BY COALESCE(
                             TRY_CONVERT(DATE, AL2.GARANTIACOMPRA, 103),
                             TRY_CONVERT(DATE, AL2.GARANTIACOMPRA, 23),
