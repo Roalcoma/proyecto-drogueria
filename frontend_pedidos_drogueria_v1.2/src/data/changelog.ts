@@ -11,9 +11,10 @@ export interface CommitEntry {
   texto: string;
 }
 
-export const APP_VERSION = '1.2.18';
+export const APP_VERSION = '1.2.19';
 
 export const VERSIONES: VersionEntry[] = [
+  { version: '1.2.19', fecha: '2026-08-25', desde: '2026-08-25' },
   { version: '1.2.18', fecha: '2026-08-21', desde: '2026-08-21' },
   { version: '1.2.17', fecha: '2026-08-18', desde: '2026-08-18' },
   { version: '1.2.16', fecha: '2026-08-13', desde: '2026-08-13' },
@@ -36,6 +37,11 @@ export const VERSIONES: VersionEntry[] = [
 ];
 
 export const COMMITS: CommitEntry[] = [
+  { hash: '94d0287', date: '2026-08-25', tipo: 'fix',     texto: 'reclamos: corrige URLs de búsqueda de cliente y artículo — usaban /api/clientes y /api/products incorrectamente' },
+  { hash: '97cdc38', date: '2026-08-25', tipo: 'fix',     texto: 'IMS ventas: nueva consulta con lógica de cliente (NIF V% → CODCLIENTE=1), filtro DPTO=1 y TOTAL_LINEA sin formatear' },
+  { hash: '4cc0bd3', date: '2026-08-25', tipo: 'fix',     texto: 'IMS productos: nueva consulta por DPTO=1/DESCATALOGADO con CODBARRAS, DESCRIPCIONLARGA y PRECIO numérico' },
+  { hash: '07bdb26', date: '2026-08-25', tipo: 'fix',     texto: 'IMS clientes: JOIN con CLIENTESENVIO para dirección y provincia con fallback a CLIENTES' },
+  { hash: '92d4f60', date: '2026-08-25', tipo: 'fix',     texto: 'FTP: fs.watch en try/catch para rutas de red UNC; mensaje descriptivo cuando la ruta de red no es accesible' },
   { hash: 'pending', date: '2026-08-21', tipo: 'feat',    texto: 'reporte IMS: descarga Excel con hojas Clientes, Productos y Ventas por rango de fechas; permiso IMS_REPORTE (bit 262144)' },
   { hash: 'pending', date: '2026-08-21', tipo: 'fix',    texto: 'FTP inventario.txt: limpiar saltos de línea en campos REFPROVEEDOR, DESCRIPCION y MARCA' },
   { hash: 'pending', date: '2026-08-21', tipo: 'fix',    texto: 'backend: fallback de PORT a 9010; frontend y backend servidos desde el mismo puerto' },
