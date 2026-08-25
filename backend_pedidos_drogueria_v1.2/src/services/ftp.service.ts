@@ -279,7 +279,20 @@ export class FtpService {
             })
             .filter(l => l.codarticulo > 0 && l.cantidad > 0);
 
-        if (lineas.length === 0) {
+        // Agrupar duplicados: sumar cantidades y precioTotal por codarticulo
+        const lineasMap = new Map<number, typeof lineas[0]>();
+        for (const l of lineas) {
+            const ex = lineasMap.get(l.codarticulo);
+            if (ex) {
+                ex.cantidad    += l.cantidad;
+                ex.precioTotal += l.precioTotal;
+            } else {
+                lineasMap.set(l.codarticulo, { ...l });
+            }
+        }
+        const lineasAgrupadas = [...lineasMap.values()];
+
+        if (lineasAgrupadas.length === 0) {
             await FtpService.registrarAuditoria(archivo, 'PARSE_ERROR', codCli, baseId, 'Archivo sin líneas válidas');
             return;
         }
@@ -290,7 +303,7 @@ export class FtpService {
         const almacen     = cfg.codAlmacen;
 
         // Precios y descuentos del sistema; ignoramos precio del archivo
-        const codigos = [...new Set(lineas.map(l => l.codarticulo))].join(',');
+        const codigos = lineasAgrupadas.map(l => l.codarticulo).join(',');
 
         const [preciosRes, dtoCliRes, artInfoRes, vigentesPromociones] = await Promise.all([
             pool.request()
@@ -342,7 +355,7 @@ export class FtpService {
                 : (promo.codigosCliente as number[]).includes(CODCLIENTE) && !excluido;
             if (!califica) continue;
 
-            const articulosEnPedido = lineas.filter(l => (promo.codigosArticulo as number[]).includes(l.codarticulo));
+            const articulosEnPedido = lineasAgrupadas.filter(l => (promo.codigosArticulo as number[]).includes(l.codarticulo));
             if (articulosEnPedido.length === 0) continue;
 
             if (promo.criterioTipo === 'PROVEEDOR_MARCA') {
@@ -373,7 +386,7 @@ export class FtpService {
         }
 
         const dtoMap = new Map<number, { d1: number; d2: number; d3: number; precioFinal: number }>();
-        for (const l of lineas) {
+        for (const l of lineasAgrupadas) {
             const pneto = preciosSistema.get(l.codarticulo) ?? 0;
             const nodto = artInfoMap.get(l.codarticulo)?.nodto ?? false;
             const promo = promoMap.get(l.codarticulo) ?? { d2: 0, d3: 0 };
@@ -387,8 +400,8 @@ export class FtpService {
         }
 
         // Agrupar por tipo: P (psicotrópicos), SD (sin descuento), NI (nuevos), N (normal)
-        const grupos = new Map<string, typeof lineas>();
-        for (const l of lineas) {
+        const grupos = new Map<string, typeof lineasAgrupadas>();
+        for (const l of lineasAgrupadas) {
             const tipo = getTipo(l.codarticulo);
             if (!grupos.has(tipo)) grupos.set(tipo, []);
             grupos.get(tipo)!.push(l);
