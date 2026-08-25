@@ -138,6 +138,8 @@ export class ImsController {
             wb.creator  = 'Pedidos Droguería';
             wb.created  = new Date();
 
+            const FMT_DEC2 = '#,##0.00';
+
             // ── Clientes ──────────────────────────────────────────────────────
             const wsC = wb.addWorksheet('Clientes', { properties: { tabColor: { argb: '2E75B6' } } });
             aplicarCabecera(wsC, [
@@ -159,7 +161,10 @@ export class ImsController {
                 { header: 'Precio',       key: 'PRECIO',       width: 9  },
                 { header: 'EAN',          key: '_CODBARRAS',   width: 18 },
             ]);
-            productosRes.recordset.forEach(r => wsP.addRow(r));
+            wsP.getColumn('PRECIO').numFmt = FMT_DEC2;
+            productosRes.recordset.forEach(r => {
+                wsP.addRow({ ...r, PRECIO: Number(r.PRECIO) });
+            });
 
             // ── Ventas ────────────────────────────────────────────────────────
             const wsV = wb.addWorksheet('Ventas', { properties: { tabColor: { argb: '2E75B6' } } });
@@ -171,7 +176,35 @@ export class ImsController {
                 { header: 'Total',        key: 'TOTAL_LINEA',  width: 12 },
                 { header: 'Fecha',        key: 'FECHA',        width: 12 },
             ]);
-            ventasRes.recordset.forEach(r => wsV.addRow(r));
+            wsV.getColumn('UNIDADES').numFmt   = FMT_DEC2;
+            wsV.getColumn('TOTAL_LINEA').numFmt = FMT_DEC2;
+
+            let totalUnidades = 0;
+            let totalMonto    = 0;
+            ventasRes.recordset.forEach(r => {
+                const u = Number(r.UNIDADES);
+                const m = Number(r.TOTAL_LINEA);
+                totalUnidades += u;
+                totalMonto    += m;
+                wsV.addRow({ ...r, UNIDADES: u, TOTAL_LINEA: m });
+            });
+
+            // Fila de totales
+            const lastDataRow = ventasRes.recordset.length + 1; // +1 por cabecera
+            const totRow = wsV.addRow({
+                CODARTICULO:  '',
+                CODCLIENTE:   '',
+                NOMBRECLIENTE: 'TOTAL',
+                UNIDADES:     totalUnidades,
+                TOTAL_LINEA:  totalMonto,
+                FECHA:        '',
+            });
+            totRow.eachCell(cell => {
+                cell.font = { bold: true, name: 'Calibri', size: 11 };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'D6E4F0' } };
+            });
+            totRow.getCell('UNIDADES').numFmt   = FMT_DEC2;
+            totRow.getCell('TOTAL_LINEA').numFmt = FMT_DEC2;
 
             // Auditoría: registrar descarga
             pool.request()
