@@ -295,7 +295,7 @@ export class FtpService {
         const [preciosRes, dtoCliRes, artInfoRes, vigentesPromociones] = await Promise.all([
             pool.request()
                 .input('TARIFA', mssql.Int, tarifa)
-                .query(`SELECT CODARTICULO, PNETO FROM PRECIOSVENTA WHERE IDTARIFAV = @TARIFA AND CODARTICULO IN (${codigos})`),
+                .query(`SELECT CODARTICULO, PNETO FROM PRECIOSVENTA WHERE IDTARIFAV = @TARIFA AND COLOR = '.' AND TALLA = '.' AND CODARTICULO IN (${codigos})`),
             pool.request()
                 .input('CLI', mssql.Int, CODCLIENTE)
                 .query(`SELECT ISNULL(TRY_CAST(D1 AS FLOAT),0) AS D1, ISNULL(TRY_CAST(D3 AS FLOAT),0) AS D3 FROM CLIENTESCAMPOSLIBRES WHERE CODCLIENTE = @CLI`),
