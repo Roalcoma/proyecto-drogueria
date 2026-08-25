@@ -10,8 +10,11 @@ const esquema = process.env.DB_ESQUEMA || 'dbo';
 const HEADER_BG   = '2E75B6';  // azul accent1
 const HEADER_FONT = 'FFFFFF';  // blanco
 
-function aplicarCabecera(ws: ExcelJS.Worksheet, cols: { header: string; key: string; width: number }[]) {
-    ws.columns = cols.map(c => ({ header: c.header, key: c.key, width: c.width }));
+function aplicarCabecera(ws: ExcelJS.Worksheet, cols: { header: string; key: string; width: number; numFmt?: string }[]) {
+    ws.columns = cols.map(c => ({
+        header: c.header, key: c.key, width: c.width,
+        ...(c.numFmt ? { style: { numFmt: c.numFmt } } : {}),
+    }));
     const headerRow = ws.getRow(1);
     headerRow.eachCell(cell => {
         cell.font      = { bold: true, color: { argb: HEADER_FONT }, name: 'Calibri', size: 11 };
@@ -158,10 +161,9 @@ export class ImsController {
                 { header: 'CodBarras',    key: 'CODBARRAS',    width: 18 },
                 { header: 'Descripcion',  key: 'DESCRIPCION',  width: 82 },
                 { header: 'Laboratorio',  key: 'LABORATORIO',  width: 30 },
-                { header: 'Precio',       key: 'PRECIO',       width: 9  },
+                { header: 'Precio',       key: 'PRECIO',       width: 9,  numFmt: FMT_DEC2 },
                 { header: 'EAN',          key: '_CODBARRAS',   width: 18 },
             ]);
-            wsP.getColumn('PRECIO').numFmt = FMT_DEC2;
             productosRes.recordset.forEach(r => {
                 wsP.addRow({ ...r, PRECIO: Number(r.PRECIO) });
             });
@@ -172,12 +174,10 @@ export class ImsController {
                 { header: 'CodProducto',  key: 'CODARTICULO',  width: 13 },
                 { header: 'CodCliente',   key: 'CODCLIENTE',   width: 11 },
                 { header: 'NombreCliente',key: 'NOMBRECLIENTE',width: 40 },
-                { header: 'Unidades',     key: 'UNIDADES',     width: 10 },
-                { header: 'Total',        key: 'TOTAL_LINEA',  width: 12 },
+                { header: 'Unidades',     key: 'UNIDADES',     width: 10, numFmt: FMT_DEC2 },
+                { header: 'Total',        key: 'TOTAL_LINEA',  width: 12, numFmt: FMT_DEC2 },
                 { header: 'Fecha',        key: 'FECHA',        width: 12 },
             ]);
-            wsV.getColumn('UNIDADES').numFmt   = FMT_DEC2;
-            wsV.getColumn('TOTAL_LINEA').numFmt = FMT_DEC2;
 
             let totalUnidades = 0;
             let totalMonto    = 0;
