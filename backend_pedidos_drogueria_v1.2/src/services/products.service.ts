@@ -192,6 +192,17 @@ export class ProductsService {
         return [0, ...descuentos];
     }
 
+    static async getPreciosCatalogoBulk(codigos: number[]): Promise<{ CODARTICULO: number; PNETO: number }[]> {
+        const { tarifaBaseCatalogo } = getDbConfig();
+        const pool = await connectDb();
+        const result = await pool.request()
+            .input('TARIFA', mssql.Int, tarifaBaseCatalogo)
+            .query(`SELECT CODARTICULO, PNETO FROM PRECIOSVENTA WITH(NOLOCK)
+                    WHERE IDTARIFAV = @TARIFA AND COLOR = '.' AND TALLA = '.'
+                    AND CODARTICULO IN (${codigos.join(',')})`);
+        return result.recordset;
+    }
+
     static async getCatalogoSegmentos(): Promise<any[]> {
         const { tarifaBaseCatalogo, codAlmacen } = getDbConfig();
         const pool = await connectDb();

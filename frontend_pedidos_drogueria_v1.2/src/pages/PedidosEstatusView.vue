@@ -702,6 +702,29 @@
       </v-card>
     </v-dialog>
 
+    <!-- Diálogo: precio al copiar pedido -->
+    <v-dialog v-model="dialogCopiaPrecios.mostrar" max-width="380" persistent>
+      <v-card class="rounded-xl">
+        <v-card-title class="text-subtitle-1 font-weight-bold pt-4 px-5">
+          ¿Con qué precios copiar el pedido?
+        </v-card-title>
+        <v-card-text class="px-5 pb-1 text-body-2 text-medium-emphasis">
+          Los descuentos se mantienen en ambos casos.
+        </v-card-text>
+        <v-card-actions class="px-5 pb-4 flex-column" style="gap:8px">
+          <v-btn block variant="elevated" color="primary" rounded="pill" @click="confirmarCopiaPrecios(false)">
+            Precios del pedido original
+          </v-btn>
+          <v-btn block variant="outlined" color="primary" rounded="pill" :loading="cargandoPreciosCatalogo" @click="confirmarCopiaPrecios(true)">
+            Precios del catálogo
+          </v-btn>
+          <v-btn block variant="text" rounded="pill" @click="dialogCopiaPrecios.mostrar = false">
+            Cancelar
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-snackbar v-model="snackbar.show" :color="snackbar.color" rounded="pill">
       {{ snackbar.text }}
     </v-snackbar>
@@ -1197,6 +1220,9 @@ const imprimirPDFMultiple = async () => {
 };
 
 const replicarCargando = ref<string | null>(null);
+const cargandoPreciosCatalogo = ref(false);
+const dialogCopiaPrecios = ref({ mostrar: false, pedido: null as any, cliente: null as any });
+
 const replicarPedido = async (item: any) => {
   replicarCargando.value = item.ORDERID;
   try {
@@ -1208,13 +1234,40 @@ const replicarPedido = async (item: any) => {
       NOMBRECLIENTE: item.NOMBRECLIENTE || `Cliente ${item.CLIENTEID}`,
       ID: String(item.CLIENTEID),
     };
-    carritoStore.cargarDesdeOrden(cliente, pedido.lineas || []);
-    router.push('/carrito');
+    dialogCopiaPrecios.value = { mostrar: true, pedido, cliente };
   } catch {
     lanzarNotificacion('Error al replicar el pedido', 'error');
   } finally {
     replicarCargando.value = null;
   }
+};
+
+const confirmarCopiaPrecios = async (usarCatalogo: boolean) => {
+  const { pedido, cliente } = dialogCopiaPrecios.value;
+  let lineas = pedido.lineas || [];
+
+  if (usarCatalogo) {
+    cargandoPreciosCatalogo.value = true;
+    try {
+      const codigos = lineas.map((l: any) => l.CODARTICULO).join(',');
+      const res = await axios.get(`${import.meta.env.VITE_API_URL}/products/precios-catalogo?codigos=${codigos}`);
+      if (res.data.success) {
+        const preciosMap = new Map<number, number>(res.data.data.map((r: any) => [Number(r.CODARTICULO), Number(r.PNETO)]));
+        lineas = lineas.map((l: any) => {
+          const pneto = preciosMap.get(Number(l.CODARTICULO));
+          return pneto !== undefined ? { ...l, PRECIOBRUTO: pneto, PRECIOUNITARIO: pneto } : l;
+        });
+      }
+    } catch {
+      lanzarNotificacion('No se pudieron obtener precios del catálogo', 'warning');
+    } finally {
+      cargandoPreciosCatalogo.value = false;
+    }
+  }
+
+  dialogCopiaPrecios.value.mostrar = false;
+  carritoStore.cargarDesdeOrden(cliente, lineas);
+  router.push('/carrito');
 };
 
 const verPreview = async (item: any) => {

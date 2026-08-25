@@ -59,11 +59,11 @@
                       variant="tonal" 
                       size="x-small" 
                       @click="actualizarCantidad(item, 1)" 
-                      :disabled="item.cantidad >= getStockDisponible(item)"
-                      :color="item.cantidad >= getStockDisponible(item) ? 'grey' : 'primary'"
+                      :disabled="getStockDisponible(item) !== null && item.cantidad >= (getStockDisponible(item) as number)"
+                      :color="getStockDisponible(item) !== null && item.cantidad >= (getStockDisponible(item) as number) ? 'grey' : 'primary'"
                     ></v-btn>
                   </div>
-                  <div class="text-caption text-grey-darken-1 mt-1">Stock: {{ getStockDisponible(item) }}</div>
+                  <div class="text-caption text-grey-darken-1 mt-1">Stock: {{ getStockDisponible(item) ?? '∞' }}</div>
                 </td>
 
                 <td class="text-right">
@@ -141,16 +141,16 @@
             autofocus
             class="mt-2"
             min="1"
-            :error="modalEdicion.nuevaCantidad > modalEdicion.stockMax"
-            :error-messages="modalEdicion.nuevaCantidad > modalEdicion.stockMax ? 'Excede stock' : ''"
+            :error="modalEdicion.stockMax !== null && modalEdicion.nuevaCantidad > modalEdicion.stockMax"
+            :error-messages="modalEdicion.stockMax !== null && modalEdicion.nuevaCantidad > modalEdicion.stockMax ? 'Excede stock' : ''"
             hide-details="auto"
           ></v-text-field>
-          <div class="text-caption mt-2" :class="modalEdicion.nuevaCantidad > modalEdicion.stockMax ? 'text-error' : 'text-grey'">
+          <div v-if="modalEdicion.stockMax !== null" class="text-caption mt-2" :class="modalEdicion.nuevaCantidad > modalEdicion.stockMax ? 'text-error' : 'text-grey'">
             Máximo disponible: {{ modalEdicion.stockMax }}
           </div>
         </v-card-text>
         <v-card-actions>
-          <v-btn block color="primary" variant="elevated" rounded="pill" @click="guardarNuevaCantidad" :disabled="modalEdicion.nuevaCantidad <= 0 || modalEdicion.nuevaCantidad > modalEdicion.stockMax">Guardar</v-btn>
+          <v-btn block color="primary" variant="elevated" rounded="pill" @click="guardarNuevaCantidad" :disabled="modalEdicion.nuevaCantidad <= 0 || (modalEdicion.stockMax !== null && modalEdicion.nuevaCantidad > modalEdicion.stockMax)">Guardar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -223,7 +223,7 @@ const router = useRouter();
 const enviando = ref(false);
 const numeroReservado = ref<number | null>(null);
 
-const modalEdicion = ref({ mostrar: false, nuevaCantidad: 0, stockMax: 0, item: null as any });
+const modalEdicion = ref({ mostrar: false, nuevaCantidad: 0, stockMax: null as number | null, item: null as any });
 const modalDescuento = ref({ mostrar: false, nuevoValor: 0, item: null as any });
 const snackbarStock = ref({ show: false, text: '', color: 'orange-darken-3' });
 
@@ -261,12 +261,15 @@ const montoIVALinea = (item: any): number => {
   return neto * item.cantidad * (Number(item.PORCENTAJEIVA ?? 0) / 100);
 };
 
-const getStockDisponible = (item: any) => item.stocks?.reduce((t: number, s: any) => t + s.STOCK, 0) || 0;
+const getStockDisponible = (item: any): number | null => {
+  if (!item.stocks) return null;
+  return item.stocks.reduce((t: number, s: any) => t + s.STOCK, 0);
+};
 
 const actualizarCantidad = (item: any, cambio: number) => {
   const stockMax = getStockDisponible(item);
   const n = item.cantidad + cambio;
-  if (cambio > 0 && n > stockMax) {
+  if (cambio > 0 && stockMax !== null && n > stockMax) {
     lanzarAviso(`Stock insuficiente. Solo hay ${stockMax} disponibles.`);
     return;
   }
@@ -285,7 +288,7 @@ const abrirModalEdicion = (item: any) => {
 
 const guardarNuevaCantidad = () => {
   const { nuevaCantidad, stockMax, item } = modalEdicion.value;
-  if (nuevaCantidad > stockMax) {
+  if (stockMax !== null && nuevaCantidad > stockMax) {
     lanzarAviso(`No puedes exceder el stock de ${stockMax} unidades.`);
     return;
   }

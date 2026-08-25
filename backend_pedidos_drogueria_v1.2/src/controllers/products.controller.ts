@@ -75,6 +75,18 @@ export class ProductsController {
         }
     }
 
+    static async getPreciosCatalogoBulk(req: Request, res: Response): Promise<void> {
+        const raw = String(req.query['codigos'] ?? '');
+        const ids = raw.split(',').map(Number).filter(n => n > 0);
+        if (ids.length === 0) { res.json({ success: true, data: [] }); return; }
+        try {
+            const data = await ProductsService.getPreciosCatalogoBulk(ids);
+            res.json({ success: true, data });
+        } catch (err: any) {
+            res.status(500).json({ success: false, message: err.message });
+        }
+    }
+
     static async getCatalogoSegmentos(_req: Request, res: Response): Promise<void> {
         try {
             const rows = await ProductsService.getCatalogoSegmentos();
