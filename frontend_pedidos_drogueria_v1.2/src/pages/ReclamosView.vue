@@ -188,6 +188,7 @@ import { useAuthStore } from '../stores/useAuthStore';
 import logoSrc from '../assets/drogueria_logo.png';
 
 const API       = `${import.meta.env.VITE_API_URL}/api`;
+const BASE      = import.meta.env.VITE_API_URL;
 const authStore = useAuthStore();
 
 const logoBase64 = ref('');
@@ -245,7 +246,7 @@ const buscarArticulo = (linea: LineaForm, q: string, idx: number) => {
   if (!q || q.length < 2) { linea._arts = []; return; }
   _artTimers[idx] = setTimeout(async () => {
     try {
-      const res = await axios.get(`${API}/products/get-products`, {
+      const res = await axios.get(`${BASE}/products/get-products`, {
         params: { articulo: q, page: 1, limit: 15 },
       });
       linea._arts = res.data.data ?? res.data.products ?? [];
@@ -365,7 +366,7 @@ const buscarClientes = async () => {
   if (!busquedaCliente.value) return;
   cargandoClientes.value = true;
   try {
-    const res = await axios.get(`${API}/clientes`, { params: { cif: busquedaCliente.value } });
+    const res = await axios.get(`${BASE}/clientes`, { params: { cif: busquedaCliente.value } });
     if (res.data.success) clientesEncontrados.value = res.data.clientes;
   } finally { cargandoClientes.value = false; }
 };
