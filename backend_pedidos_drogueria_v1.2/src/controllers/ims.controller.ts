@@ -95,18 +95,18 @@ export class ImsController {
                     INNER JOIN CLIENTESENVIO CE WITH(NOLOCK) ON CE.CODCLIENTE = CL.CODCLIENTE AND CE.CODENVIO = 0
                     WHERE CL.NIF20 NOT LIKE 'V%'
                       AND ISNULL(CCL.SICM, '') <> ''
+                      AND CL.CODCLIENTE NOT IN (3971, 3972)
                 `),
                 pool.request().query(`
                     SELECT
                         ART.CODARTICULO,
-                        ART.REFPROVEEDOR CODBARRAS,
                         ARCL.DESCRIPCIONLARGA DESCRIPCION,
                         M.DESCRIPCION LABORATORIO,
                         ISNULL(PV.PNETO, 0) PRECIO,
                         ART.REFPROVEEDOR _CODBARRAS
                     FROM ARTICULOS ART WITH(NOLOCK)
                     LEFT JOIN ARTICULOSCAMPOSLIBRES ARCL WITH(NOLOCK) ON ARCL.CODARTICULO = ART.CODARTICULO
-                    LEFT JOIN PRECIOSVENTA PV WITH(NOLOCK) ON PV.CODARTICULO = ART.CODARTICULO AND PV.IDTARIFAV = 1
+                    LEFT JOIN PRECIOSVENTA PV WITH(NOLOCK) ON PV.CODARTICULO = ART.CODARTICULO AND PV.COLOR = '.' AND PV.TALLA = '.' AND PV.IDTARIFAV = 1
                     LEFT JOIN MARCA M WITH(NOLOCK) ON M.CODMARCA = ART.MARCA
                     WHERE ART.DPTO = 1
                       AND (ART.DESCATALOGADO = 'F' OR ART.DESCATALOGADO IS NULL)
@@ -115,18 +115,16 @@ export class ImsController {
 
                     SELECT
                         CONCAT(1, Codigo),
-                        CodBarras  COLLATE Modern_Spanish_CI_AS,
                         Descripcion COLLATE Modern_Spanish_CI_AS,
-                        Marca      COLLATE Modern_Spanish_CI_AS,
+                        Marca       COLLATE Modern_Spanish_CI_AS,
                         Precio,
-                        CodBarras  COLLATE Modern_Spanish_CI_AS
+                        CodBarras   COLLATE Modern_Spanish_CI_AS
                     FROM ListadoMaestroProteoFaltantes
                 `),
                 pool.request().input('DESDE', desde).input('HASTA', hasta).query(`
                         SELECT
                             ART.CODARTICULO,
                             CASE WHEN CL.NIF20 LIKE 'V%' OR ISNULL(CCL.SICM, '') = '' THEN 1 ELSE CL.CODCLIENTE END AS CODCLIENTE,
-                            CASE WHEN CL.NIF20 LIKE 'V%' OR ISNULL(CCL.SICM, '') = '' THEN 'FARMACIA LA REALEZA, C. A' ELSE CL.NOMBRECLIENTE END AS NOMBRECLIENTE,
                             SUM(AVL.UNIDADESTOTAL) AS UNIDADES,
                             SUM(AVL.TOTAL) AS TOTAL_LINEA,
                             CAST(FV.FECHA AS DATE) AS FECHA
@@ -142,8 +140,7 @@ export class ImsController {
                           AND ART.DPTO = 1
                         GROUP BY
                             ART.CODARTICULO, FV.FECHA,
-                            CASE WHEN CL.NIF20 LIKE 'V%' OR ISNULL(CCL.SICM, '') = '' THEN 1 ELSE CL.CODCLIENTE END,
-                            CASE WHEN CL.NIF20 LIKE 'V%' OR ISNULL(CCL.SICM, '') = '' THEN 'FARMACIA LA REALEZA, C. A' ELSE CL.NOMBRECLIENTE END
+                            CASE WHEN CL.NIF20 LIKE 'V%' OR ISNULL(CCL.SICM, '') = '' THEN 1 ELSE CL.CODCLIENTE END
                         ORDER BY ART.CODARTICULO
                     `),
             ]);
@@ -169,7 +166,6 @@ export class ImsController {
             const wsP = wb.addWorksheet('Productos', { properties: { tabColor: { argb: '2E75B6' } } });
             aplicarCabecera(wsP, [
                 { header: 'CodProducto',  key: 'CODARTICULO',  width: 13 },
-                { header: 'CodBarras',    key: 'CODBARRAS',    width: 18 },
                 { header: 'Descripcion',  key: 'DESCRIPCION',  width: 82 },
                 { header: 'Laboratorio',  key: 'LABORATORIO',  width: 30 },
                 { header: 'Precio',       key: 'PRECIO',       width: 9,  numFmt: FMT_DEC2 },
@@ -182,12 +178,11 @@ export class ImsController {
             // ── Ventas ────────────────────────────────────────────────────────
             const wsV = wb.addWorksheet('Ventas', { properties: { tabColor: { argb: '2E75B6' } } });
             aplicarCabecera(wsV, [
-                { header: 'CodProducto',  key: 'CODARTICULO',  width: 13 },
-                { header: 'CodCliente',   key: 'CODCLIENTE',   width: 11 },
-                { header: 'NombreCliente',key: 'NOMBRECLIENTE',width: 40 },
-                { header: 'Unidades',     key: 'UNIDADES',     width: 10, numFmt: FMT_DEC2 },
-                { header: 'Total',        key: 'TOTAL_LINEA',  width: 12, numFmt: FMT_DEC2 },
-                { header: 'Fecha',        key: 'FECHA',        width: 12 },
+                { header: 'CodProducto', key: 'CODARTICULO', width: 13 },
+                { header: 'CodCliente',  key: 'CODCLIENTE',  width: 11 },
+                { header: 'Unidades',    key: 'UNIDADES',    width: 10, numFmt: FMT_DEC2 },
+                { header: 'Total',       key: 'TOTAL_LINEA', width: 12, numFmt: FMT_DEC2 },
+                { header: 'Fecha',       key: 'FECHA',       width: 12 },
             ]);
 
             let totalUnidades = 0;
@@ -203,12 +198,11 @@ export class ImsController {
             // Fila de totales
             const lastDataRow = ventasRes.recordset.length + 1; // +1 por cabecera
             const totRow = wsV.addRow({
-                CODARTICULO:  '',
-                CODCLIENTE:   '',
-                NOMBRECLIENTE: 'TOTAL',
-                UNIDADES:     totalUnidades,
-                TOTAL_LINEA:  totalMonto,
-                FECHA:        '',
+                CODARTICULO: 'TOTAL',
+                CODCLIENTE:  '',
+                UNIDADES:    totalUnidades,
+                TOTAL_LINEA: totalMonto,
+                FECHA:       '',
             });
             totRow.eachCell(cell => {
                 cell.font = { bold: true, name: 'Calibri', size: 11 };
