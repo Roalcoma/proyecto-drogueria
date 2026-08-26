@@ -94,7 +94,6 @@ export class ImsController {
                     INNER JOIN CLIENTESCAMPOSLIBRES CCL WITH(NOLOCK) ON CCL.CODCLIENTE = CL.CODCLIENTE
                     INNER JOIN CLIENTESENVIO CE WITH(NOLOCK) ON CE.CODCLIENTE = CL.CODCLIENTE AND CE.CODENVIO = 0
                     WHERE CL.NIF20 NOT LIKE 'V%'
-                      AND ISNULL(CCL.SICM, '') <> ''
                       AND CL.CODCLIENTE NOT IN (3971, 3972)
                 `),
                 pool.request().query(`
