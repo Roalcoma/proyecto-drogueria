@@ -110,6 +110,17 @@ export class ImsController {
                     LEFT JOIN MARCA M WITH(NOLOCK) ON M.CODMARCA = ART.MARCA
                     WHERE ART.DPTO = 1
                       AND (ART.DESCATALOGADO = 'F' OR ART.DESCATALOGADO IS NULL)
+
+                    UNION ALL
+
+                    SELECT
+                        CONCAT(1, Codigo),
+                        CodBarras  COLLATE Modern_Spanish_CI_AS,
+                        Descripcion COLLATE Modern_Spanish_CI_AS,
+                        Marca      COLLATE Modern_Spanish_CI_AS,
+                        Precio,
+                        CodBarras  COLLATE Modern_Spanish_CI_AS
+                    FROM ListadoMaestroProteoFaltantes
                 `),
                 pool.request().input('DESDE', desde).input('HASTA', hasta).query(`
                         SELECT
