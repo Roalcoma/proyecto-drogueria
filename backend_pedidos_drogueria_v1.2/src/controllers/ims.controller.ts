@@ -116,7 +116,7 @@ export class ImsController {
                         CONCAT(1, Codigo),
                         Descripcion COLLATE Modern_Spanish_CI_AS,
                         Marca       COLLATE Modern_Spanish_CI_AS,
-                        Precio,
+                        ROUND(Precio / dbo.F_GET_COTIZACION(GETDATE(), 1), 3),
                         CodBarras   COLLATE Modern_Spanish_CI_AS
                     FROM ListadoMaestroProteoFaltantes
                 `),
@@ -184,31 +184,9 @@ export class ImsController {
                 { header: 'Fecha',       key: 'FECHA',       width: 12 },
             ]);
 
-            let totalUnidades = 0;
-            let totalMonto    = 0;
             ventasRes.recordset.forEach(r => {
-                const u = Number(r.UNIDADES);
-                const m = Number(r.TOTAL_LINEA);
-                totalUnidades += u;
-                totalMonto    += m;
-                wsV.addRow({ ...r, UNIDADES: u, TOTAL_LINEA: m });
+                wsV.addRow({ ...r, UNIDADES: Number(r.UNIDADES), TOTAL_LINEA: Number(r.TOTAL_LINEA) });
             });
-
-            // Fila de totales
-            const lastDataRow = ventasRes.recordset.length + 1; // +1 por cabecera
-            const totRow = wsV.addRow({
-                CODARTICULO: 'TOTAL',
-                CODCLIENTE:  '',
-                UNIDADES:    totalUnidades,
-                TOTAL_LINEA: totalMonto,
-                FECHA:       '',
-            });
-            totRow.eachCell(cell => {
-                cell.font = { bold: true, name: 'Calibri', size: 11 };
-                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'D6E4F0' } };
-            });
-            totRow.getCell('UNIDADES').numFmt   = FMT_DEC2;
-            totRow.getCell('TOTAL_LINEA').numFmt = FMT_DEC2;
 
             // Auditoría: registrar descarga
             pool.request()
