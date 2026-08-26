@@ -126,6 +126,8 @@ export const useCarritoStore = defineStore('carrito', () => {
                 CODALMACEN: l.CODALMACEN,
                 IDTARIFAV: l.IDTARIFAV,
                 NODTOAPLICABLE: l.NODTOAPLICABLE,
+                DIASPROTECCION: l.DIASPROTECCION,
+                ES_PSICOTROPICO: l.ES_PSICOTROPICO,
                 PRECIOBRUTO: l.PRECIOBRUTO,
                 PRECIOUNITARIO: l.PRECIOUNITARIO,
                 prices: [{ PNETO: l.PRECIOBRUTO ?? l.PRECIOUNITARIO }],

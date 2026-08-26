@@ -596,6 +596,7 @@ export class PedidosServices {
             // 2. Buscamos las líneas con todos los campos de descuento
             const lineasResult = await pool.request()
                 .input('ORDERID', mssql.VarChar(50), orderId)
+                .input('dptoPsico', mssql.Int, getDbConfig().dptoPsicotropicos)
                 .query(`
                     SELECT
                         LP.LINEAID,
@@ -614,6 +615,7 @@ export class PedidosServices {
                         LP.TOTALLINEA,
                         ISNULL(PCL.DIASPROTECCION, 0) AS DIASPROTECCION,
                         ISNULL(ARTICULOS.NODTOAPLICABLE, 0) AS NODTOAPLICABLE,
+                        CASE WHEN ARTICULOS.SECCION = @dptoPsico THEN 'T' ELSE 'F' END AS ES_PSICOTROPICO,
                         ISNULL(LP.PORCENTAJEIVA, 0) AS PORCENTAJEIVA,
                         ISNULL(LP.MONTOIVA, 0) AS MONTOIVA,
                         ISNULL(LV.LOTE, '') AS LOTE,
