@@ -18,6 +18,7 @@ import facturasRouter   from "./routers/facturas.router";
 import ftpRouter        from "./routers/ftp.router";
 import metasRouter      from "./routers/metas.router";
 import imsRouter        from "./routers/ims.router";
+import rechequeoRouter  from "./routers/rechequeo.router";
 import { ExchangeService }    from "./services/exchange.service";
 import { AuthService }        from "./services/auth.service";
 import { PromocionesService } from "./services/promociones.service";
@@ -27,6 +28,7 @@ import { EcommerceService }   from "./services/ecommerce.service";
 import { FtpService }         from "./services/ftp.service";
 import { MetasService }       from "./services/metas.service";
 import { ImsController }      from "./controllers/ims.controller";
+import { RechequeoService }  from "./services/rechequeo.service";
 import { RuteroService }      from "./services/rutero.service";
 import { BrandingService }    from "./services/branding.service";
 import { getDbConfig }        from "./services/dbconfig.service";
@@ -110,6 +112,7 @@ app.use('/facturas',   facturasRouter);
 app.use('/ftp',        ftpRouter);
 app.use('/api/metas-vendedor', metasRouter);
 app.use('/ims',            imsRouter);
+app.use('/rechequeo',     rechequeoRouter);
 
 // ── Frontend estático (SPA) ───────────────────────────────────────────────
 const frontendDist = process.env.FRONTEND_DIST
@@ -136,6 +139,8 @@ app.listen(port, async () => {
     await FtpService.initTablas();
     await MetasService.initTablas();
     await ImsController.initTablas();
+    await RechequeoService.initTablas();
+    await RechequeoService.initTablasCierre();
     if (getDbConfig().ftpHabilitado) {
         FtpService.iniciarServidor().catch(console.error);
     }
