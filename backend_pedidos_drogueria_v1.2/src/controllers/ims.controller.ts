@@ -93,7 +93,7 @@ export class ImsController {
                     FROM CLIENTES CL WITH(NOLOCK)
                     INNER JOIN CLIENTESCAMPOSLIBRES CCL WITH(NOLOCK) ON CCL.CODCLIENTE = CL.CODCLIENTE
                     INNER JOIN CLIENTESENVIO CE WITH(NOLOCK) ON CE.CODCLIENTE = CL.CODCLIENTE AND CE.CODENVIO = 0
-                    WHERE CL.NIF20 NOT LIKE 'V%'
+                    WHERE UPPER(CL.NIF20) NOT LIKE 'V%'
                       AND CL.CODCLIENTE NOT IN (3971, 3972)
                 `),
                 pool.request().query(`
@@ -123,7 +123,7 @@ export class ImsController {
                 pool.request().input('DESDE', desde).input('HASTA', hasta).query(`
                         SELECT
                             ART.CODARTICULO,
-                            CASE WHEN CL.NIF20 LIKE 'V%' OR ISNULL(CCL.SICM, '') = '' THEN 1 ELSE CL.CODCLIENTE END AS CODCLIENTE,
+                            CASE WHEN (CL.NIF20 LIKE 'V%' OR CL.NIF20 LIKE 'G%') THEN 1 ELSE CL.CODCLIENTE END AS CODCLIENTE,
                             SUM(AVL.UNIDADESTOTAL) AS UNIDADES,
                             SUM(AVL.TOTAL) AS TOTAL_LINEA,
                             CAST(FV.FECHA AS DATE) AS FECHA
@@ -139,7 +139,7 @@ export class ImsController {
                           AND ART.DPTO = 1
                         GROUP BY
                             ART.CODARTICULO, FV.FECHA,
-                            CASE WHEN CL.NIF20 LIKE 'V%' OR ISNULL(CCL.SICM, '') = '' THEN 1 ELSE CL.CODCLIENTE END
+                            CASE WHEN (CL.NIF20 LIKE 'V%' OR CL.NIF20 LIKE 'G%') THEN 1 ELSE CL.CODCLIENTE END
                         ORDER BY ART.CODARTICULO
                     `),
             ]);

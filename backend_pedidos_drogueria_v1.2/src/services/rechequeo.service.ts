@@ -83,11 +83,27 @@ export class RechequeoService {
                     IDCAB             INT            NOT NULL REFERENCES ${ESQ}.APP_RECHEQUEO_CERRADO_CAB(ID),
                     NUMLINEA          INT            NOT NULL,
                     CODARTICULO       NVARCHAR(20)   NOT NULL,
+                    TALLA             NVARCHAR(50)   NOT NULL DEFAULT '@',
+                    COLOR             NVARCHAR(10)   NOT NULL DEFAULT '',
                     IDFACTURA         NVARCHAR(100)  NOT NULL,
                     UNIDADES_CONTADAS DECIMAL(10,2)  NOT NULL DEFAULT 0,
                     PRECIO            DECIMAL(10,4)  NOT NULL DEFAULT 0,
+                    DTOCOMERCIAL      DECIMAL(10,4)  NOT NULL DEFAULT 0,
                     FECHA             DATETIME       NOT NULL DEFAULT GETDATE()
                 )
+            `);
+            // Agregar columnas si la tabla ya existía sin ellas
+            await pool.request().query(`
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='APP_RECHEQUEO_CERRADO_LIN' AND COLUMN_NAME='TALLA')
+                    ALTER TABLE ${ESQ}.APP_RECHEQUEO_CERRADO_LIN ADD TALLA NVARCHAR(50) NOT NULL DEFAULT '@'
+            `);
+            await pool.request().query(`
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='APP_RECHEQUEO_CERRADO_LIN' AND COLUMN_NAME='COLOR')
+                    ALTER TABLE ${ESQ}.APP_RECHEQUEO_CERRADO_LIN ADD COLOR NVARCHAR(10) NOT NULL DEFAULT ''
+            `);
+            await pool.request().query(`
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='APP_RECHEQUEO_CERRADO_LIN' AND COLUMN_NAME='DTOCOMERCIAL')
+                    ALTER TABLE ${ESQ}.APP_RECHEQUEO_CERRADO_LIN ADD DTOCOMERCIAL DECIMAL(10,4) NOT NULL DEFAULT 0
             `);
             console.log('[Rechequeo] Tablas CERRADO verificadas/creadas');
         } catch (err) {
@@ -192,6 +208,15 @@ export class RechequeoService {
 
         if (!cabsRes.recordset.length) throw new Error('No se encontraron conteos activos para este pedido');
 
+        // Obtener DTOCOMERCIAL del pedido de compra
+        const dtoRes = await pool.request()
+            .input('NS2', mssql.NVarChar(4),  numserie)
+            .input('NP2', mssql.Int,          numpedido)
+            .input('N2',  mssql.NChar(1),     n)
+            .query(`SELECT TOP 1 ISNULL(DTOCOMERCIAL,0) AS DTO FROM PEDCOMPRACAB WITH(NOLOCK)
+                    WHERE NUMSERIE=@NS2 AND NUMPEDIDO=@NP2 AND N=@N2`);
+        const dto: number = Number(dtoRes.recordset[0]?.DTO ?? 0);
+
         for (const cab of cabsRes.recordset) {
             // Saltar cabs vacíos (sin conteo registrado)
             const detCheck = await pool.request()
@@ -216,17 +241,33 @@ export class RechequeoService {
 
             // Insertar lineas cerradas
             await pool.request()
-                .input('IDCAB',     mssql.Int,           cab.ID)
-                .input('IDCERRADO', mssql.Int,           idCerrado)
-                .input('FAC',       mssql.NVarChar(100), cab.IDFACTURA)
-                .input('NS',        mssql.NVarChar(4),   numserie)
-                .input('NP',        mssql.Int,           numpedido)
-                .input('N',         mssql.NChar(1),      n)
+                .input('IDCAB',     mssql.Int,            cab.ID)
+                .input('IDCERRADO', mssql.Int,            idCerrado)
+                .input('FAC',       mssql.NVarChar(100),  cab.IDFACTURA)
+                .input('NS',        mssql.NVarChar(4),    numserie)
+                .input('NP',        mssql.Int,            numpedido)
+                .input('N',         mssql.NChar(1),       n)
+                .input('DTO',       mssql.Decimal(10, 4), dto)
                 .query(`
                     INSERT INTO ${ESQ}.APP_RECHEQUEO_CERRADO_LIN
-                        (IDCAB, NUMLINEA, CODARTICULO, IDFACTURA, UNIDADES_CONTADAS, PRECIO)
-                    SELECT @IDCERRADO, ISNULL(LIN.NUMLINEA,0), D.CODARTICULO, @FAC,
-                           D.UNIDADES_CONTADAS, ISNULL(LIN.PRECIO, 0)
+                        (IDCAB, NUMLINEA, CODARTICULO, TALLA, COLOR, IDFACTURA, UNIDADES_CONTADAS, PRECIO, DTOCOMERCIAL)
+                    SELECT
+                        @IDCERRADO,
+                        ISNULL(LIN.NUMLINEA, 0),
+                        D.CODARTICULO,
+                        '@',
+                        RIGHT(REPLICATE('0', 10) + CAST(
+                            ISNULL((
+                                SELECT MAX(CAST(A.COLOR AS BIGINT))
+                                FROM ARTICULOSLIN A WITH(NOLOCK)
+                                WHERE A.CODARTICULO = CAST(D.CODARTICULO AS INT)
+                                  AND A.TALLA COLLATE Latin1_General_CS_AI = '@'
+                            ), 0) + 1
+                        AS NVARCHAR(10)), 10),
+                        @FAC,
+                        D.UNIDADES_CONTADAS,
+                        ISNULL(LIN.PRECIO, 0),
+                        @DTO
                     FROM ${ESQ}.APP_RECHEQUEO_DET D
                     LEFT JOIN PEDCOMPRALIN LIN WITH(NOLOCK)
                         ON LIN.NUMSERIE=@NS AND LIN.NUMPEDIDO=@NP AND LIN.N=@N

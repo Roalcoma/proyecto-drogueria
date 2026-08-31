@@ -189,6 +189,7 @@ onMounted(async () => {
   await brandingStore.init();
   applyBrandingTheme();
   if (authStore.isAuthenticated) {
+    authStore.refreshModulos();
     obtenerTasa();
     promocionesStore.cargarVigentes().then(() => carritoStore.recalcularPromociones());
   }

@@ -98,6 +98,19 @@ export const useAuthStore = defineStore('auth', () => {
     const tienePermiso = (ruta: string): boolean =>
         modulosVisibles.value.some(m => m.ruta === ruta);
 
+    const refreshModulos = async (): Promise<void> => {
+        if (!token.value) return;
+        try {
+            const res = await axios.get(`${API}/me`);
+            if (res.data.success && res.data.usuario) {
+                usuario.value = { ...usuario.value!, ...res.data.usuario };
+                localStorage.setItem(STORAGE_KEY, JSON.stringify({ token: token.value, usuario: usuario.value }));
+            }
+        } catch {
+            // silencioso — si falla no cerramos sesión, el 401 ya lo maneja el interceptor
+        }
+    };
+
     const login = async (clave: string): Promise<{ success: boolean; message: string }> => {
         try {
             const res = await axios.post(`${API}/login`, { clave });
@@ -123,5 +136,5 @@ export const useAuthStore = defineStore('auth', () => {
         stopActivityWatcher();
     };
 
-    return { token, usuario, isAuthenticated, esAdmin, puedeDescuentoLinea, puedeRuteroAdmin, puedeGestionarFtpUsuarios, puedeImsReporte, modulosVisibles, tienePermiso, login, logout, modoPruebas, toggleModoPruebas, resetInactivityTimer };
+    return { token, usuario, isAuthenticated, esAdmin, puedeDescuentoLinea, puedeRuteroAdmin, puedeGestionarFtpUsuarios, puedeImsReporte, modulosVisibles, tienePermiso, login, logout, refreshModulos, modoPruebas, toggleModoPruebas, resetInactivityTimer };
 });

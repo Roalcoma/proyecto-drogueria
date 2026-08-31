@@ -11,9 +11,10 @@ export interface CommitEntry {
   texto: string;
 }
 
-export const APP_VERSION = '1.2.19';
+export const APP_VERSION = '1.2.20';
 
 export const VERSIONES: VersionEntry[] = [
+  { version: '1.2.20', fecha: '2026-08-31', desde: '2026-08-31' },
   { version: '1.2.19', fecha: '2026-08-25', desde: '2026-08-25' },
   { version: '1.2.18', fecha: '2026-08-21', desde: '2026-08-21' },
   { version: '1.2.17', fecha: '2026-08-18', desde: '2026-08-18' },
@@ -37,6 +38,8 @@ export const VERSIONES: VersionEntry[] = [
 ];
 
 export const COMMITS: CommitEntry[] = [
+  { hash: 'pending', date: '2026-08-31', tipo: 'fix',  texto: 'rechequeo: CERRADO_LIN agrega columnas TALLA (@), COLOR (correlativo ARTICULOSLIN) y DTOCOMERCIAL (PEDCOMPRACAB)' },
+  { hash: 'pending', date: '2026-08-31', tipo: 'fix',  texto: 'auth: refreshModulos al iniciar app — módulos nuevos visibles en sidebar sin cerrar sesión' },
   { hash: '94d0287', date: '2026-08-25', tipo: 'fix',     texto: 'reclamos: corrige URLs de búsqueda de cliente y artículo — usaban /api/clientes y /api/products incorrectamente' },
   { hash: '97cdc38', date: '2026-08-25', tipo: 'fix',     texto: 'IMS ventas: nueva consulta con lógica de cliente (NIF V% → CODCLIENTE=1), filtro DPTO=1 y TOTAL_LINEA sin formatear' },
   { hash: '4cc0bd3', date: '2026-08-25', tipo: 'fix',     texto: 'IMS productos: nueva consulta por DPTO=1/DESCATALOGADO con CODBARRAS, DESCRIPCIONLARGA y PRECIO numérico' },
