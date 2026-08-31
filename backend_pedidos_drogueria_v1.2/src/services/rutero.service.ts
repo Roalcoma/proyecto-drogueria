@@ -173,7 +173,7 @@ export class RuteroService {
                        L.USUARIO,
                        CONVERT(VARCHAR(19), L.FECHA, 120) AS FECHA,
                        L.DETALLES
-                FROM APP_RUTERO_LOG L
+                FROM APP_RUTERO_LOG L WITH (NOLOCK)
                 LEFT JOIN APP_RUTEROS AR WITH(NOLOCK) ON AR.ID = L.IDRUTERO
                 ${where}
                 ORDER BY L.FECHA DESC
@@ -181,7 +181,7 @@ export class RuteroService {
             `),
             reqCnt.query(`
                 SELECT COUNT(*) AS TOTAL
-                FROM APP_RUTERO_LOG L
+                FROM APP_RUTERO_LOG L WITH (NOLOCK)
                 LEFT JOIN APP_RUTEROS AR WITH(NOLOCK) ON AR.ID = L.IDRUTERO
                 ${where}
             `),
@@ -252,7 +252,7 @@ export class RuteroService {
         // Facturas ya asignadas a cualquier rutero (sin importar estado)
         const pendRes = await ruteroDB.request().query(`
             SELECT NUMSERIE, NUMFACTURA
-            FROM APP_RUTEROS_DETALLE
+            FROM APP_RUTEROS_DETALLE WITH (NOLOCK)
         `);
         const pendSet = new Set<string>(
             pendRes.recordset.map((r: any) => `${r.NUMSERIE}|${r.NUMFACTURA}`)
@@ -320,7 +320,7 @@ export class RuteroService {
 
         const numRes = await pool.request().query(`
             SELECT ISNULL(MAX(CAST(SUBSTRING(NUMERO, 5, LEN(NUMERO)) AS INT)), 0) + 1 AS NEXT_NUM
-            FROM APP_RUTEROS
+            FROM APP_RUTEROS WITH (NOLOCK)
         `);
         const numero = 'RUT-' + String(numRes.recordset[0].NEXT_NUM).padStart(6, '0');
 
@@ -469,7 +469,7 @@ export class RuteroService {
         }
         const row = await pool.request()
             .input('ID', mssql.Int, idrutero)
-            .query(`SELECT PICKING_USUARIO FROM APP_RUTEROS WHERE ID = @ID`);
+            .query(`SELECT PICKING_USUARIO FROM APP_RUTEROS WITH (NOLOCK) WHERE ID = @ID`);
         return { ok: false, bloqueadoPor: row.recordset[0]?.PICKING_USUARIO ?? 'otro usuario' };
     }
 
@@ -530,7 +530,7 @@ export class RuteroService {
             .input('IDRUTERO', mssql.Int, idrutero)
             .query(`
                 SELECT NUMSERIE, NUMFACTURA, FECHARECIBIDO
-                FROM APP_RUTEROS_DETALLE
+                FROM APP_RUTEROS_DETALLE WITH (NOLOCK)
                 WHERE IDRUTERO = @IDRUTERO
             `);
         const detalle: { NUMSERIE: string; NUMFACTURA: number; FECHARECIBIDO: Date | null }[] =
@@ -599,7 +599,7 @@ export class RuteroService {
         // CAJAS_ESCANEADAS por factura (BD rutero)
         const cajasRes = await ruteroDB.request()
             .input('IDRUTERO', mssql.Int, idrutero)
-            .query(`SELECT NUMSERIE, NUMFACTURA, COUNT(*) AS CNT FROM APP_RUTEROS_CAJAS WHERE IDRUTERO = @IDRUTERO GROUP BY NUMSERIE, NUMFACTURA`);
+            .query(`SELECT NUMSERIE, NUMFACTURA, COUNT(*) AS CNT FROM APP_RUTEROS_CAJAS WITH (NOLOCK) WHERE IDRUTERO = @IDRUTERO GROUP BY NUMSERIE, NUMFACTURA`);
         const cajasMap = new Map<string, number>(
             cajasRes.recordset.map((r: any) => [`${String(r.NUMSERIE).trim()}|${r.NUMFACTURA}`, Number(r.CNT)])
         );
@@ -667,7 +667,7 @@ export class RuteroService {
 
         const detRes = await ruteroDB.request()
             .input('IDRUTERO', mssql.Int, idrutero)
-            .query(`SELECT NUMSERIE, NUMFACTURA FROM APP_RUTEROS_DETALLE WHERE IDRUTERO = @IDRUTERO`);
+            .query(`SELECT NUMSERIE, NUMFACTURA FROM APP_RUTEROS_DETALLE WITH (NOLOCK) WHERE IDRUTERO = @IDRUTERO`);
         const detalle = detRes.recordset;
         if (!detalle.length) return { totalCajas: 0, cajasEscaneadas: 0, lineas: [] };
 
@@ -697,7 +697,7 @@ export class RuteroService {
 
         const cajasRes = await ruteroDB.request()
             .input('IDRUTERO', mssql.Int, idrutero)
-            .query(`SELECT IDCONTEO, COUNT(*) AS CNT FROM APP_RUTEROS_CAJAS WHERE IDRUTERO = @IDRUTERO GROUP BY IDCONTEO`);
+            .query(`SELECT IDCONTEO, COUNT(*) AS CNT FROM APP_RUTEROS_CAJAS WITH (NOLOCK) WHERE IDRUTERO = @IDRUTERO GROUP BY IDCONTEO`);
         const escMap = new Map<string, number>(cajasRes.recordset.map((r: any) => [String(r.IDCONTEO), r.CNT]));
 
         const lineas = conteoRes.recordset.map((r: any) => ({
@@ -721,7 +721,7 @@ export class RuteroService {
         const ruteroDB0 = await connectRuteroDB();
         const sesRow = await ruteroDB0.request()
             .input('ID', mssql.Int, idrutero)
-            .query(`SELECT PICKING_USUARIO FROM APP_RUTEROS WHERE ID = @ID`);
+            .query(`SELECT PICKING_USUARIO FROM APP_RUTEROS WITH (NOLOCK) WHERE ID = @ID`);
         const dueño = sesRow.recordset[0]?.PICKING_USUARIO;
         if (dueño !== usuario)
             return { success: false, message: dueño ? `Rutero en sesión de ${dueño}` : 'Agrega este rutero a tu sesión de picking primero' };
@@ -770,7 +770,7 @@ export class RuteroService {
             .input('NUMSERIE',   mssql.VarChar(20), numserie)
             .input('NUMFACTURA', mssql.Int,         numfactura)
             .query(`
-                SELECT 1 FROM APP_RUTEROS_DETALLE
+                SELECT 1 FROM APP_RUTEROS_DETALLE WITH (NOLOCK)
                 WHERE IDRUTERO   = @IDRUTERO
                   AND NUMSERIE   COLLATE DATABASE_DEFAULT = @NUMSERIE COLLATE DATABASE_DEFAULT
                   AND NUMFACTURA = @NUMFACTURA
@@ -936,7 +936,7 @@ export class RuteroService {
 
         const sesRes = await ruteroDB.request()
             .input('USUARIO', mssql.VarChar(100), usuario)
-            .query(`SELECT ID FROM APP_RUTEROS WHERE PICKING_USUARIO = @USUARIO AND ESTADO = 'PENDIENTE'`);
+            .query(`SELECT ID FROM APP_RUTEROS WITH (NOLOCK) WHERE PICKING_USUARIO = @USUARIO AND ESTADO = 'PENDIENTE'`);
 
         const ids: number[] = sesRes.recordset.map((r: any) => Number(r.ID));
         if (!ids.length) return { ok: false, message: 'No tienes ruteros en tu sesión de picking' };
@@ -974,7 +974,7 @@ export class RuteroService {
         // Solo facturas sin fecha aún (las que ya tienen fecha no se tocan)
         const sinFecha = await ruteroDB.request()
             .input('IDRUTERO', mssql.Int, idrutero)
-            .query(`SELECT NUMSERIE, NUMFACTURA FROM APP_RUTEROS_DETALLE WHERE IDRUTERO = @IDRUTERO AND FECHARECIBIDO IS NULL`);
+            .query(`SELECT NUMSERIE, NUMFACTURA FROM APP_RUTEROS_DETALLE WITH (NOLOCK) WHERE IDRUTERO = @IDRUTERO AND FECHARECIBIDO IS NULL`);
 
         if (sinFecha.recordset.length > 0) {
             await ruteroDB.request()
@@ -1005,7 +1005,7 @@ export class RuteroService {
 
         const check = await ruteroDB.request()
             .input('IDRUTERO', mssql.Int, idrutero)
-            .query(`SELECT ESTADO FROM APP_RUTEROS WHERE ID = @IDRUTERO`);
+            .query(`SELECT ESTADO FROM APP_RUTEROS WITH (NOLOCK) WHERE ID = @IDRUTERO`);
 
         if (!check.recordset.length) throw new Error('Rutero no encontrado');
 
@@ -1037,7 +1037,7 @@ export class RuteroService {
 
         const detalles = await ruteroDB.request()
             .input('IDRUTERO', mssql.Int, idrutero)
-            .query(`SELECT NUMSERIE, NUMFACTURA FROM APP_RUTEROS_DETALLE WHERE IDRUTERO = @IDRUTERO`);
+            .query(`SELECT NUMSERIE, NUMFACTURA FROM APP_RUTEROS_DETALLE WITH (NOLOCK) WHERE IDRUTERO = @IDRUTERO`);
 
         await RuteroService.registrarLog('CAMBIAR_FECHA_RUTERO', usuario, idrutero, `=> ${fechaVal}`);
 

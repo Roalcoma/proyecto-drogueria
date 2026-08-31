@@ -96,7 +96,7 @@ export class AuthService {
                 .input('PASS', claveEncriptada)
                 .query(`
                     SELECT ${CAMPO_ID}, ${CAMPO_USUARIO}, ${CAMPO_VIS}, BLOQUEADO
-                    FROM VENDEDORES
+                    FROM VENDEDORES WITH (NOLOCK)
                     WHERE ${CAMPO_PASS} = @PASS AND ACTIVO = 'T'
                 `);
 
@@ -142,7 +142,7 @@ export class AuthService {
         const pool = await connectDb();
         const result = await pool.request()
             .input('ID', id)
-            .query(`SELECT ${CAMPO_VIS} FROM VENDEDORES WHERE ${CAMPO_ID} = @ID`);
+            .query(`SELECT ${CAMPO_VIS} FROM VENDEDORES WITH (NOLOCK) WHERE ${CAMPO_ID} = @ID`);
         return parsearVisibilidad(result.recordset[0]?.[CAMPO_VIS]);
     }
 
@@ -155,7 +155,7 @@ export class AuthService {
                 ISNULL(BLOQUEADO, 'F')            AS BLOQUEADO,
                 ISNULL(${CAMPO_VIS}, 0)           AS VISIBILIDAD,
                 ${CAMPO_ID}                       AS CODVENDEDOR
-            FROM VENDEDORES
+            FROM VENDEDORES WITH (NOLOCK)
             ORDER BY ${CAMPO_USUARIO}
         `);
         return result.recordset;

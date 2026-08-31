@@ -57,13 +57,17 @@ export class RechequeoController {
     }
 
     static async guardarConteo(req: Request, res: Response): Promise<void> {
-        const { idcab, codarticulo, unidades } = req.body;
+        const { idcab, codarticulo, unidades, lote, fechaVencimiento } = req.body;
         if (!idcab || !codarticulo || unidades == null) {
             res.status(400).json({ success: false, message: 'Faltan parámetros' });
             return;
         }
         try {
-            await RechequeoService.upsertDetalle(parseInt(idcab), codarticulo, Number(unidades));
+            await RechequeoService.upsertDetalle(
+                parseInt(idcab), codarticulo, Number(unidades),
+                lote?.trim() || undefined,
+                fechaVencimiento || undefined
+            );
             res.json({ success: true });
         } catch (err: any) {
             console.error('[Rechequeo] guardarConteo:', err.message);

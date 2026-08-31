@@ -20,8 +20,8 @@ export class loginServices {
                             , NEWPASSENTRADA
                             , NEWPASSREGISTRO
                             , VISIBILIDAD
-                        FROM 
-                            VENDEDORES
+                        FROM
+                            VENDEDORES WITH (NOLOCK)
                         WHERE
                             NEWPASSENTRADA = @PASSWORD`)
             

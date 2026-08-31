@@ -152,7 +152,7 @@ export class PedidosServices {
 
     static async getSeq(): Promise<number> {
         const pool = await connectDb();
-        const res = await pool.request().query(`SELECT ULTIMO_ID FROM ${esquema}.APP_PEDIDO_SEQ`);
+        const res = await pool.request().query(`SELECT ULTIMO_ID FROM ${esquema}.APP_PEDIDO_SEQ WITH (NOLOCK)`);
         return res.recordset[0]?.ULTIMO_ID ?? 0;
     }
 
@@ -204,7 +204,7 @@ export class PedidosServices {
                                 ORDERID, CLIENTEID, FECHA, ESTATUS, CODVENDEDOR, TOTALPRECIO, PROMO_NOMBRE
                             ) VALUES (
                                 @ORDERID, @CLIENTEID, GETDATE(), @ESTATUS,
-                                ISNULL(NULLIF((SELECT TOP 1 CAST(CCL.CODVENDEDOR AS INT) FROM CLIENTESCAMPOSLIBRES CCL WHERE CCL.CODCLIENTE = @CLIENTEID AND CCL.CODVENDEDOR IS NOT NULL AND LTRIM(RTRIM(CAST(CCL.CODVENDEDOR AS NVARCHAR)))!=''), 0), @CODVENDEDOR),
+                                ISNULL(NULLIF((SELECT TOP 1 CAST(CCL.CODVENDEDOR AS INT) FROM CLIENTESCAMPOSLIBRES CCL WITH (NOLOCK) WHERE CCL.CODCLIENTE = @CLIENTEID AND CCL.CODVENDEDOR IS NOT NULL AND LTRIM(RTRIM(CAST(CCL.CODVENDEDOR AS NVARCHAR)))!=''), 0), @CODVENDEDOR),
                                 @TOTALPRECIO, @PROMO_NOMBRE
                             );`);
             };
@@ -390,7 +390,7 @@ export class PedidosServices {
                     ISNULL(CLC.ZONA, '') AS ZONA, ISNULL(RUT.DESCRIPCION, '') AS RUTA,
                     V.NOMVENDEDOR,
                     CR.ESTATUS AS RIESGO_ESTATUS,
-                    (SELECT SUM(LP.PRODUCTCOUNT) FROM ${esquema}.LINEA_PED LP WHERE LP.ORDERID = CP.ORDERID) AS TOTALUNIDADES
+                    (SELECT SUM(LP.PRODUCTCOUNT) FROM ${esquema}.LINEA_PED LP WITH (NOLOCK) WHERE LP.ORDERID = CP.ORDERID) AS TOTALUNIDADES
                 FROM
                     ${esquema}.CABECERA_PED CP WITH (NOLOCK)
                     LEFT JOIN CLIENTES CL WITH (NOLOCK) ON CL.CODCLIENTE = CP.CLIENTEID
@@ -678,7 +678,7 @@ export class PedidosServices {
             const checkReq = new mssql.Request(transaction);
             const checkRes = await checkReq
                 .input('ORDERID', mssql.VarChar(50), orderId)
-                .query(`SELECT ESTATUS, TOTALPRECIO, CLIENTEID FROM ${esquema}.CABECERA_PED WHERE ORDERID = @ORDERID`);
+                .query(`SELECT ESTATUS, TOTALPRECIO, CLIENTEID FROM ${esquema}.CABECERA_PED WITH (NOLOCK) WHERE ORDERID = @ORDERID`);
 
             if (checkRes.recordset.length === 0) {
                 await transaction.rollback();
@@ -700,7 +700,7 @@ export class PedidosServices {
                 .input('ORDERID_SNAP', mssql.VarChar(50), orderId)
                 .query(`SELECT CODARTICULO, REFERENCIA, PRODUCTCOUNT, PRECIOUNITARIO,
                                DESCUENTO1, DESCUENTO2, DESCUENTO3, DESCUENTO4, PRECIOBRUTO
-                        FROM ${esquema}.LINEA_PED WHERE ORDERID = @ORDERID_SNAP`);
+                        FROM ${esquema}.LINEA_PED WITH (NOLOCK) WHERE ORDERID = @ORDERID_SNAP`);
             const lineasAntes = snapRes.recordset.map((r: any) => ({
                 cod:    r.CODARTICULO,
                 ref:    r.REFERENCIA ?? '',
@@ -721,7 +721,7 @@ export class PedidosServices {
                 .query(`
                     UPDATE ${esquema}.CABECERA_PED
                     SET CLIENTEID = @CLIENTEID,
-                        CODVENDEDOR = ISNULL((SELECT CODVENDEDOR FROM CLIENTES WHERE CODCLIENTE = @CLIENTEID), @CODVENDEDOR),
+                        CODVENDEDOR = ISNULL((SELECT CODVENDEDOR FROM CLIENTES WITH (NOLOCK) WHERE CODCLIENTE = @CLIENTEID), @CODVENDEDOR),
                         TOTALPRECIO = @TOTALPRECIO
                     WHERE ORDERID = @ORDERID
                 `);
@@ -848,7 +848,7 @@ export class PedidosServices {
         const req = pool.request();
         const placeholders = orderIds.map((id, i) => { req.input(`ID${i}`, mssql.VarChar(50), id); return `@ID${i}`; }).join(',');
         const ordersRes = await req.query(`
-            SELECT ORDERID, CLIENTEID, ESTATUS FROM ${esquema}.CABECERA_PED WHERE ORDERID IN (${placeholders})
+            SELECT ORDERID, CLIENTEID, ESTATUS FROM ${esquema}.CABECERA_PED WITH (NOLOCK) WHERE ORDERID IN (${placeholders})
         `);
         const orders = ordersRes.recordset;
 
@@ -880,7 +880,7 @@ export class PedidosServices {
                 cntReq.input(`CNT_ID${i}`, mssql.VarChar(50), id);
                 return `ORDERID = @CNT_ID${i} OR ORDERID LIKE @CNT_ID${i} + '-%'`;
             }).join(' OR ');
-            const cntRes = await cntReq.query(`SELECT COUNT(*) AS TOTAL FROM ${esquema}.LINEA_PED WHERE ${cntConds}`);
+            const cntRes = await cntReq.query(`SELECT COUNT(*) AS TOTAL FROM ${esquema}.LINEA_PED WITH (NOLOCK) WHERE ${cntConds}`);
             const totalLineas = Number(cntRes.recordset[0].TOTAL);
             if (totalLineas > maxLineas) {
                 return {
@@ -940,7 +940,7 @@ export class PedidosServices {
                     UPDATE ${esquema}.CABECERA_PED
                     SET TOTALPRECIO = (
                             SELECT ISNULL(SUM(PRODUCTCOUNT * PRECIOUNITARIO), 0)
-                            FROM ${esquema}.LINEA_PED WHERE ORDERID = @MASTER
+                            FROM ${esquema}.LINEA_PED WITH (NOLOCK) WHERE ORDERID = @MASTER
                         ),
                         ESTATUS = @ESTADO
                     WHERE ORDERID = @MASTER
@@ -981,7 +981,7 @@ export class PedidosServices {
                         SELECT ORDERID, CLIENTEID, FECHA, ESTATUS, CODVENDEDOR, TOTALPRECIO,
                                ISNULL(OBSERVACIONES, ''), ISNULL(PROMO_NOMBRE, ''),
                                GETDATE(), @CODUSUARIO, @USUARIO
-                        FROM ${esquema}.CABECERA_PED WHERE ORDERID = @ORDERID`);
+                        FROM ${esquema}.CABECERA_PED WITH (NOLOCK) WHERE ORDERID = @ORDERID`);
 
             await new mssql.Request(transaction)
                 .input('ORDERID', mssql.VarChar(50), orderId)
@@ -992,7 +992,7 @@ export class PedidosServices {
                         SELECT ORDERID, CODARTICULO, REFERENCIA, CODALMACEN, IDTARIFAV, PRODUCTCOUNT,
                                PRECIOUNITARIO, DESCUENTO1, DESCUENTO2, DESCUENTO3, DESCUENTO4,
                                PRECIOBRUTO, PORCENTAJEIVA, MONTOIVA, GETDATE()
-                        FROM ${esquema}.LINEA_PED WHERE ORDERID = @ORDERID`);
+                        FROM ${esquema}.LINEA_PED WITH (NOLOCK) WHERE ORDERID = @ORDERID`);
 
             // 2. Borrar promociones aplicadas
             await new mssql.Request(transaction)
@@ -1132,7 +1132,7 @@ export class PedidosServices {
             if (maxLineasAuth > 0 && ['PENDIENTE POR AUTORIZACION', 'AUTORIZADO'].includes(estatusLimpio)) {
                 const cntRes = await pool.request()
                     .input('ORDERID_CNT', mssql.VarChar(50), orderId)
-                    .query(`SELECT COUNT(*) AS TOTAL FROM ${esquema}.LINEA_PED
+                    .query(`SELECT COUNT(*) AS TOTAL FROM ${esquema}.LINEA_PED WITH (NOLOCK)
                             WHERE ORDERID = @ORDERID_CNT OR ORDERID LIKE @ORDERID_CNT + '-%'`);
                 const totalLineas = Number(cntRes.recordset[0].TOTAL);
                 if (totalLineas > maxLineasAuth) {
@@ -1263,7 +1263,7 @@ export class PedidosServices {
                     SELECT ID, ORDERID, EST_ANTERIOR, EST_NUEVO, CODUSUARIO, USUARIO, FECHA, DETALLES,
                         CASE WHEN EST_NUEVO = 'EDITADO' THEN SNAPSHOT_ANTES   ELSE NULL END AS SNAPSHOT_ANTES,
                         CASE WHEN EST_NUEVO = 'EDITADO' THEN SNAPSHOT_DESPUES ELSE NULL END AS SNAPSHOT_DESPUES
-                    FROM ${esquema}.APP_PEDIDO_LOG
+                    FROM ${esquema}.APP_PEDIDO_LOG WITH (NOLOCK)
                     WHERE LOWER(ORDERID) LIKE @ORDERID AND LOWER(ISNULL(USUARIO,'')) LIKE @USUARIO
                     ORDER BY FECHA DESC
                     OFFSET @OFFSET ROWS FETCH NEXT @LIMIT ROWS ONLY
@@ -1271,7 +1271,7 @@ export class PedidosServices {
             const countRes = await pool.request()
                 .input('ORDERID2',   mssql.VarChar(50),   orderId_l)
                 .input('USUARIO2',   mssql.VarChar(100),  usuario_l)
-                .query(`SELECT COUNT(*) AS TOTAL FROM ${esquema}.APP_PEDIDO_LOG
+                .query(`SELECT COUNT(*) AS TOTAL FROM ${esquema}.APP_PEDIDO_LOG WITH (NOLOCK)
                         WHERE LOWER(ORDERID) LIKE @ORDERID2 AND LOWER(ISNULL(USUARIO,'')) LIKE @USUARIO2`);
             return { success: true, data: result.recordset, total: countRes.recordset[0].TOTAL };
         } catch (error) {
@@ -1284,7 +1284,7 @@ export class PedidosServices {
             const pool = await connectDb();
             const check = await pool.request()
                 .input('ORDERID_CHK', mssql.VarChar(50), orderId)
-                .query(`SELECT 1 FROM ${esquema}.CABECERA_PED WHERE ORDERID = @ORDERID_CHK`);
+                .query(`SELECT 1 FROM ${esquema}.CABECERA_PED WITH (NOLOCK) WHERE ORDERID = @ORDERID_CHK`);
             if (check.recordset.length === 0) return { success: false, message: 'Pedido no encontrado' };
             await pool.request()
                 .input('ORDERID', mssql.VarChar(50), orderId)

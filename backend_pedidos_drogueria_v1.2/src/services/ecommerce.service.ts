@@ -80,7 +80,7 @@ export class EcommerceService {
     static async getConfig(): Promise<string> {
         const pool = await connectDb();
         const res = await pool.request()
-            .query(`SELECT RUTA FROM APP_ECOMMERCE_CONFIG WHERE ID = 1`);
+            .query(`SELECT RUTA FROM APP_ECOMMERCE_CONFIG WITH (NOLOCK) WHERE ID = 1`);
         return res.recordset[0]?.RUTA ?? '';
     }
 
@@ -177,7 +177,7 @@ export class EcommerceService {
                 const existe = await pool.request()
                     .input('NUM',  mssql.NVarChar(50),  parsed.pedido.numeroPedido)
                     .input('ARCH', mssql.NVarChar(500), archivo)
-                    .query(`SELECT PROCESADO FROM APP_ECOMMERCE_PEDIDOS WHERE NUMERO_PEDIDO = @NUM AND ARCHIVO = @ARCH`);
+                    .query(`SELECT PROCESADO FROM APP_ECOMMERCE_PEDIDOS WITH (NOLOCK) WHERE NUMERO_PEDIDO = @NUM AND ARCHIVO = @ARCH`);
 
                 if (existe.recordset.length > 0) {
                     if (existe.recordset[0].PROCESADO) {
@@ -209,7 +209,7 @@ export class EcommerceService {
                         OUTPUT INSERTED.ID
                         SELECT @NUM, @COD, @NOMBRE, @RIF, @FECHA, @ESTATUS, @TOTAL, @ARCH, GETUTCDATE()
                         WHERE NOT EXISTS (
-                            SELECT 1 FROM APP_ECOMMERCE_PEDIDOS
+                            SELECT 1 FROM APP_ECOMMERCE_PEDIDOS WITH (NOLOCK)
                             WHERE NUMERO_PEDIDO = @NUM AND ARCHIVO = @ARCH
                         )
                     `);
@@ -287,7 +287,7 @@ export class EcommerceService {
         const totalRes = await pool.request()
             .input('F', mssql.NVarChar, filtro)
             .query(`
-                SELECT COUNT(*) AS T FROM APP_ECOMMERCE_PEDIDOS
+                SELECT COUNT(*) AS T FROM APP_ECOMMERCE_PEDIDOS WITH (NOLOCK)
                 WHERE NOMBRE_CLIENTE LIKE @F OR NUMERO_PEDIDO LIKE @F OR RIF LIKE @F
             `);
 
@@ -296,7 +296,7 @@ export class EcommerceService {
             .input('OFF', mssql.Int, offset)
             .input('LIM', mssql.Int, safeLimit)
             .query(`
-                SELECT * FROM APP_ECOMMERCE_PEDIDOS
+                SELECT * FROM APP_ECOMMERCE_PEDIDOS WITH (NOLOCK)
                 WHERE NOMBRE_CLIENTE LIKE @F OR NUMERO_PEDIDO LIKE @F OR RIF LIKE @F
                 ORDER BY FECHA_IMPORT DESC
                 OFFSET @OFF ROWS FETCH NEXT @LIM ROWS ONLY
@@ -309,7 +309,7 @@ export class EcommerceService {
         const pool = await connectDb();
         const res = await pool.request()
             .input('ID', mssql.Int, idPedido)
-            .query(`SELECT * FROM APP_ECOMMERCE_LINEAS WHERE ID_PEDIDO = @ID ORDER BY ID`);
+            .query(`SELECT * FROM APP_ECOMMERCE_LINEAS WITH (NOLOCK) WHERE ID_PEDIDO = @ID ORDER BY ID`);
         return res.recordset;
     }
 
@@ -330,7 +330,7 @@ export class EcommerceService {
         const totalRes = await pool.request()
             .input('F', mssql.NVarChar, filtro)
             .query(`
-                SELECT COUNT(*) AS T FROM APP_ECOMMERCE_AUDITORIA
+                SELECT COUNT(*) AS T FROM APP_ECOMMERCE_AUDITORIA WITH (NOLOCK)
                 WHERE ARCHIVO LIKE @F OR EVENTO LIKE @F OR ISNULL(ORDERID,'') LIKE @F OR ISNULL(MENSAJE,'') LIKE @F
             `);
 
@@ -339,7 +339,7 @@ export class EcommerceService {
             .input('OFF', mssql.Int, offset)
             .input('LIM', mssql.Int, safeLimit)
             .query(`
-                SELECT * FROM APP_ECOMMERCE_AUDITORIA
+                SELECT * FROM APP_ECOMMERCE_AUDITORIA WITH (NOLOCK)
                 WHERE ARCHIVO LIKE @F OR EVENTO LIKE @F OR ISNULL(ORDERID,'') LIKE @F OR ISNULL(MENSAJE,'') LIKE @F
                 ORDER BY FECHA DESC
                 OFFSET @OFF ROWS FETCH NEXT @LIM ROWS ONLY
@@ -354,7 +354,7 @@ export class EcommerceService {
         // 1. Cargar cabecera del pedido ecommerce
         const pedRes = await pool.request()
             .input('ID', mssql.Int, id)
-            .query(`SELECT * FROM APP_ECOMMERCE_PEDIDOS WHERE ID = @ID`);
+            .query(`SELECT * FROM APP_ECOMMERCE_PEDIDOS WITH (NOLOCK) WHERE ID = @ID`);
         const ped = pedRes.recordset[0];
         if (!ped) return { success: false, message: 'Pedido no encontrado' };
         if (ped.PROCESADO) return { success: false, message: 'El pedido ya fue aprobado anteriormente' };
@@ -364,14 +364,14 @@ export class EcommerceService {
         // 2. Evitar duplicado en CABECERA_PED
         const dupRes = await pool.request()
             .input('OID', mssql.NVarChar(50), orderId)
-            .query(`SELECT 1 FROM ${esquema}.CABECERA_PED WHERE ORDERID = @OID`);
+            .query(`SELECT 1 FROM ${esquema}.CABECERA_PED WITH (NOLOCK) WHERE ORDERID = @OID`);
         if (dupRes.recordset.length > 0)
             return { success: false, message: `El pedido ${orderId} ya existe en el sistema` };
 
         // 3. Líneas del pedido
         const lineasRes = await pool.request()
             .input('ID', mssql.Int, id)
-            .query(`SELECT * FROM APP_ECOMMERCE_LINEAS WHERE ID_PEDIDO = @ID ORDER BY ID`);
+            .query(`SELECT * FROM APP_ECOMMERCE_LINEAS WITH (NOLOCK) WHERE ID_PEDIDO = @ID ORDER BY ID`);
         const lineas = lineasRes.recordset;
         if (lineas.length === 0) return { success: false, message: 'El pedido no tiene líneas' };
 
@@ -585,7 +585,7 @@ export class EcommerceService {
                     .query(`
                         INSERT INTO ${esquema}.CABECERA_PED (ORDERID, CLIENTEID, FECHA, ESTATUS, CODVENDEDOR, TOTALPRECIO)
                         VALUES (@ORDERID, @CLIENTEID, GETDATE(), @ESTATUS,
-                            ISNULL(NULLIF((SELECT TOP 1 CAST(CCL.CODVENDEDOR AS INT) FROM CLIENTESCAMPOSLIBRES CCL WHERE CCL.CODCLIENTE = @CLIENTEID AND CCL.CODVENDEDOR IS NOT NULL AND LTRIM(RTRIM(CAST(CCL.CODVENDEDOR AS NVARCHAR)))!=''), 0), @CODVENDEDOR),
+                            ISNULL(NULLIF((SELECT TOP 1 CAST(CCL.CODVENDEDOR AS INT) FROM CLIENTESCAMPOSLIBRES CCL WITH (NOLOCK) WHERE CCL.CODCLIENTE = @CLIENTEID AND CCL.CODVENDEDOR IS NOT NULL AND LTRIM(RTRIM(CAST(CCL.CODVENDEDOR AS NVARCHAR)))!=''), 0), @CODVENDEDOR),
                             @TOTAL)
                     `);
 

@@ -11,9 +11,11 @@ export interface CommitEntry {
   texto: string;
 }
 
-export const APP_VERSION = '1.2.20';
+export const APP_VERSION = '1.2.22';
 
 export const VERSIONES: VersionEntry[] = [
+  { version: '1.2.22', fecha: '2026-08-31', desde: '2026-08-31' },
+  { version: '1.2.21', fecha: '2026-08-31', desde: '2026-08-31' },
   { version: '1.2.20', fecha: '2026-08-31', desde: '2026-08-31' },
   { version: '1.2.19', fecha: '2026-08-25', desde: '2026-08-25' },
   { version: '1.2.18', fecha: '2026-08-21', desde: '2026-08-21' },
@@ -38,6 +40,8 @@ export const VERSIONES: VersionEntry[] = [
 ];
 
 export const COMMITS: CommitEntry[] = [
+  { hash: 'pending', date: '2026-08-31', tipo: 'feat', texto: 'ICompras: servicio de descarga automática de pedidos remotos — ciclo configurable (GET RECIBIDO → marcar PROCESADO → escribir TXT), scheduler por intervalo, auditoría en DB, reprocesar por ID; pestaña ICOMPRAS en Servidor FTP' },
+  { hash: 'pending', date: '2026-08-31', tipo: 'feat', texto: 'rechequeo: lote y fecha de vencimiento por artículo — se guarda en RECHEQUEO_DET y al cerrar upserta ARTICULOSLIN (COLOR correlativo, busca lote existente)' },
   { hash: 'pending', date: '2026-08-31', tipo: 'fix',  texto: 'rechequeo: CERRADO_LIN agrega columnas TALLA (@), COLOR (correlativo ARTICULOSLIN) y DTOCOMERCIAL (PEDCOMPRACAB)' },
   { hash: 'pending', date: '2026-08-31', tipo: 'fix',  texto: 'auth: refreshModulos al iniciar app — módulos nuevos visibles en sidebar sin cerrar sesión' },
   { hash: '94d0287', date: '2026-08-25', tipo: 'fix',     texto: 'reclamos: corrige URLs de búsqueda de cliente y artículo — usaban /api/clientes y /api/products incorrectamente' },

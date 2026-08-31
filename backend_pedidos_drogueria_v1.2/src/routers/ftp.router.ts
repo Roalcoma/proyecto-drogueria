@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { FtpController } from '../controllers/ftp.controller';
+import { IComprasController } from '../controllers/icompras.controller';
 import { authMiddleware, adminMiddleware, ftpUsuariosMiddleware } from '../middleware/auth.middleware';
 
 const ftpRouter = Router();
@@ -29,5 +30,13 @@ ftpRouter.post('/usuarios/sincronizar-claves', ftpUsuariosMiddleware, FtpControl
 
 // Ciclo manual (inventario + facturas + pedidos)
 ftpRouter.post('/ciclo', adminMiddleware, FtpController.ejecutarCiclo);
+
+// ICompras
+ftpRouter.get('/icompras/config',      adminMiddleware, IComprasController.getConfig);
+ftpRouter.put('/icompras/config',      adminMiddleware, IComprasController.saveConfig);
+ftpRouter.get('/icompras/estado',      IComprasController.getEstado);
+ftpRouter.post('/icompras/ciclo',      adminMiddleware, IComprasController.ejecutarCiclo);
+ftpRouter.post('/icompras/reprocesar', adminMiddleware, IComprasController.reprocesarPedido);
+ftpRouter.get('/icompras/auditoria',   IComprasController.getAuditoria);
 
 export default ftpRouter;

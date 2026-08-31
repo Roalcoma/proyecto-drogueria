@@ -12,10 +12,10 @@ const USD: number = Number(process.env.USD) || 2; // Asegúrate de que USD esté
 // filtro con_stock/sin_stock y el orden por stock no contradigan lo que se muestra.
 // ponytail: usa @ALMACEN como parámetro SQL para no interpolar strings del config
 export const STOCK_DISPONIBLE_SQL = `(
-    ISNULL((SELECT SUM(STOCK) FROM STOCKS WHERE CODARTICULO = A.CODARTICULO AND CODALMACEN = @ALMACEN), 0)
+    ISNULL((SELECT SUM(STOCK) FROM STOCKS WITH (NOLOCK) WHERE CODARTICULO = A.CODARTICULO AND CODALMACEN = @ALMACEN), 0)
     - ISNULL((
-        SELECT SUM(LP.PRODUCTCOUNT) FROM CABECERA_PED CP
-        INNER JOIN LINEA_PED LP ON LP.ORDERID = CP.ORDERID
+        SELECT SUM(LP.PRODUCTCOUNT) FROM CABECERA_PED CP WITH (NOLOCK)
+        INNER JOIN LINEA_PED LP WITH (NOLOCK) ON LP.ORDERID = CP.ORDERID
         WHERE LP.CODARTICULO = A.CODARTICULO
             AND CP.ESTATUS IN ('PENDIENTE POR AUTORIZACION', 'APROBACION PSICOTROPICOS', 'AUTORIZADO', 'EMPACADO', 'OK')
     ), 0)
@@ -147,8 +147,8 @@ export class ProductsService {
                 .input('CODARTICULO', mssql.Int, !codarticulo ? 0 : Number(codarticulo))
                 .input('ALMACEN', mssql.VarChar(10), getDbConfig().codAlmacen)
                 .query(`;WITH CTE_STOCK_RESERVADO AS (
-                            SELECT CODARTICULO, ISNULL(SUM(LP.PRODUCTCOUNT), 0) STOCK FROM CABECERA_PED CP
-                            INNER JOIN LINEA_PED LP ON LP.ORDERID = CP.ORDERID
+                            SELECT CODARTICULO, ISNULL(SUM(LP.PRODUCTCOUNT), 0) STOCK FROM CABECERA_PED CP WITH (NOLOCK)
+                            INNER JOIN LINEA_PED LP WITH (NOLOCK) ON LP.ORDERID = CP.ORDERID
                             WHERE CP.ESTATUS IN ('PENDIENTE POR AUTORIZACION', 'APROBACION PSICOTROPICOS', 'AUTORIZADO', 'EMPACADO', 'OK')
                             GROUP BY
                             LP.CODARTICULO
@@ -160,8 +160,8 @@ export class ProductsService {
                             , SUM(S.STOCK) - ISNULL(CSR.STOCK, 0) STOCK
                             , 0 STOCK_A_SERVIR
                             , ISNULL(CSR.STOCK, 0)
-                        FROM 
-                            STOCKS S
+                        FROM
+                            STOCKS S WITH (NOLOCK)
                             LEFT JOIN CTE_STOCK_RESERVADO CSR ON CSR.CODARTICULO = S.CODARTICULO
                         WHERE
                             (S.CODARTICULO = @CODARTICULO OR ISNULL(@CODARTICULO, 0) = 0)
@@ -183,7 +183,7 @@ export class ProductsService {
         const pool = await connectDb();
         const result = await pool.request().query(`
             SELECT DISTINCT TRY_CAST(D1 AS FLOAT) AS D1
-            FROM CLIENTESCAMPOSLIBRES
+            FROM CLIENTESCAMPOSLIBRES WITH (NOLOCK)
             WHERE TRY_CAST(D1 AS FLOAT) > 0
             ORDER BY D1
         `);
@@ -282,8 +282,8 @@ export class ProductsService {
                             , PV.PNETO
                             , PV.PNETO2
                             , PV.CODMONEDA
-                        FROM 
-                            PRECIOSVENTA PV
+                        FROM
+                            PRECIOSVENTA PV WITH (NOLOCK)
                         WHERE
                             (PV.CODARTICULO = @CODARTICULO OR ISNULL(@CODARTICULO, 0) = 0)
                             AND (PV.IDTARIFAV = @TARIFA OR ISNULL(@TARIFA, 0) = 0)`)

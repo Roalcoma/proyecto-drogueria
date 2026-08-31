@@ -27,9 +27,9 @@ export class ClientesServices {
                     ISNULL(TRY_CAST(CCL.D3 AS FLOAT), 0) DESCUENTO_D3,
                     ISNULL(CCL.ZONA, '') AS ZONA,
                     ISNULL(RUT.DESCRIPCION, '') AS RUTA_NOMBRE
-                FROM CLIENTES CL
-                LEFT JOIN CLIENTESCAMPOSLIBRES CCL ON CCL.CODCLIENTE = CL.CODCLIENTE
-                LEFT JOIN RUTAS RUT ON RUT.CODRUTA = TRY_CAST(CCL.ZONA AS INT)
+                FROM CLIENTES CL WITH (NOLOCK)
+                LEFT JOIN CLIENTESCAMPOSLIBRES CCL WITH (NOLOCK) ON CCL.CODCLIENTE = CL.CODCLIENTE
+                LEFT JOIN RUTAS RUT WITH (NOLOCK) ON RUT.CODRUTA = TRY_CAST(CCL.ZONA AS INT)
                 WHERE (UPPER(ISNULL(CL.NOMBRECLIENTE,'')) LIKE @FILTRO OR UPPER(ISNULL(CL.NOMBRECOMERCIAL,'')) LIKE @FILTRO OR UPPER(ISNULL(CL.CIF,'')) LIKE @FILTRO)
                 ${rutaWhere}
                 ORDER BY CL.NOMBRECLIENTE
@@ -41,8 +41,8 @@ export class ClientesServices {
 
             const countResult = await countReq.query(`
                 SELECT COUNT(*) AS TOTAL
-                FROM CLIENTES CL
-                LEFT JOIN CLIENTESCAMPOSLIBRES CCL ON CCL.CODCLIENTE = CL.CODCLIENTE
+                FROM CLIENTES CL WITH (NOLOCK)
+                LEFT JOIN CLIENTESCAMPOSLIBRES CCL WITH (NOLOCK) ON CCL.CODCLIENTE = CL.CODCLIENTE
                 WHERE (UPPER(ISNULL(CL.NOMBRECLIENTE,'')) LIKE @FILTRO OR UPPER(ISNULL(CL.NOMBRECOMERCIAL,'')) LIKE @FILTRO OR UPPER(ISNULL(CL.CIF,'')) LIKE @FILTRO)
                 ${rutaWhere}
             `)
@@ -61,7 +61,7 @@ export class ClientesServices {
                 .input('CODCLIENTE', mssql.Int, codCliente)
                 .input('D1', mssql.NVarChar, String(descuento))
                 .query(`
-                    IF EXISTS (SELECT 1 FROM CLIENTESCAMPOSLIBRES WHERE CODCLIENTE = @CODCLIENTE)
+                    IF EXISTS (SELECT 1 FROM CLIENTESCAMPOSLIBRES WITH (NOLOCK) WHERE CODCLIENTE = @CODCLIENTE)
                         UPDATE CLIENTESCAMPOSLIBRES SET D1 = @D1 WHERE CODCLIENTE = @CODCLIENTE
                     ELSE
                         INSERT INTO CLIENTESCAMPOSLIBRES (CODCLIENTE, D1) VALUES (@CODCLIENTE, @D1)
@@ -80,7 +80,7 @@ export class ClientesServices {
                 .input('CODCLIENTE', mssql.Int, codCliente)
                 .input('D3', mssql.NVarChar, String(d3))
                 .query(`
-                    IF EXISTS (SELECT 1 FROM CLIENTESCAMPOSLIBRES WHERE CODCLIENTE = @CODCLIENTE)
+                    IF EXISTS (SELECT 1 FROM CLIENTESCAMPOSLIBRES WITH (NOLOCK) WHERE CODCLIENTE = @CODCLIENTE)
                         UPDATE CLIENTESCAMPOSLIBRES SET D3 = @D3 WHERE CODCLIENTE = @CODCLIENTE
                     ELSE
                         INSERT INTO CLIENTESCAMPOSLIBRES (CODCLIENTE, D3) VALUES (@CODCLIENTE, @D3)
@@ -109,15 +109,15 @@ export class ClientesServices {
                                 P.FECHAINICIAL,
                                 P.FECHAFINAL,
                                 LEFT(AP.VALOR, CHARINDEX('|', AP.VALOR + '|') - 1) PORCENTAJE_DESCUENTO
-                            FROM CLIENTESCAMPOSLIBRES C
-                            JOIN CONDICIONESGRUPOSCLIENTES G ON 
+                            FROM CLIENTESCAMPOSLIBRES C WITH (NOLOCK)
+                            JOIN CONDICIONESGRUPOSCLIENTES G WITH (NOLOCK) ON
                                 (G.TABLA = 0 AND G.CAMPO = 'CODCLIENTE' AND CAST(C.CODCLIENTE AS VARCHAR) = G.VALOR)
-                                OR 
+                                OR
                                 (G.TABLA = 1 AND G.CAMPO = 'D3' AND CAST(C.D3 AS VARCHAR) = G.VALOR)
-                                OR 
+                                OR
                                 (G.TABLA = 1 AND G.CAMPO = 'D4' AND CAST(C.D4 AS VARCHAR) = G.VALOR)
-                            LEFT JOIN PROMOCIONES P ON P.IDGRUPOCLIENTES = G.IDGRUPO
-                            LEFT JOIN ACCIONESPROMOCION AP ON AP.IDPROMOCION = P.IDPROMOCION
+                            LEFT JOIN PROMOCIONES P WITH (NOLOCK) ON P.IDGRUPOCLIENTES = G.IDGRUPO
+                            LEFT JOIN ACCIONESPROMOCION AP WITH (NOLOCK) ON AP.IDPROMOCION = P.IDPROMOCION
                             WHERE CAST(GETDATE() AS DATE) BETWEEN P.FECHAINICIAL AND P.FECHAFINAL
                             
                         )
@@ -139,10 +139,10 @@ export class ClientesServices {
                             ISNULL((SELECT TOP 1 CG.PORCENTAJE_DESCUENTO FROM CTE_GRUPOCLIENTES CG WHERE CL.CODCLIENTE = CG.CODCLIENTE AND Regla_Aplicada = 'D3'), 0) DESCUENTO2,
                             ISNULL((SELECT TOP 1 CG.PORCENTAJE_DESCUENTO FROM CTE_GRUPOCLIENTES CG WHERE CL.CODCLIENTE = CG.CODCLIENTE AND Regla_Aplicada = 'D4'), 0) DESCUENTO3
                         FROM
-                            CLIENTES CL
-                            LEFT JOIN CLIENTESCAMPOSLIBRES CCL ON CL.CODCLIENTE = CCL.CODCLIENTE
-                            LEFT JOIN RUTAS RUT ON RUT.CODRUTA = TRY_CAST(CCL.ZONA AS INT)
-                            LEFT JOIN CLIENTESENVIO CE ON CE.CODCLIENTE = CL.CODCLIENTE
+                            CLIENTES CL WITH (NOLOCK)
+                            LEFT JOIN CLIENTESCAMPOSLIBRES CCL WITH (NOLOCK) ON CL.CODCLIENTE = CCL.CODCLIENTE
+                            LEFT JOIN RUTAS RUT WITH (NOLOCK) ON RUT.CODRUTA = TRY_CAST(CCL.ZONA AS INT)
+                            LEFT JOIN CLIENTESENVIO CE WITH (NOLOCK) ON CE.CODCLIENTE = CL.CODCLIENTE
                         WHERE
                             (UPPER(ISNULL(CL.NOMBRECLIENTE, '')) LIKE ('%'+UPPER(REPLACE(LTRIM(RTRIM(@CIF)),' ','%'))+'%')
                             OR UPPER(ISNULL(CL.NOMBRECOMERCIAL, '')) LIKE ('%'+UPPER(REPLACE(LTRIM(RTRIM(@CIF)),' ','%'))+'%')
@@ -185,8 +185,8 @@ export class ClientesServices {
                                 ELSE 'BAJO'
                               END ESTATUS
                         FROM
-                            CLIENTES CL
-                            LEFT JOIN TESORERIA T ON T.CODIGOINTERNO = CL.CODCLIENTE
+                            CLIENTES CL WITH (NOLOCK)
+                            LEFT JOIN TESORERIA T WITH (NOLOCK) ON T.CODIGOINTERNO = CL.CODCLIENTE
                         WHERE
                             T.ESTADO = 'P'
                             AND ORIGEN = 'C'
@@ -244,8 +244,8 @@ export class ClientesServices {
                                 ELSE 'BAJO'
                               END ESTATUS
                         FROM
-                            CLIENTES CL
-                            LEFT JOIN TESORERIA T ON T.CODIGOINTERNO = CL.CODCLIENTE
+                            CLIENTES CL WITH (NOLOCK)
+                            LEFT JOIN TESORERIA T WITH (NOLOCK) ON T.CODIGOINTERNO = CL.CODCLIENTE
                                 AND T.ESTADO = 'P' AND T.ORIGEN = 'C' AND T.SERIE NOT LIKE '%P'
                         WHERE
                             CL.CODCLIENTE IN (${placeholders})

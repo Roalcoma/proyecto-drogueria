@@ -53,13 +53,13 @@ export class MetasService {
                     COUNT(DISTINCT TRY_CAST(CLC.CODVENDEDOR AS INT)) AS NUM_VENDEDORES,
                     MZ.META AS META_ZONA,
                     MZ.ID   AS ID_ZONA
-                FROM RUTAS R
+                FROM RUTAS R WITH (NOLOCK)
                 LEFT JOIN CLIENTESCAMPOSLIBRES CLC WITH(NOLOCK)
                     ON  TRY_CAST(CLC.ZONA AS INT) = R.CODRUTA
                     AND CLC.CODVENDEDOR IS NOT NULL
                     AND LTRIM(RTRIM(CAST(CLC.CODVENDEDOR AS NVARCHAR))) != ''
                     AND TRY_CAST(CLC.CODVENDEDOR AS INT) > 0
-                LEFT JOIN ${p()}APP_METAS_ZONA MZ
+                LEFT JOIN ${p()}APP_METAS_ZONA MZ WITH (NOLOCK)
                     ON  MZ.CODRUTA = R.CODRUTA AND MZ.ANIO = @ANIO AND MZ.MES = @MES
                 GROUP BY R.CODRUTA, R.DESCRIPCION, MZ.META, MZ.ID
                 HAVING COUNT(DISTINCT TRY_CAST(CLC.CODVENDEDOR AS INT)) > 0
@@ -76,7 +76,7 @@ export class MetasService {
             .input('MES',     mssql.Int, mes)
             .query(`
                 SELECT ISNULL(META, 0) AS META
-                FROM ${p()}APP_METAS_ZONA
+                FROM ${p()}APP_METAS_ZONA WITH (NOLOCK)
                 WHERE CODRUTA = @CODRUTA AND ANIO = @ANIO AND MES = @MES
             `);
         const metaZona = Number(metaRes.recordset[0]?.META ?? 0);
@@ -101,7 +101,7 @@ export class MetasService {
                       AND TRY_CAST(CLC.CODVENDEDOR AS INT) > 0
                 ) Z
                 INNER JOIN VENDEDORES V WITH(NOLOCK) ON V.CODVENDEDOR = Z.CODVENDEDOR
-                LEFT JOIN ${p()}APP_METAS_VENDEDOR M
+                LEFT JOIN ${p()}APP_METAS_VENDEDOR M WITH (NOLOCK)
                     ON M.CODVENDEDOR = Z.CODVENDEDOR AND M.ANIO = @ANIO AND M.MES = @MES
                 ORDER BY V.NOMVENDEDOR
             `);
@@ -146,7 +146,7 @@ export class MetasService {
     static async getVendedores(): Promise<{ CODVENDEDOR: number; NOMVENDEDOR: string }[]> {
         const pool = await connectDb();
         const res = await pool.request().query(
-            `SELECT CODVENDEDOR, NOMVENDEDOR FROM VENDEDORES ORDER BY NOMVENDEDOR`
+            `SELECT CODVENDEDOR, NOMVENDEDOR FROM VENDEDORES WITH (NOLOCK) ORDER BY NOMVENDEDOR`
         );
         return res.recordset;
     }
@@ -161,8 +161,8 @@ export class MetasService {
         const where = wheres.length ? `WHERE ${wheres.join(' AND ')}` : '';
         const res = await req.query(`
             SELECT M.ID, M.CODVENDEDOR, V.NOMVENDEDOR, M.ANIO, M.MES, M.META, M.CUMPLIDA, M.FECHACARGA
-            FROM ${p()}APP_METAS_VENDEDOR M
-            INNER JOIN VENDEDORES V ON V.CODVENDEDOR = M.CODVENDEDOR
+            FROM ${p()}APP_METAS_VENDEDOR M WITH (NOLOCK)
+            INNER JOIN VENDEDORES V WITH (NOLOCK) ON V.CODVENDEDOR = M.CODVENDEDOR
             ${where}
             ORDER BY M.ANIO DESC, M.MES DESC, V.NOMVENDEDOR
         `);
@@ -194,7 +194,7 @@ export class MetasService {
             UPDATE M
             SET M.CUMPLIDA = CASE WHEN ISNULL((
                 SELECT SUM(CASE WHEN CP.ESTATUS != 'CANCELADO' THEN CP.TOTALPRECIO ELSE 0 END)
-                FROM CABECERA_PED CP
+                FROM CABECERA_PED CP WITH (NOLOCK)
                 WHERE CP.CODVENDEDOR = @COD
                   AND YEAR(CP.FECHA) = @ANIO
                   AND MONTH(CP.FECHA) = @MES
@@ -206,7 +206,7 @@ export class MetasService {
             .input('COD',  mssql.Int, codVendedor)
             .input('ANIO', mssql.Int, anio)
             .input('MES',  mssql.Int, mes)
-            .query(`SELECT ID FROM ${p()}APP_METAS_VENDEDOR WHERE CODVENDEDOR = @COD AND ANIO = @ANIO AND MES = @MES`);
+            .query(`SELECT ID FROM ${p()}APP_METAS_VENDEDOR WITH (NOLOCK) WHERE CODVENDEDOR = @COD AND ANIO = @ANIO AND MES = @MES`);
         return idRes.recordset[0]?.ID ?? 0;
     }
 
@@ -222,8 +222,8 @@ export class MetasService {
                     M.ID,
                     M.META,
                     ISNULL(SUM(CASE WHEN CP.ESTATUS != 'CANCELADO' THEN CP.TOTALPRECIO ELSE 0 END), 0) AS VENTA_TOTAL
-                FROM ${p()}APP_METAS_VENDEDOR M
-                LEFT JOIN CABECERA_PED CP
+                FROM ${p()}APP_METAS_VENDEDOR M WITH (NOLOCK)
+                LEFT JOIN CABECERA_PED CP WITH (NOLOCK)
                     ON  CP.CODVENDEDOR = M.CODVENDEDOR
                     AND YEAR(CP.FECHA)  = @ANIO
                     AND MONTH(CP.FECHA) = @MES
@@ -249,8 +249,8 @@ export class MetasService {
                 ISNULL(SUM(CASE WHEN CP.ESTATUS IN ('ICG','FINALIZADO') THEN CP.TOTALPRECIO ELSE 0 END), 0)  AS VENTA_FACTURADO,
                 COUNT(CASE WHEN CP.ESTATUS != 'CANCELADO'              THEN 1 END)                           AS NUM_PEDIDOS,
                 COUNT(CASE WHEN CP.ESTATUS IN ('ICG','FINALIZADO')     THEN 1 END)                           AS NUM_FACTURADO
-            FROM ${p()}APP_METAS_VENDEDOR M
-            INNER JOIN VENDEDORES V ON V.CODVENDEDOR = M.CODVENDEDOR
+            FROM ${p()}APP_METAS_VENDEDOR M WITH (NOLOCK)
+            INNER JOIN VENDEDORES V WITH (NOLOCK) ON V.CODVENDEDOR = M.CODVENDEDOR
             OUTER APPLY (
                 SELECT TOP 1 MZ.CODRUTA
                 FROM ${p()}APP_METAS_ZONA MZ WITH(NOLOCK)
@@ -261,7 +261,7 @@ export class MetasService {
                 ORDER BY MZ.CODRUTA
             ) CZ
             LEFT JOIN RUTAS RZ WITH(NOLOCK) ON RZ.CODRUTA = CZ.CODRUTA
-            LEFT JOIN CABECERA_PED CP
+            LEFT JOIN CABECERA_PED CP WITH (NOLOCK)
                 ON  CP.CODVENDEDOR = M.CODVENDEDOR
                 AND YEAR(CP.FECHA)  = @ANIO
                 AND MONTH(CP.FECHA) = @MES
@@ -295,9 +295,9 @@ export class MetasService {
                     ISNULL(SUM(CASE WHEN CP.ESTATUS IN ('ICG','FINALIZADO') THEN CP.TOTALPRECIO ELSE 0 END), 0) AS VENTA_FACTURADO,
                     COUNT(CASE WHEN CP.ESTATUS != 'CANCELADO'               THEN 1 END)                        AS NUM_PEDIDOS,
                     COUNT(CASE WHEN CP.ESTATUS IN ('ICG','FINALIZADO')      THEN 1 END)                        AS NUM_FACTURADO
-                FROM ${p()}APP_METAS_VENDEDOR M
-                INNER JOIN VENDEDORES V ON V.CODVENDEDOR = M.CODVENDEDOR
-                LEFT JOIN CABECERA_PED CP
+                FROM ${p()}APP_METAS_VENDEDOR M WITH (NOLOCK)
+                INNER JOIN VENDEDORES V WITH (NOLOCK) ON V.CODVENDEDOR = M.CODVENDEDOR
+                LEFT JOIN CABECERA_PED CP WITH (NOLOCK)
                     ON  CP.CODVENDEDOR = M.CODVENDEDOR
                     AND YEAR(CP.FECHA)  = @ANIO
                     AND MONTH(CP.FECHA) = @MES
@@ -349,7 +349,7 @@ export class MetasService {
         const pool = await connectDb();
         const meta = await pool.request()
             .input('ID', mssql.Int, id)
-            .query(`SELECT CODVENDEDOR, ANIO, MES FROM ${p()}APP_METAS_VENDEDOR WHERE ID = @ID`);
+            .query(`SELECT CODVENDEDOR, ANIO, MES FROM ${p()}APP_METAS_VENDEDOR WITH (NOLOCK) WHERE ID = @ID`);
         const row = meta.recordset[0];
 
         await pool.request()

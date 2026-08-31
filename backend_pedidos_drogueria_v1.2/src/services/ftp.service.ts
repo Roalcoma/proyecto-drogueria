@@ -98,7 +98,7 @@ export class FtpService {
 
     static async getConfig(): Promise<string> {
         const pool = await connectDb();
-        const res = await pool.request().query(`SELECT RUTA FROM APP_FTP_CONFIG WHERE ID = 1`);
+        const res = await pool.request().query(`SELECT RUTA FROM APP_FTP_CONFIG WITH (NOLOCK) WHERE ID = 1`);
         return res.recordset[0]?.RUTA ?? '';
     }
 
@@ -136,14 +136,14 @@ export class FtpService {
         const [totalRes, dataRes] = await Promise.all([
             pool.request()
                 .input('F', mssql.NVarChar, filtro)
-                .query(`SELECT COUNT(*) AS T FROM APP_FTP_AUDITORIA
+                .query(`SELECT COUNT(*) AS T FROM APP_FTP_AUDITORIA WITH (NOLOCK)
                         WHERE ARCHIVO LIKE @F OR EVENTO LIKE @F
                            OR ISNULL(COD_CLI,'') LIKE @F OR ISNULL(ORDERID,'') LIKE @F OR ISNULL(MENSAJE,'') LIKE @F`),
             pool.request()
                 .input('F',   mssql.NVarChar, filtro)
                 .input('OFF', mssql.Int, offset)
                 .input('LIM', mssql.Int, safeLimit)
-                .query(`SELECT * FROM APP_FTP_AUDITORIA
+                .query(`SELECT * FROM APP_FTP_AUDITORIA WITH (NOLOCK)
                         WHERE ARCHIVO LIKE @F OR EVENTO LIKE @F
                            OR ISNULL(COD_CLI,'') LIKE @F OR ISNULL(ORDERID,'') LIKE @F OR ISNULL(MENSAJE,'') LIKE @F
                         ORDER BY FECHA DESC
@@ -230,7 +230,7 @@ export class FtpService {
 
         const dup = await pool.request()
             .input('BASE', mssql.VarChar(15), baseId)
-            .query(`SELECT 1 FROM ${esquema}.CABECERA_PED WHERE ORDERID LIKE @BASE + '%'`);
+            .query(`SELECT 1 FROM ${esquema}.CABECERA_PED WITH (NOLOCK) WHERE ORDERID LIKE @BASE + '%'`);
         if (dup.recordset.length > 0) {
             await FtpService.registrarAuditoria(archivo, 'YA_PROCESADO', codCli, baseId);
             try { fs.renameSync(rutaCompleta, rutaCompleta.replace(/\.txt$/i, '.bak')); } catch {}
@@ -240,10 +240,10 @@ export class FtpService {
         const clienteRes = await pool.request()
             .input('COD', mssql.NVarChar(50), codCli.replace(/^c/i, ''))
             .query(`SELECT TOP 1 CODCLIENTE,
-                        ISNULL((SELECT TOP 1 CAST(CCL.CODVENDEDOR AS INT) FROM CLIENTESCAMPOSLIBRES CCL
+                        ISNULL((SELECT TOP 1 CAST(CCL.CODVENDEDOR AS INT) FROM CLIENTESCAMPOSLIBRES CCL WITH (NOLOCK)
                                 WHERE CCL.CODCLIENTE = CL.CODCLIENTE AND CCL.CODVENDEDOR IS NOT NULL
                                   AND LTRIM(RTRIM(CAST(CCL.CODVENDEDOR AS NVARCHAR))) != ''), 1) AS CODVENDEDOR
-                    FROM CLIENTES CL
+                    FROM CLIENTES CL WITH (NOLOCK)
                     WHERE CAST(CODCLIENTE AS NVARCHAR(50)) = @COD
                        OR CODCLIENTE = TRY_CAST(@COD AS INT)`);
         if (clienteRes.recordset.length === 0) {
@@ -308,10 +308,10 @@ export class FtpService {
         const [preciosRes, dtoCliRes, artInfoRes, vigentesPromociones] = await Promise.all([
             pool.request()
                 .input('TARIFA', mssql.Int, tarifa)
-                .query(`SELECT CODARTICULO, PNETO FROM PRECIOSVENTA WHERE IDTARIFAV = @TARIFA AND COLOR = '.' AND TALLA = '.' AND CODARTICULO IN (${codigos})`),
+                .query(`SELECT CODARTICULO, PNETO FROM PRECIOSVENTA WITH (NOLOCK) WHERE IDTARIFAV = @TARIFA AND COLOR = '.' AND TALLA = '.' AND CODARTICULO IN (${codigos})`),
             pool.request()
                 .input('CLI', mssql.Int, CODCLIENTE)
-                .query(`SELECT ISNULL(TRY_CAST(D1 AS FLOAT),0) AS D1, ISNULL(TRY_CAST(D3 AS FLOAT),0) AS D3 FROM CLIENTESCAMPOSLIBRES WHERE CODCLIENTE = @CLI`),
+                .query(`SELECT ISNULL(TRY_CAST(D1 AS FLOAT),0) AS D1, ISNULL(TRY_CAST(D3 AS FLOAT),0) AS D3 FROM CLIENTESCAMPOSLIBRES WITH (NOLOCK) WHERE CODCLIENTE = @CLI`),
             pool.request()
                 .input('dptoPsico', mssql.Int, getDbConfig().dptoPsicotropicos)
                 .query(`
@@ -600,7 +600,7 @@ export class FtpService {
 
         const dtoRes = await pool.request()
             .input('CLI', mssql.Int, clienteNum)
-            .query(`SELECT ISNULL(TRY_CAST(D1 AS FLOAT), 0) AS D1 FROM CLIENTESCAMPOSLIBRES WHERE CODCLIENTE = @CLI`);
+            .query(`SELECT ISNULL(TRY_CAST(D1 AS FLOAT), 0) AS D1 FROM CLIENTESCAMPOSLIBRES WITH (NOLOCK) WHERE CODCLIENTE = @CLI`);
         const d1Cliente = Number(dtoRes.recordset[0]?.D1 ?? 0);
 
         const result = await pool.request()
@@ -869,7 +869,7 @@ export class FtpService {
 
             const pool = await connectDb();
             const usrs = await pool.request().query(
-                `SELECT DISTINCT COD_CLIENTE FROM APP_FTP_USUARIOS WHERE ACTIVO = 'T' AND COD_CLIENTE IS NOT NULL`
+                `SELECT DISTINCT COD_CLIENTE FROM APP_FTP_USUARIOS WITH (NOLOCK) WHERE ACTIVO = 'T' AND COD_CLIENTE IS NOT NULL`
             );
 
             for (const u of usrs.recordset) {
@@ -914,7 +914,7 @@ export class FtpService {
         const pool = await connectDb();
         const res = await pool.request()
             .input('USR', mssql.NVarChar(100), usuario)
-            .query(`SELECT * FROM APP_FTP_USUARIOS WHERE USUARIO = @USR`);
+            .query(`SELECT * FROM APP_FTP_USUARIOS WITH (NOLOCK) WHERE USUARIO = @USR`);
         return res.recordset[0] ?? null;
     }
 

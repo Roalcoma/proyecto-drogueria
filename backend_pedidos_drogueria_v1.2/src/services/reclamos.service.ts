@@ -129,8 +129,8 @@ export class ReclamosService {
                        ISNULL(R.OBSERVACIONES, R.RECLAMO) AS RECLAMO,
                        R.FECHACREACION, R.USUARIO, ISNULL(R.ESTATUS,'PENDIENTE') AS ESTATUS,
                        (SELECT COUNT(*) FROM APP_RECLAMOS_DET D WHERE D.IDRECLAMO = R.ID) AS NUM_LINEAS
-                FROM APP_RECLAMOS R
-                    LEFT JOIN CLIENTES CL ON CL.CODCLIENTE = R.CODCLIENTE
+                FROM APP_RECLAMOS R WITH (NOLOCK)
+                    LEFT JOIN CLIENTES CL WITH (NOLOCK) ON CL.CODCLIENTE = R.CODCLIENTE
                 WHERE UPPER(ISNULL(CL.NOMBRECLIENTE,'')) LIKE @FILTRO
                    OR UPPER(ISNULL(R.OBSERVACIONES, ISNULL(R.RECLAMO,''))) LIKE @FILTRO
                 ORDER BY R.FECHACREACION DESC
@@ -140,8 +140,8 @@ export class ReclamosService {
             .input('FILTRO', mssql.NVarChar, filtro)
             .query(`
                 SELECT COUNT(*) AS TOTAL
-                FROM APP_RECLAMOS R
-                    LEFT JOIN CLIENTES CL ON CL.CODCLIENTE = R.CODCLIENTE
+                FROM APP_RECLAMOS R WITH (NOLOCK)
+                    LEFT JOIN CLIENTES CL WITH (NOLOCK) ON CL.CODCLIENTE = R.CODCLIENTE
                 WHERE UPPER(ISNULL(CL.NOMBRECLIENTE,'')) LIKE @FILTRO
                    OR UPPER(ISNULL(R.OBSERVACIONES, ISNULL(R.RECLAMO,''))) LIKE @FILTRO
             `);
@@ -163,10 +163,10 @@ export class ReclamosService {
                        ISNULL(CL.DIRECCION1,'') AS DIRECCION,
                        ISNULL(CLC.ZONA,'') AS CODZONA,
                        ISNULL(RUT.DESCRIPCION, ISNULL(CLC.ZONA,'')) AS NOMBRERUTA
-                FROM APP_RECLAMOS R
-                    LEFT JOIN CLIENTES CL ON CL.CODCLIENTE = R.CODCLIENTE
-                    LEFT JOIN CLIENTESCAMPOSLIBRES CLC ON CLC.CODCLIENTE = R.CODCLIENTE
-                    LEFT JOIN RUTAS RUT ON RUT.CODRUTA = TRY_CAST(CLC.ZONA AS INT)
+                FROM APP_RECLAMOS R WITH (NOLOCK)
+                    LEFT JOIN CLIENTES CL WITH (NOLOCK) ON CL.CODCLIENTE = R.CODCLIENTE
+                    LEFT JOIN CLIENTESCAMPOSLIBRES CLC WITH (NOLOCK) ON CLC.CODCLIENTE = R.CODCLIENTE
+                    LEFT JOIN RUTAS RUT WITH (NOLOCK) ON RUT.CODRUTA = TRY_CAST(CLC.ZONA AS INT)
                 WHERE R.ID = @ID
             `);
         if (reclamoRes.recordset.length === 0) return null;
@@ -178,7 +178,7 @@ export class ReclamosService {
                        FECHA_FAC, ISNULL(CODARTICULO,'') AS CODARTICULO,
                        ISNULL(DESCRIPCION,'') AS DESCRIPCION,
                        CANTIDAD, ISNULL(MOTIVO,'') AS MOTIVO
-                FROM APP_RECLAMOS_DET
+                FROM APP_RECLAMOS_DET WITH (NOLOCK)
                 WHERE IDRECLAMO = @ID
                 ORDER BY ID
             `);
@@ -195,7 +195,7 @@ export class ReclamosService {
             .input('CODCLIENTE', mssql.Int, codCliente)
             .query(`
                 SELECT TOP 100 NUMSERIE, NUMFACTURA, FECHA, TOTALNETO
-                FROM FACTURASVENTA
+                FROM FACTURASVENTA WITH (NOLOCK)
                 WHERE CODCLIENTE = @CODCLIENTE
                 ORDER BY FECHA DESC
             `);

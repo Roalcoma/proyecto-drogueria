@@ -60,10 +60,10 @@ export class ImsController {
                     .input('LIMIT',  mssql.Int, limit)
                     .input('OFFSET', mssql.Int, offset)
                     .query(`SELECT ID, CODUSUARIO, USUARIO, DESDE, HASTA, FECHA
-                            FROM ${esquema}.APP_IMS_LOG
+                            FROM ${esquema}.APP_IMS_LOG WITH (NOLOCK)
                             ORDER BY FECHA DESC
                             OFFSET @OFFSET ROWS FETCH NEXT @LIMIT ROWS ONLY`),
-                pool.request().query(`SELECT COUNT(*) AS TOTAL FROM ${esquema}.APP_IMS_LOG`),
+                pool.request().query(`SELECT COUNT(*) AS TOTAL FROM ${esquema}.APP_IMS_LOG WITH (NOLOCK)`),
             ]);
             res.json({ success: true, data: data.recordset, total: count.recordset[0].TOTAL });
         } catch (err: any) {
@@ -118,7 +118,7 @@ export class ImsController {
                         Marca       COLLATE Modern_Spanish_CI_AS,
                         ROUND(Precio / dbo.F_GET_COTIZACION(GETDATE(), 1), 3),
                         CodBarras   COLLATE Modern_Spanish_CI_AS
-                    FROM ListadoMaestroProteoFaltantes
+                    FROM ListadoMaestroProteoFaltantes WITH (NOLOCK)
                 `),
                 pool.request().input('DESDE', desde).input('HASTA', hasta).query(`
                         SELECT

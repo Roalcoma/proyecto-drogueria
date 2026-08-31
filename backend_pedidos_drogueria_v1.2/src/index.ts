@@ -29,6 +29,7 @@ import { FtpService }         from "./services/ftp.service";
 import { MetasService }       from "./services/metas.service";
 import { ImsController }      from "./controllers/ims.controller";
 import { RechequeoService }  from "./services/rechequeo.service";
+import { IComprasService }   from "./services/icompras.service";
 import { RuteroService }      from "./services/rutero.service";
 import { BrandingService }    from "./services/branding.service";
 import { getDbConfig }        from "./services/dbconfig.service";
@@ -141,6 +142,13 @@ app.listen(port, async () => {
     await ImsController.initTablas();
     await RechequeoService.initTablas();
     await RechequeoService.initTablasCierre();
+    await IComprasService.initTablas();
+    try {
+        const iComprasCfg = await IComprasService.getConfig();
+        if (iComprasCfg.habilitado) IComprasService.iniciarScheduler(iComprasCfg);
+    } catch (e: any) {
+        console.error('[ICompras] Error cargando config inicial:', e.message);
+    }
     if (getDbConfig().ftpHabilitado) {
         FtpService.iniciarServidor().catch(console.error);
     }

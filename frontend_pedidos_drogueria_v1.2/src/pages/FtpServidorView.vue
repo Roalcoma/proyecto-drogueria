@@ -1,201 +1,386 @@
 <template>
   <v-container fluid class="pa-6 bg-background">
 
-    <div class="d-flex align-center mb-6">
+    <div class="d-flex align-center mb-5">
       <v-icon color="primary" size="32" class="mr-3">mdi-server-network</v-icon>
       <div>
         <h1 class="text-h5 font-weight-black" style="color:#164E63;">Servidor FTP</h1>
-        <span class="text-caption text-medium-emphasis">Administración del servidor FTP embebido para recepción de pedidos</span>
+        <span class="text-caption text-medium-emphasis">Administración del servidor FTP y servicio ICompras</span>
       </div>
     </div>
 
-    <!-- Estado + control -->
-    <v-card v-if="authStore.esAdmin" rounded="xl" elevation="2" class="pa-6 mb-4">
-      <div class="d-flex align-center mb-4">
-        <div class="text-subtitle-1 font-weight-bold">
-          <v-icon start color="primary">mdi-server-network</v-icon>
-          Estado del servidor
-        </div>
-        <v-spacer />
-        <v-chip :color="servidorActivo ? 'success' : 'default'" variant="flat" class="mr-3">
-          <v-icon start>{{ servidorActivo ? 'mdi-check-circle' : 'mdi-circle-off-outline' }}</v-icon>
-          {{ servidorActivo ? 'Activo' : 'Inactivo' }}
-        </v-chip>
-        <v-btn v-if="!servidorActivo" color="success" variant="tonal" prepend-icon="mdi-play" :loading="accionServidor" @click="iniciarServidor">
-          Iniciar
-        </v-btn>
-        <v-btn v-else color="error" variant="tonal" prepend-icon="mdi-stop" :loading="accionServidor" @click="detenerServidor">
-          Detener
-        </v-btn>
-      </div>
+    <v-tabs v-model="tabActiva" color="primary" class="mb-5">
+      <v-tab value="ftp">
+        <v-icon start>mdi-server-network</v-icon>FTP
+      </v-tab>
+      <v-tab value="icompras">
+        <v-icon start>mdi-download-circle-outline</v-icon>ICOMPRAS
+      </v-tab>
+    </v-tabs>
 
-      <div class="d-flex align-center mb-4 gap-3">
-        <v-switch
-          v-model="cfgServidor.ftpHabilitado"
-          label="Iniciar automáticamente al reiniciar el servidor"
-          color="primary"
-          hide-details
-          density="compact"
-        />
-      </div>
+    <!-- ══════════════════════ TAB FTP ══════════════════════ -->
+    <div v-show="tabActiva === 'ftp'">
 
-      <v-alert v-if="servidorActivo" type="info" variant="tonal" density="compact" class="mb-0">
-        Puerto FTP activo: <strong>{{ cfgServidor.puerto }}</strong>.
-        Los clientes deben conectarse a la IP del servidor en ese puerto.
-        Puertos pasivos: <strong>{{ cfgServidor.pasivoMin }}–{{ cfgServidor.pasivoMax }}</strong>.
-      </v-alert>
-    </v-card>
-
-    <!-- Configuración de red -->
-    <v-card v-if="authStore.esAdmin" rounded="xl" elevation="2" class="pa-6 mb-4">
-      <div class="text-subtitle-1 font-weight-bold mb-4">
-        <v-icon start color="primary">mdi-cog-outline</v-icon>
-        Configuración de red
-      </div>
-      <v-alert type="warning" variant="tonal" density="compact" class="mb-4">
-        Después de cambiar la configuración, <strong>detén y vuelve a iniciar</strong> el servidor para aplicar los cambios.
-        Puertos menores a 1024 pueden requerir permisos de administrador en el sistema operativo.
-      </v-alert>
-      <v-row>
-        <v-col cols="12" sm="4">
-          <v-text-field
-            v-model.number="cfgServidor.puerto"
-            label="Puerto FTP"
-            type="number"
-            variant="outlined"
-            density="compact"
-            hint="Default: 21 (requiere admin en Linux/Windows)"
-            persistent-hint
-          />
-        </v-col>
-        <v-col cols="12" sm="4">
-          <v-text-field
-            v-model.number="cfgServidor.pasivoMin"
-            label="Puerto pasivo mínimo"
-            type="number"
-            variant="outlined"
-            density="compact"
-            hint="Rango para modo pasivo (PASV)"
-            persistent-hint
-          />
-        </v-col>
-        <v-col cols="12" sm="4">
-          <v-text-field
-            v-model.number="cfgServidor.pasivoMax"
-            label="Puerto pasivo máximo"
-            type="number"
-            variant="outlined"
-            density="compact"
-            hint="Abre estos puertos en el firewall/router"
-            persistent-hint
-          />
-        </v-col>
-        <v-col cols="12" sm="8">
-          <v-text-field
-            v-model="cfgServidor.ipExterna"
-            label="IP externa (NAT)"
-            variant="outlined"
-            density="compact"
-            placeholder="Ej: 201.248.10.50"
-            hint="IP pública o dominio del servidor. Vacío = auto-detect (solo red local)"
-            persistent-hint
-          />
-        </v-col>
-        <v-col cols="12" sm="4" class="d-flex align-center">
-          <v-btn color="primary" :loading="guardandoCfgSrv" @click="guardarCfgServidor" block>
-            Guardar configuración
-          </v-btn>
-        </v-col>
-      </v-row>
-    </v-card>
-
-    <!-- IP para datos de conexión de clientes -->
-    <v-card rounded="xl" elevation="2" class="pa-6 mb-4">
-      <div class="text-subtitle-1 font-weight-bold mb-3">
-        <v-icon start color="primary">mdi-ip-network</v-icon>
-        Dirección para datos de conexión
-      </div>
-      <v-row align="center">
-        <v-col cols="12" sm="8">
-          <v-text-field
-            v-model="ipConexionClientes"
-            label="IP o dominio que ven los clientes"
-            variant="outlined"
-            density="compact"
-            placeholder="Ej: 186.167.68.54:58080"
-            hint="Se usa solo al generar el archivo de datos de conexión. No afecta al servidor FTP."
-            persistent-hint
-            hide-details="auto"
-          />
-        </v-col>
-        <v-col cols="12" sm="4" class="d-flex align-center gap-2">
-          <v-btn color="primary" variant="tonal" prepend-icon="mdi-content-save-outline" @click="guardarIpConexion" block>
-            Guardar dirección
-          </v-btn>
-        </v-col>
-      </v-row>
-    </v-card>
-
-    <!-- Gestión de usuarios -->
-    <v-card v-if="authStore.esAdmin || authStore.puedeGestionarFtpUsuarios" rounded="xl" elevation="2" class="pa-6">
-      <div class="d-flex align-center mb-4">
-        <div class="text-subtitle-1 font-weight-bold">
-          <v-icon start color="primary">mdi-account-multiple</v-icon>
-          Usuarios FTP
-        </div>
-        <v-spacer />
-        <v-btn variant="tonal" color="teal-darken-1" prepend-icon="mdi-file-excel-outline" class="mr-2" @click="descargarPlantilla">
-          Plantilla
-        </v-btn>
-        <v-btn variant="tonal" color="green-darken-2" prepend-icon="mdi-file-import-outline" class="mr-2"
-          :loading="importandoExcel" @click="seleccionarExcel">
-          Importar Excel
-        </v-btn>
-        <v-btn variant="tonal" color="orange-darken-2" prepend-icon="mdi-key-change" class="mr-2"
-          :loading="sincronizandoClaves" @click="seleccionarExcelClaves">
-          Sincronizar claves
-        </v-btn>
-        <input ref="inputImportRef"      type="file" accept=".xlsx,.xls" style="display:none" @change="importarExcel" />
-        <input ref="inputClavesRef"      type="file" accept=".xlsx,.xls" style="display:none" @change="sincronizarClaves" />
-        <v-btn color="primary" variant="tonal" prepend-icon="mdi-account-plus" @click="abrirDialogNuevoUsuario">
-          Nuevo usuario
-        </v-btn>
-      </div>
-
-      <v-data-table
-        :headers="headersUsuarios"
-        :items="usuarios"
-        :loading="cargandoUsuarios"
-        hover
-        class="bg-white"
-        no-data-text="No hay usuarios FTP configurados"
-      >
-        <template v-slot:item.ACTIVO="{ item }">
-          <v-chip :color="item.ACTIVO === 'T' ? 'success' : 'default'" size="small" variant="flat">
-            {{ item.ACTIVO === 'T' ? 'Activo' : 'Inactivo' }}
+      <!-- Estado + control -->
+      <v-card v-if="authStore.esAdmin" rounded="xl" elevation="2" class="pa-6 mb-4">
+        <div class="d-flex align-center mb-4">
+          <div class="text-subtitle-1 font-weight-bold">
+            <v-icon start color="primary">mdi-server-network</v-icon>
+            Estado del servidor
+          </div>
+          <v-spacer />
+          <v-chip :color="servidorActivo ? 'success' : 'default'" variant="flat" class="mr-3">
+            <v-icon start>{{ servidorActivo ? 'mdi-check-circle' : 'mdi-circle-off-outline' }}</v-icon>
+            {{ servidorActivo ? 'Activo' : 'Inactivo' }}
           </v-chip>
-        </template>
-        <template v-slot:item.FECHA_CREACION="{ item }">
-          {{ item.FECHA_CREACION ? new Date(item.FECHA_CREACION).toLocaleDateString('es-VE', { timeZone: brandingStore.zonaHoraria }) : '—' }}
-        </template>
-        <template v-slot:item.acciones="{ item }">
-          <v-btn icon size="small" variant="text" color="teal-darken-1" title="Datos de conexión" @click="abrirDatosConexion(item)">
-            <v-icon>mdi-lan-connect</v-icon>
+          <v-btn v-if="!servidorActivo" color="success" variant="tonal" prepend-icon="mdi-play" :loading="accionServidor" @click="iniciarServidor">
+            Iniciar
           </v-btn>
-          <v-btn icon size="small" variant="text" :color="item.ACTIVO === 'T' ? 'warning' : 'success'"
-            :title="item.ACTIVO === 'T' ? 'Desactivar' : 'Activar'"
-            @click="toggleUsuario(item)">
-            <v-icon>{{ item.ACTIVO === 'T' ? 'mdi-account-off' : 'mdi-account-check' }}</v-icon>
+          <v-btn v-else color="error" variant="tonal" prepend-icon="mdi-stop" :loading="accionServidor" @click="detenerServidor">
+            Detener
           </v-btn>
-          <v-btn icon size="small" variant="text" color="info" title="Cambiar contraseña" @click="abrirDialogPassword(item)">
-            <v-icon>mdi-key</v-icon>
+        </div>
+
+        <div class="d-flex align-center mb-4 gap-3">
+          <v-switch
+            v-model="cfgServidor.ftpHabilitado"
+            label="Iniciar automáticamente al reiniciar el servidor"
+            color="primary"
+            hide-details
+            density="compact"
+          />
+        </div>
+
+        <v-alert v-if="servidorActivo" type="info" variant="tonal" density="compact" class="mb-0">
+          Puerto FTP activo: <strong>{{ cfgServidor.puerto }}</strong>.
+          Los clientes deben conectarse a la IP del servidor en ese puerto.
+          Puertos pasivos: <strong>{{ cfgServidor.pasivoMin }}–{{ cfgServidor.pasivoMax }}</strong>.
+        </v-alert>
+      </v-card>
+
+      <!-- Configuración de red -->
+      <v-card v-if="authStore.esAdmin" rounded="xl" elevation="2" class="pa-6 mb-4">
+        <div class="text-subtitle-1 font-weight-bold mb-4">
+          <v-icon start color="primary">mdi-cog-outline</v-icon>
+          Configuración de red
+        </div>
+        <v-alert type="warning" variant="tonal" density="compact" class="mb-4">
+          Después de cambiar la configuración, <strong>detén y vuelve a iniciar</strong> el servidor para aplicar los cambios.
+          Puertos menores a 1024 pueden requerir permisos de administrador en el sistema operativo.
+        </v-alert>
+        <v-row>
+          <v-col cols="12" sm="4">
+            <v-text-field
+              v-model.number="cfgServidor.puerto"
+              label="Puerto FTP"
+              type="number"
+              variant="outlined"
+              density="compact"
+              hint="Default: 21 (requiere admin en Linux/Windows)"
+              persistent-hint
+            />
+          </v-col>
+          <v-col cols="12" sm="4">
+            <v-text-field
+              v-model.number="cfgServidor.pasivoMin"
+              label="Puerto pasivo mínimo"
+              type="number"
+              variant="outlined"
+              density="compact"
+              hint="Rango para modo pasivo (PASV)"
+              persistent-hint
+            />
+          </v-col>
+          <v-col cols="12" sm="4">
+            <v-text-field
+              v-model.number="cfgServidor.pasivoMax"
+              label="Puerto pasivo máximo"
+              type="number"
+              variant="outlined"
+              density="compact"
+              hint="Abre estos puertos en el firewall/router"
+              persistent-hint
+            />
+          </v-col>
+          <v-col cols="12" sm="8">
+            <v-text-field
+              v-model="cfgServidor.ipExterna"
+              label="IP externa (NAT)"
+              variant="outlined"
+              density="compact"
+              placeholder="Ej: 201.248.10.50"
+              hint="IP pública o dominio del servidor. Vacío = auto-detect (solo red local)"
+              persistent-hint
+            />
+          </v-col>
+          <v-col cols="12" sm="4" class="d-flex align-center">
+            <v-btn color="primary" :loading="guardandoCfgSrv" @click="guardarCfgServidor" block>
+              Guardar configuración
+            </v-btn>
+          </v-col>
+        </v-row>
+      </v-card>
+
+      <!-- IP para datos de conexión de clientes -->
+      <v-card rounded="xl" elevation="2" class="pa-6 mb-4">
+        <div class="text-subtitle-1 font-weight-bold mb-3">
+          <v-icon start color="primary">mdi-ip-network</v-icon>
+          Dirección para datos de conexión
+        </div>
+        <v-row align="center">
+          <v-col cols="12" sm="8">
+            <v-text-field
+              v-model="ipConexionClientes"
+              label="IP o dominio que ven los clientes"
+              variant="outlined"
+              density="compact"
+              placeholder="Ej: 186.167.68.54:58080"
+              hint="Se usa solo al generar el archivo de datos de conexión. No afecta al servidor FTP."
+              persistent-hint
+              hide-details="auto"
+            />
+          </v-col>
+          <v-col cols="12" sm="4" class="d-flex align-center gap-2">
+            <v-btn color="primary" variant="tonal" prepend-icon="mdi-content-save-outline" @click="guardarIpConexion" block>
+              Guardar dirección
+            </v-btn>
+          </v-col>
+        </v-row>
+      </v-card>
+
+      <!-- Gestión de usuarios -->
+      <v-card v-if="authStore.esAdmin || authStore.puedeGestionarFtpUsuarios" rounded="xl" elevation="2" class="pa-6">
+        <div class="d-flex align-center mb-4">
+          <div class="text-subtitle-1 font-weight-bold">
+            <v-icon start color="primary">mdi-account-multiple</v-icon>
+            Usuarios FTP
+          </div>
+          <v-spacer />
+          <v-btn variant="tonal" color="teal-darken-1" prepend-icon="mdi-file-excel-outline" class="mr-2" @click="descargarPlantilla">
+            Plantilla
           </v-btn>
-          <v-btn icon size="small" variant="text" color="error" title="Eliminar" @click="confirmarEliminar(item)">
-            <v-icon>mdi-delete</v-icon>
+          <v-btn variant="tonal" color="green-darken-2" prepend-icon="mdi-file-import-outline" class="mr-2"
+            :loading="importandoExcel" @click="seleccionarExcel">
+            Importar Excel
           </v-btn>
-        </template>
-      </v-data-table>
-    </v-card>
+          <v-btn variant="tonal" color="orange-darken-2" prepend-icon="mdi-key-change" class="mr-2"
+            :loading="sincronizandoClaves" @click="seleccionarExcelClaves">
+            Sincronizar claves
+          </v-btn>
+          <input ref="inputImportRef"      type="file" accept=".xlsx,.xls" style="display:none" @change="importarExcel" />
+          <input ref="inputClavesRef"      type="file" accept=".xlsx,.xls" style="display:none" @change="sincronizarClaves" />
+          <v-btn color="primary" variant="tonal" prepend-icon="mdi-account-plus" @click="abrirDialogNuevoUsuario">
+            Nuevo usuario
+          </v-btn>
+        </div>
+
+        <v-data-table
+          :headers="headersUsuarios"
+          :items="usuarios"
+          :loading="cargandoUsuarios"
+          hover
+          class="bg-white"
+          no-data-text="No hay usuarios FTP configurados"
+        >
+          <template v-slot:item.ACTIVO="{ item }">
+            <v-chip :color="item.ACTIVO === 'T' ? 'success' : 'default'" size="small" variant="flat">
+              {{ item.ACTIVO === 'T' ? 'Activo' : 'Inactivo' }}
+            </v-chip>
+          </template>
+          <template v-slot:item.FECHA_CREACION="{ item }">
+            {{ item.FECHA_CREACION ? new Date(item.FECHA_CREACION).toLocaleDateString('es-VE', { timeZone: brandingStore.zonaHoraria }) : '—' }}
+          </template>
+          <template v-slot:item.acciones="{ item }">
+            <v-btn icon size="small" variant="text" color="teal-darken-1" title="Datos de conexión" @click="abrirDatosConexion(item)">
+              <v-icon>mdi-lan-connect</v-icon>
+            </v-btn>
+            <v-btn icon size="small" variant="text" :color="item.ACTIVO === 'T' ? 'warning' : 'success'"
+              :title="item.ACTIVO === 'T' ? 'Desactivar' : 'Activar'"
+              @click="toggleUsuario(item)">
+              <v-icon>{{ item.ACTIVO === 'T' ? 'mdi-account-off' : 'mdi-account-check' }}</v-icon>
+            </v-btn>
+            <v-btn icon size="small" variant="text" color="info" title="Cambiar contraseña" @click="abrirDialogPassword(item)">
+              <v-icon>mdi-key</v-icon>
+            </v-btn>
+            <v-btn icon size="small" variant="text" color="error" title="Eliminar" @click="confirmarEliminar(item)">
+              <v-icon>mdi-delete</v-icon>
+            </v-btn>
+          </template>
+        </v-data-table>
+      </v-card>
+
+    </div><!-- /tab ftp -->
+
+    <!-- ══════════════════════ TAB ICOMPRAS ══════════════════════ -->
+    <div v-show="tabActiva === 'icompras'">
+
+      <!-- Configuración -->
+      <v-card v-if="authStore.esAdmin" rounded="xl" elevation="2" class="pa-6 mb-4">
+        <div class="text-subtitle-1 font-weight-bold mb-4">
+          <v-icon start color="primary">mdi-cog-outline</v-icon>
+          Configuración ICompras
+        </div>
+        <v-row>
+          <v-col cols="12" sm="8">
+            <v-text-field
+              v-model="icCfg.urlBase"
+              label="URL base del servidor remoto"
+              variant="outlined"
+              density="compact"
+              placeholder="http://192.168.1.10:8080"
+              hint="Sin barra al final. Ej: http://10.0.0.5:8080"
+              persistent-hint
+            />
+          </v-col>
+          <v-col cols="12" sm="4">
+            <v-text-field
+              v-model="icCfg.codisb"
+              label="CODISB"
+              variant="outlined"
+              density="compact"
+              placeholder="501590192"
+              hint="Código de sucursal"
+              persistent-hint
+            />
+          </v-col>
+          <v-col cols="12" sm="6">
+            <v-text-field
+              v-model="icCfg.rutaPedidos"
+              label="Carpeta local de pedidos"
+              variant="outlined"
+              density="compact"
+              placeholder="C:\PEDIDOS"
+              hint="Ruta donde se guardarán los archivos .txt descargados"
+              persistent-hint
+            />
+          </v-col>
+          <v-col cols="12" sm="3">
+            <v-text-field
+              v-model.number="icCfg.intervaloSeg"
+              label="Intervalo (segundos)"
+              type="number"
+              variant="outlined"
+              density="compact"
+              :min="1"
+              hint="Frecuencia del ciclo automático"
+              persistent-hint
+            />
+          </v-col>
+          <v-col cols="12" sm="3" class="d-flex align-center">
+            <v-switch
+              v-model="icCfg.habilitado"
+              label="Activar ciclo automático"
+              color="primary"
+              hide-details
+              density="compact"
+            />
+          </v-col>
+          <v-col cols="12" class="d-flex justify-end pt-0">
+            <v-btn color="primary" :loading="guardandoIcCfg" prepend-icon="mdi-content-save-outline" @click="guardarIcCfg">
+              Guardar configuración
+            </v-btn>
+          </v-col>
+        </v-row>
+      </v-card>
+
+      <!-- Estado del scheduler + acciones -->
+      <v-card rounded="xl" elevation="2" class="pa-6 mb-4">
+        <div class="d-flex align-center mb-4">
+          <div class="text-subtitle-1 font-weight-bold">
+            <v-icon start color="primary">mdi-timer-outline</v-icon>
+            Ciclo automático
+          </div>
+          <v-spacer />
+          <v-chip :color="icSchedulerActivo ? 'success' : 'default'" variant="flat" class="mr-3">
+            <v-icon start>{{ icSchedulerActivo ? 'mdi-check-circle' : 'mdi-circle-off-outline' }}</v-icon>
+            {{ icSchedulerActivo ? 'En ejecución' : 'Detenido' }}
+          </v-chip>
+          <v-btn color="primary" variant="tonal" prepend-icon="mdi-play-circle-outline"
+            :loading="ejecutandoCiclo" @click="ejecutarCicloManual">
+            Ejecutar ahora
+          </v-btn>
+        </div>
+        <v-alert v-if="ultimoCicloResultado" :type="ultimoCicloResultado.errores > 0 ? 'warning' : 'success'"
+          variant="tonal" density="compact" class="mb-0">
+          Último ciclo: <strong>{{ ultimoCicloResultado.descargados }}</strong> descargados,
+          <strong>{{ ultimoCicloResultado.errores }}</strong> errores
+        </v-alert>
+      </v-card>
+
+      <!-- Reprocesar pedido -->
+      <v-card rounded="xl" elevation="2" class="pa-6 mb-4">
+        <div class="text-subtitle-1 font-weight-bold mb-4">
+          <v-icon start color="orange-darken-2">mdi-refresh-circle</v-icon>
+          Reprocesar pedido por ID
+        </div>
+        <v-row align="center">
+          <v-col cols="12" sm="6">
+            <v-text-field
+              v-model="icReprocesarId"
+              label="ID del pedido remoto"
+              variant="outlined"
+              density="compact"
+              hide-details
+              placeholder="Ej: 12345"
+              @keyup.enter="reprocesarPedido"
+            />
+          </v-col>
+          <v-col cols="12" sm="3">
+            <v-btn color="orange-darken-2" variant="tonal" :loading="reprocesando"
+              prepend-icon="mdi-refresh" @click="reprocesarPedido" block>
+              Reprocesar
+            </v-btn>
+          </v-col>
+        </v-row>
+      </v-card>
+
+      <!-- Auditoría -->
+      <v-card rounded="xl" elevation="2" class="pa-6">
+        <div class="d-flex align-center mb-4">
+          <div class="text-subtitle-1 font-weight-bold">
+            <v-icon start color="primary">mdi-clipboard-list-outline</v-icon>
+            Auditoría de pedidos
+          </div>
+          <v-spacer />
+          <v-btn variant="tonal" prepend-icon="mdi-refresh" size="small" :loading="cargandoAudit" @click="cargarAuditoria">
+            Actualizar
+          </v-btn>
+        </div>
+        <v-data-table
+          :headers="headersAudit"
+          :items="auditoria"
+          :loading="cargandoAudit"
+          hover
+          density="compact"
+          class="bg-white"
+          no-data-text="Sin registros"
+          :items-per-page="20"
+        >
+          <template v-slot:item.ESTADO="{ item }">
+            <v-chip :color="colorEstado(item.ESTADO)" size="x-small" variant="flat">
+              {{ item.ESTADO }}
+            </v-chip>
+          </template>
+          <template v-slot:item.FECHA_DESCARGA="{ item }">
+            {{ item.FECHA_DESCARGA ? new Date(item.FECHA_DESCARGA).toLocaleString('es-VE', { timeZone: brandingStore.zonaHoraria }) : '—' }}
+          </template>
+          <template v-slot:item.ARCHIVO_PATH="{ item }">
+            <span class="text-caption text-truncate" style="max-width:200px;display:inline-block;" :title="item.ARCHIVO_PATH">
+              {{ item.ARCHIVO_PATH || '—' }}
+            </span>
+          </template>
+          <template v-slot:item.ERROR_MSG="{ item }">
+            <span v-if="item.ERROR_MSG" class="text-caption text-error" :title="item.ERROR_MSG">
+              {{ item.ERROR_MSG.slice(0, 60) }}{{ item.ERROR_MSG.length > 60 ? '…' : '' }}
+            </span>
+            <span v-else class="text-caption text-medium-emphasis">—</span>
+          </template>
+        </v-data-table>
+      </v-card>
+
+    </div><!-- /tab icompras -->
+
+    <!-- ══ Dialogs FTP ══ -->
 
     <!-- Dialog: Nuevo usuario FTP -->
     <v-dialog v-model="dialogNuevoUsuario" max-width="420" persistent>
@@ -347,13 +532,17 @@ const API = `${import.meta.env.VITE_API_URL}/ftp`;
 const snack = ref({ show: false, text: '', color: 'success' });
 const mostrarSnack = (text: string, color = 'success') => { snack.value = { show: true, text, color }; };
 
-// Estado del servidor
+const tabActiva = ref<'ftp' | 'icompras'>('ftp');
+
+// ── FTP: Estado del servidor ───────────────────────────────────────────────────
+
 const servidorActivo  = ref(false);
 const accionServidor  = ref(false);
 const guardandoCfgSrv = ref(false);
 const cfgServidor     = ref({ puerto: 21, pasivoMin: 40000, pasivoMax: 40100, ipExterna: '', ftpHabilitado: false });
 
-// Usuarios FTP
+// ── FTP: Usuarios ──────────────────────────────────────────────────────────────
+
 const usuarios           = ref<any[]>([]);
 const cargandoUsuarios   = ref(false);
 const dialogNuevoUsuario = ref(false);
@@ -381,7 +570,37 @@ const headersUsuarios = [
   { title: 'Acciones', key: 'acciones',       sortable: false },
 ];
 
-// ── Servidor ──────────────────────────────────────────────────────────────────
+// ── ICOMPRAS: estado ───────────────────────────────────────────────────────────
+
+const icCfg = ref({
+  urlBase: '', codisb: '', intervaloSeg: 60, habilitado: false, rutaPedidos: '',
+});
+const guardandoIcCfg      = ref(false);
+const icSchedulerActivo   = ref(false);
+const ejecutandoCiclo     = ref(false);
+const ultimoCicloResultado = ref<{ descargados: number; errores: number } | null>(null);
+const icReprocesarId      = ref('');
+const reprocesando        = ref(false);
+const auditoria           = ref<any[]>([]);
+const cargandoAudit       = ref(false);
+
+const headersAudit = [
+  { title: 'ID',          key: 'ID_PEDIDO_REM',  sortable: false, width: 100 },
+  { title: 'Estado',      key: 'ESTADO',          sortable: false, width: 110 },
+  { title: 'Descargado',  key: 'FECHA_DESCARGA',  sortable: false, width: 160 },
+  { title: 'Archivo',     key: 'ARCHIVO_PATH',    sortable: false },
+  { title: 'Error',       key: 'ERROR_MSG',       sortable: false },
+];
+
+const colorEstado = (estado: string) => {
+  const m: Record<string, string> = {
+    PROCESADO: 'success', RECIBIDO: 'info', DESCARGANDO: 'warning',
+    FACTURADO: 'teal', ANULADO: 'default', ERROR: 'error',
+  };
+  return m[estado] ?? 'default';
+};
+
+// ── FTP: métodos ──────────────────────────────────────────────────────────────
 
 const cargarEstadoServidor = async () => {
   try {
@@ -428,8 +647,6 @@ const detenerServidor = async () => {
   } catch { mostrarSnack('Error al detener servidor', 'error'); }
   finally { accionServidor.value = false; }
 };
-
-// ── Usuarios ──────────────────────────────────────────────────────────────────
 
 const cargarUsuarios = async () => {
   cargandoUsuarios.value = true;
@@ -503,8 +720,6 @@ const eliminarUsuario = async () => {
   finally { eliminandoUsuario.value = false; }
 };
 
-// ── Datos de conexión ─────────────────────────────────────────────────────────
-
 const abrirDatosConexion = (item: any) => {
   localStorage.setItem('ftp_ip_conexion', ipConexionClientes.value);
   const direccion = ipConexionClientes.value.trim() || '<completar dirección FTP>';
@@ -536,8 +751,6 @@ const descargarConexion = () => {
   a.click();
   URL.revokeObjectURL(a.href);
 };
-
-// ── Importación masiva por Excel ──────────────────────────────────────────────
 
 const inputImportRef    = ref<HTMLInputElement | null>(null);
 const inputClavesRef    = ref<HTMLInputElement | null>(null);
@@ -629,8 +842,68 @@ const guardarIpConexion = () => {
   mostrarSnack('Dirección guardada correctamente', 'success');
 };
 
+// ── ICOMPRAS: métodos ──────────────────────────────────────────────────────────
+
+const cargarIcCfg = async () => {
+  try {
+    const res = await axios.get(`${API}/icompras/config`);
+    if (res.data.success) {
+      icCfg.value          = res.data.data;
+      icSchedulerActivo.value = res.data.schedulerActivo;
+    }
+  } catch {}
+};
+
+const guardarIcCfg = async () => {
+  guardandoIcCfg.value = true;
+  try {
+    const res = await axios.put(`${API}/icompras/config`, icCfg.value);
+    icSchedulerActivo.value = res.data.schedulerActivo ?? icCfg.value.habilitado;
+    mostrarSnack('Configuración ICompras guardada', 'success');
+  } catch (e: any) {
+    mostrarSnack(e?.response?.data?.message ?? 'Error al guardar', 'error');
+  } finally { guardandoIcCfg.value = false; }
+};
+
+const ejecutarCicloManual = async () => {
+  ejecutandoCiclo.value = true;
+  try {
+    const res = await axios.post(`${API}/icompras/ciclo`);
+    if (res.data.success) {
+      ultimoCicloResultado.value = { descargados: res.data.descargados, errores: res.data.errores };
+      mostrarSnack(`Ciclo completado: ${res.data.descargados} descargados, ${res.data.errores} errores`,
+        res.data.errores > 0 ? 'warning' : 'success');
+      await cargarAuditoria();
+    }
+  } catch (e: any) {
+    mostrarSnack(e?.response?.data?.message ?? 'Error al ejecutar ciclo', 'error');
+  } finally { ejecutandoCiclo.value = false; }
+};
+
+const reprocesarPedido = async () => {
+  if (!icReprocesarId.value.trim()) { mostrarSnack('Ingresa un ID de pedido', 'warning'); return; }
+  reprocesando.value = true;
+  try {
+    const res = await axios.post(`${API}/icompras/reprocesar`, { id: icReprocesarId.value.trim() });
+    mostrarSnack(res.data.message ?? 'Reprocesado', 'success');
+    icReprocesarId.value = '';
+    await cargarAuditoria();
+  } catch (e: any) {
+    mostrarSnack(e?.response?.data?.message ?? 'Error al reprocesar', 'error');
+  } finally { reprocesando.value = false; }
+};
+
+const cargarAuditoria = async () => {
+  cargandoAudit.value = true;
+  try {
+    const res = await axios.get(`${API}/icompras/auditoria`);
+    if (res.data.success) auditoria.value = res.data.data;
+  } catch { mostrarSnack('Error al cargar auditoría', 'error'); }
+  finally { cargandoAudit.value = false; }
+};
+
 onMounted(async () => {
-  const tasks: Promise<any>[] = [cargarUsuarios()];
+  const tasks: Promise<any>[] = [cargarUsuarios(), cargarIcCfg(), cargarAuditoria()];
   if (authStore.esAdmin) tasks.push(cargarEstadoServidor());
   await Promise.all(tasks);
 });

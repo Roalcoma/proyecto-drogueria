@@ -55,6 +55,15 @@ export class RechequeoService {
                     FECHA             DATETIME       NOT NULL DEFAULT GETDATE()
                 )
             `);
+            // Columnas opcionales añadidas después de la creación inicial
+            await pool.request().query(`
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='APP_RECHEQUEO_DET' AND COLUMN_NAME='LOTE')
+                    ALTER TABLE ${ESQ}.APP_RECHEQUEO_DET ADD LOTE NVARCHAR(100) NULL
+            `);
+            await pool.request().query(`
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='APP_RECHEQUEO_DET' AND COLUMN_NAME='FECHA_VENCIMIENTO')
+                    ALTER TABLE ${ESQ}.APP_RECHEQUEO_DET ADD FECHA_VENCIMIENTO DATE NULL
+            `);
             console.log('[Rechequeo] Tablas APP_RECHEQUEO verificadas/creadas');
         } catch (err) {
             console.error('[Rechequeo] initTablas error:', err);
@@ -119,7 +128,7 @@ export class RechequeoService {
             ${BASE_PEDIDOS_FROM}
             WHERE LIN.UNIDADESPEN > 0
               AND NOT EXISTS (
-                SELECT 1 FROM ${ESQ}.APP_RECHEQUEO_CAB RC
+                SELECT 1 FROM ${ESQ}.APP_RECHEQUEO_CAB RC WITH (NOLOCK)
                 WHERE RC.NUMSERIE COLLATE Latin1_General_CS_AI = CAB.NUMSERIE
                   AND RC.NUMPEDIDO = CAB.NUMPEDIDO
                   AND RC.N COLLATE Latin1_General_CS_AI = CAB.N
@@ -139,7 +148,7 @@ export class RechequeoService {
                 ${BASE_PEDIDOS_FROM}
                 WHERE LIN.UNIDADESPEN > 0
                   AND EXISTS (
-                    SELECT 1 FROM ${ESQ}.APP_RECHEQUEO_CAB RC
+                    SELECT 1 FROM ${ESQ}.APP_RECHEQUEO_CAB RC WITH (NOLOCK)
                     WHERE RC.NUMSERIE COLLATE Latin1_General_CS_AI = CAB.NUMSERIE
                       AND RC.NUMPEDIDO = CAB.NUMPEDIDO
                       AND RC.N COLLATE Latin1_General_CS_AI = CAB.N
@@ -163,7 +172,7 @@ export class RechequeoService {
             .input('NP',  mssql.Int,           numpedido)
             .input('N',   mssql.NChar(1),      n)
             .input('USU', mssql.NVarChar(100), usuario)
-            .query(`SELECT TOP 1 USUARIO FROM ${ESQ}.APP_RECHEQUEO_CAB
+            .query(`SELECT TOP 1 USUARIO FROM ${ESQ}.APP_RECHEQUEO_CAB WITH (NOLOCK)
                     WHERE NUMSERIE=@NS AND NUMPEDIDO=@NP AND N=@N AND USUARIO <> @USU`);
         if (otherLock.recordset.length > 0) {
             throw new Error(`Este pedido ya está siendo contado por ${otherLock.recordset[0].USUARIO}`);
@@ -176,7 +185,7 @@ export class RechequeoService {
             .input('N',   mssql.NChar(1),      n)
             .input('FAC', mssql.NVarChar(100), idfactura)
             .input('USU', mssql.NVarChar(100), usuario)
-            .query(`SELECT ID FROM ${ESQ}.APP_RECHEQUEO_CAB
+            .query(`SELECT ID FROM ${ESQ}.APP_RECHEQUEO_CAB WITH (NOLOCK)
                     WHERE NUMSERIE=@NS AND NUMPEDIDO=@NP AND N=@N AND IDFACTURA=@FAC AND USUARIO=@USU`);
         if (existingFac.recordset.length) return existingFac.recordset[0].ID;
 
@@ -193,6 +202,59 @@ export class RechequeoService {
         return ins.recordset[0].ID;
     }
 
+    // ── Resuelve TALLA/COLOR buscando el lote en ARTICULOSLIN, insertando si no existe ──
+    private static async resolverTallaColor(
+        pool: any, artCod: number, lote: string, fechaVenc: Date | null
+    ): Promise<{ talla: string; color: string }> {
+        if (lote) {
+            // Buscar lote existente
+            const ex = await pool.request()
+                .input('COD',  mssql.Int,          artCod)
+                .input('LOTE', mssql.NVarChar(100), lote)
+                .query(`SELECT TOP 1 TALLA, COLOR FROM ARTICULOSLIN WITH(NOLOCK)
+                        WHERE CODARTICULO=@COD
+                          AND CODBARRAS COLLATE Latin1_General_CS_AI = @LOTE COLLATE Latin1_General_CS_AI`);
+            if (ex.recordset.length) {
+                return { talla: ex.recordset[0].TALLA, color: ex.recordset[0].COLOR };
+            }
+        }
+
+        // Calcular siguiente correlativo COLOR
+        const ncRes = await pool.request()
+            .input('COD', mssql.Int, artCod)
+            .query(`SELECT RIGHT(REPLICATE('0',10)+CAST(ISNULL(MAX(CAST(COLOR AS BIGINT)),0)+1 AS NVARCHAR(10)),10) AS NC
+                    FROM ARTICULOSLIN WITH(NOLOCK)
+                    WHERE CODARTICULO=@COD AND TALLA COLLATE Latin1_General_CS_AI='@'`);
+        const newColor: string = ncRes.recordset[0]?.NC ?? '0000000001';
+
+        if (lote) {
+            // Obtener fila template para copiar estructura
+            const tmplRes = await pool.request()
+                .input('COD', mssql.Int, artCod)
+                .query(`SELECT TOP 1 * FROM ARTICULOSLIN WITH(NOLOCK)
+                        WHERE CODARTICULO=@COD AND TALLA COLLATE Latin1_General_CS_AI='@'
+                        ORDER BY COLOR`);
+
+            if (tmplRes.recordset.length) {
+                const row: Record<string, any> = { ...tmplRes.recordset[0] };
+                row['TALLA']         = '@';
+                row['COLOR']         = newColor;
+                row['CODBARRAS']     = lote;
+                row['GARANTIACOMPRA'] = fechaVenc ?? null;
+
+                const colMeta = (tmplRes.recordset as any).columns as Record<string, { identity: boolean }>;
+                const cols    = Object.keys(colMeta).filter(c => !colMeta[c].identity);
+                const req     = pool.request();
+                cols.forEach((c, i) => req.input(`_p${i}`, row[c]));
+                const colNames  = cols.map(c => `[${c}]`).join(',');
+                const paramNames = cols.map((_: any, i: number) => `@_p${i}`).join(',');
+                await req.query(`INSERT INTO ARTICULOSLIN (${colNames}) VALUES (${paramNames})`);
+            }
+        }
+
+        return { talla: '@', color: newColor };
+    }
+
     // ── Cerrar conteo (cierra TODOS los identificadores del usuario para ese pedido) ──
     static async cerrarConteo(numserie: string, numpedido: number, n: string, usuario: string): Promise<void> {
         const pool = await connectDb();
@@ -203,7 +265,7 @@ export class RechequeoService {
             .input('NP',  mssql.Int,           numpedido)
             .input('N',   mssql.NChar(1),      n)
             .input('USU', mssql.NVarChar(100), usuario)
-            .query(`SELECT ID, IDFACTURA FROM ${ESQ}.APP_RECHEQUEO_CAB
+            .query(`SELECT ID, IDFACTURA FROM ${ESQ}.APP_RECHEQUEO_CAB WITH (NOLOCK)
                     WHERE NUMSERIE=@NS AND NUMPEDIDO=@NP AND N=@N AND USUARIO=@USU`);
 
         if (!cabsRes.recordset.length) throw new Error('No se encontraron conteos activos para este pedido');
@@ -221,7 +283,7 @@ export class RechequeoService {
             // Saltar cabs vacíos (sin conteo registrado)
             const detCheck = await pool.request()
                 .input('IDCAB', mssql.Int, cab.ID)
-                .query(`SELECT TOP 1 1 AS TIENE FROM ${ESQ}.APP_RECHEQUEO_DET WHERE IDCAB=@IDCAB`);
+                .query(`SELECT TOP 1 1 AS TIENE FROM ${ESQ}.APP_RECHEQUEO_DET WITH (NOLOCK) WHERE IDCAB=@IDCAB`);
             if (!detCheck.recordset.length) {
                 await pool.request().input('IDCAB', mssql.Int, cab.ID)
                     .query(`DELETE FROM ${ESQ}.APP_RECHEQUEO_CAB WHERE ID=@IDCAB`);
@@ -239,41 +301,40 @@ export class RechequeoService {
                         OUTPUT INSERTED.ID VALUES (@NS,@NP,@N,@FAC,@USU)`);
             const idCerrado: number = cerradoCabRes.recordset[0].ID;
 
-            // Insertar lineas cerradas
-            await pool.request()
-                .input('IDCAB',     mssql.Int,            cab.ID)
-                .input('IDCERRADO', mssql.Int,            idCerrado)
-                .input('FAC',       mssql.NVarChar(100),  cab.IDFACTURA)
-                .input('NS',        mssql.NVarChar(4),    numserie)
-                .input('NP',        mssql.Int,            numpedido)
-                .input('N',         mssql.NChar(1),       n)
-                .input('DTO',       mssql.Decimal(10, 4), dto)
-                .query(`
-                    INSERT INTO ${ESQ}.APP_RECHEQUEO_CERRADO_LIN
-                        (IDCAB, NUMLINEA, CODARTICULO, TALLA, COLOR, IDFACTURA, UNIDADES_CONTADAS, PRECIO, DTOCOMERCIAL)
-                    SELECT
-                        @IDCERRADO,
-                        ISNULL(LIN.NUMLINEA, 0),
-                        D.CODARTICULO,
-                        '@',
-                        RIGHT(REPLICATE('0', 10) + CAST(
-                            ISNULL((
-                                SELECT MAX(CAST(A.COLOR AS BIGINT))
-                                FROM ARTICULOSLIN A WITH(NOLOCK)
-                                WHERE A.CODARTICULO = CAST(D.CODARTICULO AS INT)
-                                  AND A.TALLA COLLATE Latin1_General_CS_AI = '@'
-                            ), 0) + 1
-                        AS NVARCHAR(10)), 10),
-                        @FAC,
-                        D.UNIDADES_CONTADAS,
-                        ISNULL(LIN.PRECIO, 0),
-                        @DTO
-                    FROM ${ESQ}.APP_RECHEQUEO_DET D
-                    LEFT JOIN PEDCOMPRALIN LIN WITH(NOLOCK)
-                        ON LIN.NUMSERIE=@NS AND LIN.NUMPEDIDO=@NP AND LIN.N=@N
-                       AND CAST(LIN.CODARTICULO AS NVARCHAR(20))=D.CODARTICULO
-                    WHERE D.IDCAB=@IDCAB
-                `);
+            // Obtener filas del DET para este cab
+            const detRows = await pool.request()
+                .input('IDCAB2', mssql.Int, cab.ID)
+                .query(`SELECT CODARTICULO, UNIDADES_CONTADAS, ISNULL(LOTE,'') AS LOTE, FECHA_VENCIMIENTO
+                        FROM ${ESQ}.APP_RECHEQUEO_DET WITH (NOLOCK) WHERE IDCAB=@IDCAB2`);
+
+            for (const det of detRows.recordset) {
+                const artCod = parseInt(det.CODARTICULO);
+                const lote   = det.LOTE?.trim() ?? '';
+                const { talla, color } = await RechequeoService.resolverTallaColor(pool, artCod, lote, det.FECHA_VENCIMIENTO);
+
+                await pool.request()
+                    .input('IDCAB',     mssql.Int,            cab.ID)
+                    .input('IDCERRADO', mssql.Int,            idCerrado)
+                    .input('COD',       mssql.NVarChar(20),   det.CODARTICULO)
+                    .input('TALLA',     mssql.NVarChar(50),   talla)
+                    .input('COLOR',     mssql.NVarChar(10),   color)
+                    .input('FAC',       mssql.NVarChar(100),  cab.IDFACTURA)
+                    .input('NS',        mssql.NVarChar(4),    numserie)
+                    .input('NP',        mssql.Int,            numpedido)
+                    .input('N',         mssql.NChar(1),       n)
+                    .input('DTO',       mssql.Decimal(10, 4), dto)
+                    .query(`
+                        INSERT INTO ${ESQ}.APP_RECHEQUEO_CERRADO_LIN
+                            (IDCAB, NUMLINEA, CODARTICULO, TALLA, COLOR, IDFACTURA, UNIDADES_CONTADAS, PRECIO, DTOCOMERCIAL)
+                        SELECT @IDCERRADO, ISNULL(LIN.NUMLINEA, 0), @COD, @TALLA, @COLOR, @FAC,
+                               D.UNIDADES_CONTADAS, ISNULL(LIN.PRECIO, 0), @DTO
+                        FROM ${ESQ}.APP_RECHEQUEO_DET D
+                        LEFT JOIN PEDCOMPRALIN LIN WITH(NOLOCK)
+                            ON LIN.NUMSERIE=@NS AND LIN.NUMPEDIDO=@NP AND LIN.N=@N
+                           AND CAST(LIN.CODARTICULO AS NVARCHAR(20))=D.CODARTICULO
+                        WHERE D.IDCAB=@IDCAB AND D.CODARTICULO=@COD
+                    `);
+            }
 
             // Borrar de tablas activas
             await pool.request().input('IDCAB', mssql.Int, cab.ID)
@@ -292,8 +353,8 @@ export class RechequeoService {
                 ISNULL(P.NOMPROVEEDOR,'') AS PROVEEDOR,
                 COUNT(L.ID)              AS TOTAL_LINEAS,
                 SUM(L.UNIDADES_CONTADAS) AS TOTAL_CONTADAS
-            FROM ${ESQ}.APP_RECHEQUEO_CERRADO_CAB C
-            LEFT JOIN ${ESQ}.APP_RECHEQUEO_CERRADO_LIN L ON L.IDCAB = C.ID
+            FROM ${ESQ}.APP_RECHEQUEO_CERRADO_CAB C WITH (NOLOCK)
+            LEFT JOIN ${ESQ}.APP_RECHEQUEO_CERRADO_LIN L WITH (NOLOCK) ON L.IDCAB = C.ID
             LEFT JOIN PROVEEDORES P WITH(NOLOCK)
                 ON P.CODPROVEEDOR = (
                     SELECT TOP 1 CAB2.CODPROVEEDOR FROM PEDCOMPRACAB CAB2 WITH(NOLOCK)
@@ -315,7 +376,7 @@ export class RechequeoService {
                 SELECT L.NUMLINEA, L.CODARTICULO, L.IDFACTURA,
                        L.UNIDADES_CONTADAS, L.PRECIO,
                        ISNULL(ART.DESCRIPCION,'') AS DESCRIPCION
-                FROM ${ESQ}.APP_RECHEQUEO_CERRADO_LIN L
+                FROM ${ESQ}.APP_RECHEQUEO_CERRADO_LIN L WITH (NOLOCK)
                 LEFT JOIN ARTICULOS ART WITH(NOLOCK) ON ART.CODARTICULO = L.CODARTICULO
                 WHERE L.IDCAB = @IDCAB
                 ORDER BY L.NUMLINEA
@@ -341,8 +402,8 @@ export class RechequeoService {
                     ISNULL(ART.REFPROVEEDOR, '') AS REFPROVEEDOR,
                     ISNULL((
                         SELECT SUM(D.UNIDADES_CONTADAS)
-                        FROM ${ESQ}.APP_RECHEQUEO_DET D
-                        INNER JOIN ${ESQ}.APP_RECHEQUEO_CAB C ON C.ID = D.IDCAB
+                        FROM ${ESQ}.APP_RECHEQUEO_DET D WITH (NOLOCK)
+                        INNER JOIN ${ESQ}.APP_RECHEQUEO_CAB C WITH (NOLOCK) ON C.ID = D.IDCAB
                         WHERE C.NUMSERIE COLLATE Latin1_General_CS_AI = LIN.NUMSERIE
                           AND C.NUMPEDIDO = LIN.NUMPEDIDO
                           AND C.N COLLATE Latin1_General_CS_AI = LIN.N
@@ -364,25 +425,28 @@ export class RechequeoService {
             .input('NP', mssql.Int,         numpedido)
             .input('N',  mssql.NChar(1),    n)
             .query(`SELECT ID, IDFACTURA, USUARIO, CODUSUARIO, FECHA
-                    FROM ${ESQ}.APP_RECHEQUEO_CAB
+                    FROM ${ESQ}.APP_RECHEQUEO_CAB WITH (NOLOCK)
                     WHERE NUMSERIE=@NS AND NUMPEDIDO=@NP AND N=@N`);
         return r.recordset;
     }
 
     // ── Conteo CRUD ────────────────────────────────────────────────────────
-    static async upsertDetalle(idcab: number, codarticulo: string, unidades: number): Promise<void> {
+    static async upsertDetalle(idcab: number, codarticulo: string, unidades: number, lote?: string, fechaVencimiento?: string): Promise<void> {
         const pool = await connectDb();
         await pool.request()
             .input('IDCAB', mssql.Int,           idcab)
             .input('COD',   mssql.NVarChar(20),  String(codarticulo))
             .input('UNI',   mssql.Decimal(10,2), unidades)
+            .input('LOTE',  mssql.NVarChar(100), lote ?? null)
+            .input('FV',    mssql.Date,          fechaVencimiento ? new Date(fechaVencimiento) : null)
             .query(`
-                IF EXISTS (SELECT 1 FROM ${ESQ}.APP_RECHEQUEO_DET WHERE IDCAB=@IDCAB AND CODARTICULO=@COD)
-                    UPDATE ${ESQ}.APP_RECHEQUEO_DET SET UNIDADES_CONTADAS=@UNI, FECHA=GETDATE()
+                IF EXISTS (SELECT 1 FROM ${ESQ}.APP_RECHEQUEO_DET WITH (NOLOCK) WHERE IDCAB=@IDCAB AND CODARTICULO=@COD)
+                    UPDATE ${ESQ}.APP_RECHEQUEO_DET
+                    SET UNIDADES_CONTADAS=@UNI, LOTE=@LOTE, FECHA_VENCIMIENTO=@FV, FECHA=GETDATE()
                     WHERE IDCAB=@IDCAB AND CODARTICULO=@COD
                 ELSE
-                    INSERT INTO ${ESQ}.APP_RECHEQUEO_DET (IDCAB, CODARTICULO, UNIDADES_CONTADAS)
-                    VALUES (@IDCAB, @COD, @UNI)
+                    INSERT INTO ${ESQ}.APP_RECHEQUEO_DET (IDCAB, CODARTICULO, UNIDADES_CONTADAS, LOTE, FECHA_VENCIMIENTO)
+                    VALUES (@IDCAB, @COD, @UNI, @LOTE, @FV)
             `);
     }
 
@@ -390,7 +454,7 @@ export class RechequeoService {
         const pool = await connectDb();
         const r = await pool.request()
             .input('IDCAB', mssql.Int, idcab)
-            .query(`SELECT CODARTICULO, UNIDADES_CONTADAS FROM ${ESQ}.APP_RECHEQUEO_DET WHERE IDCAB=@IDCAB`);
+            .query(`SELECT CODARTICULO, UNIDADES_CONTADAS, ISNULL(LOTE,'') AS LOTE, FECHA_VENCIMIENTO FROM ${ESQ}.APP_RECHEQUEO_DET WITH (NOLOCK) WHERE IDCAB=@IDCAB`);
         return r.recordset;
     }
 
@@ -401,7 +465,7 @@ export class RechequeoService {
             .input('NS', mssql.NVarChar(4), numserie)
             .input('NP', mssql.Int,         numpedido)
             .input('N',  mssql.NChar(1),    n)
-            .query(`SELECT TOP 1 USUARIO FROM ${ESQ}.APP_RECHEQUEO_CAB WHERE NUMSERIE=@NS AND NUMPEDIDO=@NP AND N=@N`);
+            .query(`SELECT TOP 1 USUARIO FROM ${ESQ}.APP_RECHEQUEO_CAB WITH (NOLOCK) WHERE NUMSERIE=@NS AND NUMPEDIDO=@NP AND N=@N`);
         return r.recordset.length ? r.recordset[0] : null;
     }
 }

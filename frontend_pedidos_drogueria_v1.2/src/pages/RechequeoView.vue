@@ -264,6 +264,32 @@
                 />
               </template>
 
+              <template #item.LOTE="{ item }">
+                <v-text-field
+                  :model-value="item.LOTE"
+                  placeholder="Lote"
+                  variant="underlined"
+                  density="compact"
+                  hide-details
+                  style="width:120px"
+                  :disabled="!activeCab || activeCab.USUARIO !== authStore.usuario?.usuario"
+                  @update:model-value="(v: any) => actualizarLote(item.CODARTICULO, v)"
+                />
+              </template>
+
+              <template #item.FECHA_VENCIMIENTO="{ item }">
+                <v-text-field
+                  :model-value="item.FECHA_VENCIMIENTO"
+                  type="date"
+                  variant="underlined"
+                  density="compact"
+                  hide-details
+                  style="width:130px"
+                  :disabled="!activeCab || activeCab.USUARIO !== authStore.usuario?.usuario"
+                  @update:model-value="(v: any) => actualizarFechaVenc(item.CODARTICULO, v)"
+                />
+              </template>
+
               <template #item.CONTADAS_TOTAL="{ item }">
                 <span :class="item.CONTADAS_TOTAL > 0 ? 'text-success font-weight-medium' : ''">
                   {{ item.CONTADAS_TOTAL }}
@@ -447,14 +473,16 @@ const headersCerrado = [
 ];
 
 const headers = [
-  { title: 'Código',      key: 'CODARTICULO',   width: 100 },
-  { title: 'Descripción', key: 'DESCRIPCION',   sortable: false },
-  { title: 'Pedidas',     key: 'PEDIDAS',        width: 80,  align: 'end' as const },
-  { title: 'Recibidas',  key: 'RECIBIDAS',      width: 85,  align: 'end' as const },
-  { title: 'Pendientes', key: 'PENDIENTES',     width: 90,  align: 'end' as const },
-  { title: 'Por mí',      key: 'POR_MI',         width: 110, align: 'end' as const, sortable: false },
-  { title: 'Total',       key: 'CONTADAS_TOTAL', width: 75,  align: 'end' as const },
-  { title: 'Diferencia',  key: 'DIFERENCIA',     width: 95,  align: 'center' as const },
+  { title: 'Código',      key: 'CODARTICULO',      width: 100 },
+  { title: 'Descripción', key: 'DESCRIPCION',      sortable: false },
+  { title: 'Pedidas',     key: 'PEDIDAS',           width: 80,  align: 'end' as const },
+  { title: 'Recibidas',   key: 'RECIBIDAS',         width: 85,  align: 'end' as const },
+  { title: 'Pendientes',  key: 'PENDIENTES',        width: 90,  align: 'end' as const },
+  { title: 'Por mí',      key: 'POR_MI',            width: 110, align: 'end' as const, sortable: false },
+  { title: 'Lote',        key: 'LOTE',              width: 140, sortable: false },
+  { title: 'Vencimiento', key: 'FECHA_VENCIMIENTO', width: 145, sortable: false },
+  { title: 'Total',       key: 'CONTADAS_TOTAL',    width: 75,  align: 'end' as const },
+  { title: 'Diferencia',  key: 'DIFERENCIA',        width: 95,  align: 'center' as const },
 ];
 
 // ── Computed ──────────────────────────────────────────────────────────────────
@@ -466,11 +494,21 @@ const otrosCabs = computed(() =>
   cabeceras.value.filter(c => c.USUARIO !== authStore.usuario?.usuario)
 );
 
+const misLotes      = ref<Record<string, string>>({});
+const misFechasVenc = ref<Record<string, string>>({});
+
 const lineasConConteo = computed(() =>
   lineas.value.map(l => {
-    const yo    = misConteos.value[String(l.CODARTICULO)] ?? 0;
+    const cod   = String(l.CODARTICULO);
+    const yo    = misConteos.value[cod] ?? 0;
     const total = Number(l.CONTADAS_TOTAL) || 0;
-    return { ...l, POR_MI: yo, DIFERENCIA: total - l.PENDIENTES };
+    return {
+      ...l,
+      POR_MI:            yo,
+      LOTE:              misLotes.value[cod]      ?? '',
+      FECHA_VENCIMIENTO: misFechasVenc.value[cod] ?? '',
+      DIFERENCIA:        total - l.PENDIENTES,
+    };
   })
 );
 
@@ -582,15 +620,26 @@ async function cargarLineasSilencioso() {
 async function cargarMisConteos(idcab: number) {
   try {
     const r = await axios.get(`${API}/rechequeo/cabecera/${idcab}/detalles`);
-    const mapa: Record<string, number> = {};
-    for (const d of r.data.data) mapa[String(d.CODARTICULO)] = Number(d.UNIDADES_CONTADAS);
-    misConteos.value = mapa;
+    const mapU: Record<string, number> = {};
+    const mapL: Record<string, string> = {};
+    const mapF: Record<string, string> = {};
+    for (const d of r.data.data) {
+      const cod = String(d.CODARTICULO);
+      mapU[cod] = Number(d.UNIDADES_CONTADAS);
+      if (d.LOTE) mapL[cod] = d.LOTE;
+      if (d.FECHA_VENCIMIENTO) mapF[cod] = d.FECHA_VENCIMIENTO.split('T')[0];
+    }
+    misConteos.value    = mapU;
+    misLotes.value      = mapL;
+    misFechasVenc.value = mapF;
   } catch { /* silent */ }
 }
 
 async function seleccionarCab(cab: any) {
-  activeCab.value = cab;
-  misConteos.value = {};
+  activeCab.value     = cab;
+  misConteos.value    = {};
+  misLotes.value      = {};
+  misFechasVenc.value = {};
   await cargarMisConteos(cab.ID);
 }
 
@@ -675,20 +724,40 @@ async function confirmarCerrar() {
 // ── Conteo con debounce ───────────────────────────────────────────────────────
 const debounceTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 
-function actualizarConteo(codarticulo: string, valorRaw: any) {
+function guardarDetalle(codarticulo: string) {
   if (!activeCab.value) return;
-  const unidades = Number(valorRaw) || 0;
-  misConteos.value[String(codarticulo)] = unidades;
+  const cod      = String(codarticulo);
+  const unidades = misConteos.value[cod] ?? 0;
+  const lote     = misLotes.value[cod]      || undefined;
+  const fechaVencimiento = misFechasVenc.value[cod] || undefined;
 
-  clearTimeout(debounceTimers[codarticulo]);
-  debounceTimers[codarticulo] = setTimeout(async () => {
+  clearTimeout(debounceTimers[cod]);
+  debounceTimers[cod] = setTimeout(async () => {
     try {
-      await axios.post(`${API}/rechequeo/conteo`, { idcab: activeCab.value?.ID, codarticulo, unidades });
+      await axios.post(`${API}/rechequeo/conteo`, { idcab: activeCab.value?.ID, codarticulo: cod, unidades, lote, fechaVencimiento });
       await cargarLineasSilencioso();
     } catch {
       mostrarSnack('Error guardando conteo', 'error');
     }
   }, 600);
+}
+
+function actualizarConteo(codarticulo: string, valorRaw: any) {
+  if (!activeCab.value) return;
+  misConteos.value[String(codarticulo)] = Number(valorRaw) || 0;
+  guardarDetalle(codarticulo);
+}
+
+function actualizarLote(codarticulo: string, valor: string) {
+  if (!activeCab.value) return;
+  misLotes.value[String(codarticulo)] = valor;
+  guardarDetalle(codarticulo);
+}
+
+function actualizarFechaVenc(codarticulo: string, valor: string) {
+  if (!activeCab.value) return;
+  misFechasVenc.value[String(codarticulo)] = valor;
+  guardarDetalle(codarticulo);
 }
 
 // ── Scanner ───────────────────────────────────────────────────────────────────
