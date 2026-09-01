@@ -44,11 +44,29 @@
             <MontoDisplay :usd="Number(item.TOTALPRECIO || 0)" :tasa="carritoStore.tasa" align-end />
           </v-chip>
         </template>
+        <template v-slot:item.ESTATUS="{ item }">
+          <v-chip
+            :color="item.ESTATUS === 'SANIDAD' ? 'teal-darken-1' : 'purple-darken-2'"
+            variant="tonal" size="small" class="font-weight-medium">
+            {{ item.ESTATUS === 'SANIDAD' ? 'SANIDAD' : 'APROBACION' }}
+          </v-chip>
+        </template>
         <template v-slot:item.acciones="{ item }">
-          <div class="d-flex gap-2 flex-wrap">
-            <v-btn size="small" color="purple-darken-1" variant="tonal" prepend-icon="mdi-pencil" @click="abrirDetalle(item)">
-              Revisar / Editar
-            </v-btn>
+          <div class="d-flex gap-2 flex-wrap align-center">
+            <template v-if="item.ESTATUS !== 'SANIDAD'">
+              <v-btn size="small" color="purple-darken-1" variant="tonal" prepend-icon="mdi-pencil" @click="abrirDetalle(item)">
+                Revisar / Editar
+              </v-btn>
+              <v-btn size="small" color="orange-darken-2" variant="tonal" prepend-icon="mdi-check-circle-outline"
+                :loading="marcandoSanidad === item.ORDERID" @click="confirmarPedidoSanidad = item">
+                Marcar Sanidad
+              </v-btn>
+            </template>
+            <template v-else>
+              <v-btn size="small" color="teal-darken-1" variant="tonal" prepend-icon="mdi-eye" @click="abrirDetalle(item)">
+                Ver / Aprobar
+              </v-btn>
+            </template>
             <v-btn size="small" color="red-darken-2" variant="tonal" prepend-icon="mdi-file-pdf-box"
               :loading="pdfCargando === item.ORDERID + '-con'" @click="imprimirPDF(item, false)">
               Con precios
@@ -65,9 +83,11 @@
     <!-- Modal principal: revisar / editar / aprobar / cancelar -->
     <v-dialog v-model="modalDetalle.mostrar" max-width="820" :persistent="aprobando || cancelando">
       <v-card rounded="xl" v-if="modalDetalle.pedido">
-        <v-card-title class="pa-4 bg-purple-darken-2 text-white d-flex align-center gap-2">
-          <v-icon>mdi-shield-alert</v-icon>
+        <v-card-title class="pa-4 d-flex align-center gap-2"
+          :class="modalDetalle.pedido.ESTATUS === 'SANIDAD' ? 'bg-teal-darken-1 text-white' : 'bg-purple-darken-2 text-white'">
+          <v-icon>{{ modalDetalle.pedido.ESTATUS === 'SANIDAD' ? 'mdi-hospital-box' : 'mdi-shield-alert' }}</v-icon>
           Pedido #{{ modalDetalle.pedido.ORDERID }}
+          <v-chip v-if="modalDetalle.pedido.ESTATUS === 'SANIDAD'" color="white" variant="tonal" size="small" class="ml-2">SANIDAD</v-chip>
           <v-spacer />
           <span class="text-body-2 font-weight-regular">Cliente: {{ modalDetalle.pedido.CLIENTEID }}<span v-if="modalDetalle.pedido.NOMBRECLIENTE"> — {{ modalDetalle.pedido.NOMBRECLIENTE }}</span></span>
         </v-card-title>
@@ -76,7 +96,8 @@
           <!-- Cabecera líneas -->
           <div class="d-flex justify-space-between align-center mb-2">
             <div class="text-subtitle-2 font-weight-bold">Líneas del pedido</div>
-            <v-btn size="small" color="purple-darken-1" variant="tonal" prepend-icon="mdi-plus"
+            <v-btn v-if="modalDetalle.pedido.ESTATUS !== 'SANIDAD'"
+              size="small" color="purple-darken-1" variant="tonal" prepend-icon="mdi-plus"
               @click="abrirBuscarPsico">
               Agregar psicotrópico
             </v-btn>
@@ -97,17 +118,19 @@
                 <td class="text-caption">{{ l.CODARTICULO }}</td>
                 <td class="text-caption">{{ l.DESCRIPCION }}</td>
                 <td>
-                  <v-text-field
+                  <v-text-field v-if="modalDetalle.pedido.ESTATUS !== 'SANIDAD'"
                     type="number" v-model.number="l.PRODUCTCOUNT"
                     density="compact" hide-details variant="outlined"
                     :min="1" style="width:80px"
                     @update:model-value="marcarModificado" />
+                  <span v-else class="text-caption text-center d-block">{{ l.PRODUCTCOUNT }}</span>
                 </td>
                 <td class="text-right text-caption">
                   <MontoDisplay :usd="Number(l.PRECIOUNITARIO)" :tasa="carritoStore.tasa" align-end />
                 </td>
                 <td>
-                  <v-btn icon="mdi-delete-outline" size="x-small" color="red-darken-1" variant="text"
+                  <v-btn v-if="modalDetalle.pedido.ESTATUS !== 'SANIDAD'"
+                    icon="mdi-delete-outline" size="x-small" color="red-darken-1" variant="text"
                     @click="eliminarLinea(idx)" />
                 </td>
               </tr>
@@ -164,6 +187,27 @@
           <v-spacer />
           <v-btn variant="text" @click="confirmarCancelar = false">No, volver</v-btn>
           <v-btn color="red-darken-2" variant="elevated" :loading="cancelando" @click="cancelarPedido">Sí, cancelar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Confirm marcar SANIDAD -->
+    <v-dialog v-model="confirmarSanidadDialog" max-width="400">
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 text-orange-darken-2">
+          <v-icon class="mr-2">mdi-hospital-box</v-icon>Confirmar SANIDAD
+        </v-card-title>
+        <v-card-text class="pb-2">
+          ¿Marcar el pedido <strong>#{{ confirmarPedidoSanidad?.ORDERID }}</strong> como <strong>SANIDAD</strong>?
+          <br><span class="text-caption text-grey">Una vez marcado, no podrá editarse.</span>
+        </v-card-text>
+        <v-card-actions class="pa-4">
+          <v-spacer />
+          <v-btn variant="text" @click="confirmarPedidoSanidad = null">Cancelar</v-btn>
+          <v-btn color="orange-darken-2" variant="elevated"
+            :loading="!!marcandoSanidad" @click="confirmarMarcarSanidad">
+            Sí, marcar SANIDAD
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -244,7 +288,7 @@ const carritoStore  = useCarritoStore();
 const authStore     = useAuthStore();
 const brandingStore = useBrandingStore();
 const API = import.meta.env.VITE_API_URL;
-const ESTATUS = 'APROBACION PSICOTROPICOS';
+const ESTATUS = 'APROBACION PSICOTROPICOS,SANIDAD';
 
 // --- Lista principal ---
 const pedidos      = ref<any[]>([]);
@@ -257,10 +301,14 @@ const headers = [
   { title: 'Fecha',   key: 'FECHA' },
   { title: 'Cliente', key: 'cliente_psico', sortable: false },
   { title: 'Total',   key: 'TOTALPRECIO' },
+  { title: 'Estatus', key: 'ESTATUS', sortable: false },
   { title: '',        key: 'acciones', sortable: false },
 ];
 
-const pdfCargando = ref<string | null>(null);
+const pdfCargando     = ref<string | null>(null);
+const marcandoSanidad       = ref<string | null>(null);
+const confirmarPedidoSanidad = ref<any>(null);
+const confirmarSanidadDialog = computed(() => !!confirmarPedidoSanidad.value);
 const aviso = ref({ mostrar: false, texto: '', color: 'success' });
 const lanzarAviso = (texto: string, color = 'success') => { aviso.value = { mostrar: true, texto, color }; };
 
@@ -281,6 +329,26 @@ const cargarPedidos = async () => {
   } finally { cargando.value = false; }
 };
 const cargarPagina = (opt: any) => { pagina.value = opt.page; itemsPerPage.value = opt.itemsPerPage; cargarPedidos(); };
+
+const confirmarMarcarSanidad = async () => {
+  const item = confirmarPedidoSanidad.value;
+  if (!item) return;
+  marcandoSanidad.value = item.ORDERID;
+  confirmarPedidoSanidad.value = null;
+  try {
+    const res = await axios.put(`${API}/pedidos/marcar-sanidad`, { orderId: item.ORDERID });
+    if (res.data.success) {
+      lanzarAviso(`Pedido #${item.ORDERID} marcado en SANIDAD`);
+      cargarPedidos();
+    } else {
+      lanzarAviso(res.data.message || 'Error al marcar SANIDAD', 'error');
+    }
+  } catch (e: any) {
+    lanzarAviso(e.response?.data?.message || 'Error al marcar SANIDAD', 'error');
+  } finally {
+    marcandoSanidad.value = null;
+  }
+};
 
 // --- Modal detalle/editar ---
 const modalDetalle     = ref<any>({ mostrar: false, pedido: null });

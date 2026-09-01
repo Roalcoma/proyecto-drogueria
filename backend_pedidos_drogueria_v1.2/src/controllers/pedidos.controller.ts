@@ -259,4 +259,15 @@ export class PedidosControllers {
             });
         }
     }
+
+    static async marcarSanidad(req: RequestConUsuario, res: Response) {
+        try {
+            const { orderId } = req.body;
+            if (!orderId) return res.status(400).json({ success: false, message: 'Falta orderId' });
+            const result = await PedidosServices.marcarSanidad(orderId, req.usuario?.id, req.usuario?.usuario);
+            return res.status(result.success ? 200 : 400).json(result);
+        } catch (error) {
+            return res.status(500).json({ success: false, message: String(error) });
+        }
+    }
 }

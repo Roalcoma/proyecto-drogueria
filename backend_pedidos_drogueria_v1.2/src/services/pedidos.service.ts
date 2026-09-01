@@ -13,13 +13,14 @@ const TRANSICIONES_PERMITIDAS: Record<string, string[]> = {
     'OK':                         ['CANCELADO'],
     'EMPACADO':                   ['AUTORIZADO', 'CANCELADO'],
     'ICG':                        ['CANCELADO'],
-    'APROBACION PSICOTROPICOS':   ['CANCELADO'],
+    'APROBACION PSICOTROPICOS':   ['SANIDAD', 'CANCELADO'],
+    'SANIDAD':                    ['CANCELADO'],
 };
 
 export const ESTATUS_APROBACION_PSICOTROPICOS = 'APROBACION PSICOTROPICOS';
 
 const ESTATUSES_VALIDOS = new Set([
-    'PENDIENTE', 'PENDIENTE POR AUTORIZACION', 'APROBACION PSICOTROPICOS',
+    'PENDIENTE', 'PENDIENTE POR AUTORIZACION', 'APROBACION PSICOTROPICOS', 'SANIDAD',
     'AUTORIZADO', 'ICG', 'OK', 'EMPACADO', 'FINALIZADO', 'CANCELADO',
 ]);
 const buildEstatusClause = (estatus: string | undefined, col: string): string | null => {
@@ -1165,7 +1166,7 @@ export class PedidosServices {
                                     INNER JOIN ${esquema}.LINEA_PED LP2 WITH (NOLOCK) ON LP2.ORDERID = CP2.ORDERID
                                     WHERE LP2.CODARTICULO = @COD
                                       AND CP2.ORDERID <> @ORDERID_EXCL
-                                      AND CP2.ESTATUS IN ('PENDIENTE POR AUTORIZACION','APROBACION PSICOTROPICOS','AUTORIZADO','EMPACADO','OK')
+                                      AND CP2.ESTATUS IN ('PENDIENTE POR AUTORIZACION','APROBACION PSICOTROPICOS','SANIDAD','AUTORIZADO','EMPACADO','OK')
                                 ), 0) AS DISPONIBLE
                         `);
                     const disponible: number = stockRes.recordset[0]?.DISPONIBLE ?? 0;
@@ -1310,9 +1311,10 @@ export class PedidosServices {
             if (checkRes.recordset.length === 0) {
                 return { success: false, message: 'El pedido no existe' };
             }
-            if (checkRes.recordset[0].ESTATUS !== ESTATUS_APROBACION_PSICOTROPICOS) {
+            if (!['APROBACION PSICOTROPICOS', 'SANIDAD'].includes(checkRes.recordset[0].ESTATUS)) {
                 return { success: false, message: 'El pedido no está pendiente de aprobación de psicotrópicos' };
             }
+            const estatusOrigen = checkRes.recordset[0].ESTATUS as string;
 
             await pool.request()
                 .input('ORDERID', mssql.VarChar(50), orderId)
@@ -1323,7 +1325,7 @@ export class PedidosServices {
                     WHERE ORDERID = @ORDERID
                 `);
 
-            await PedidosServices.registrarLog(orderId, ESTATUS_APROBACION_PSICOTROPICOS, 'PENDIENTE POR AUTORIZACION', codusuario, usuario, `Código aprobación: ${codigoAprobacion.trim()}`);
+            await PedidosServices.registrarLog(orderId, estatusOrigen, 'PENDIENTE POR AUTORIZACION', codusuario, usuario, `Código aprobación: ${codigoAprobacion.trim()}`);
 
             return { success: true, message: 'Pedido aprobado y liberado a PENDIENTE' };
         } catch (error) {
@@ -1333,6 +1335,29 @@ export class PedidosServices {
                 message: 'Hubo un fallo al aprobar el pedido',
                 error: error instanceof Error ? error.message : String(error)
             };
+        }
+    }
+
+    static async marcarSanidad(orderId: string, codusuario?: number, usuario?: string) {
+        try {
+            const pool = await connectDb();
+            const checkRes = await pool.request()
+                .input('OID', mssql.VarChar(50), orderId)
+                .query(`SELECT ESTATUS FROM ${esquema}.CABECERA_PED WITH (NOLOCK) WHERE ORDERID = @OID`);
+
+            if (!checkRes.recordset.length) return { success: false, message: 'Pedido no encontrado' };
+            if (checkRes.recordset[0].ESTATUS !== 'APROBACION PSICOTROPICOS') {
+                return { success: false, message: 'El pedido debe estar en APROBACION PSICOTROPICOS para marcarlo en SANIDAD' };
+            }
+
+            await pool.request()
+                .input('OID', mssql.VarChar(50), orderId)
+                .query(`UPDATE ${esquema}.CABECERA_PED SET ESTATUS = 'SANIDAD' WHERE ORDERID = @OID`);
+
+            await PedidosServices.registrarLog(orderId, 'APROBACION PSICOTROPICOS', 'SANIDAD', codusuario, usuario);
+            return { success: true };
+        } catch (error) {
+            return { success: false, message: String(error) };
         }
     }
 }

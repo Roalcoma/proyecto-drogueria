@@ -17,6 +17,7 @@ pedidosRouter.delete('/', authMiddleware, PedidosControllers.deletePedido)
 pedidosRouter.put('/status', authMiddleware, PedidosControllers.updatePedidoStatus)
 
 pedidosRouter.put('/aprobar-psicotropico', authMiddleware, PedidosControllers.aprobarPsicotropico)
+pedidosRouter.put('/marcar-sanidad',        authMiddleware, PedidosControllers.marcarSanidad)
 
 pedidosRouter.put('/codigo-aprobacion', authMiddleware, PedidosControllers.actualizarCodigoAprobacion)
 
