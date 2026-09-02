@@ -84,7 +84,7 @@ export class ImsController {
 
             const [clientesRes, productosRes, ventasRes] = await Promise.all([
                 pool.request().query(`
-                    SELECT
+                    SELECT DISTINCT
                         CL.CODCLIENTE,
                         CL.NOMBRECLIENTE,
                         CASE WHEN ISNULL(CE.DIRECCION1, '') = '' THEN CL.DIRECCION1 ELSE CE.DIRECCION1 END DIRECCION,
@@ -92,12 +92,13 @@ export class ImsController {
                         CL.NIF20 RIF
                     FROM CLIENTES CL WITH(NOLOCK)
                     INNER JOIN CLIENTESCAMPOSLIBRES CCL WITH(NOLOCK) ON CCL.CODCLIENTE = CL.CODCLIENTE
+                    INNER JOIN FACTURASVENTA FV WITH(NOLOCK) ON FV.CODCLIENTE = CL.CODCLIENTE
                     INNER JOIN CLIENTESENVIO CE WITH(NOLOCK) ON CE.CODCLIENTE = CL.CODCLIENTE AND CE.CODENVIO = 0
-                    WHERE UPPER(CL.NIF20) NOT LIKE 'V%'
+                    WHERE UPPER(CL.NIF20) NOT LIKE 'V%' AND UPPER(CL.NIF20) NOT LIKE 'E%'
                       AND CL.CODCLIENTE NOT IN (3971, 3972)
                 `),
                 pool.request().query(`
-                    SELECT
+                    SELECT DISTINCT
                         ART.CODARTICULO,
                         ARCL.DESCRIPCIONLARGA DESCRIPCION,
                         M.DESCRIPCION LABORATORIO,
@@ -107,18 +108,9 @@ export class ImsController {
                     LEFT JOIN ARTICULOSCAMPOSLIBRES ARCL WITH(NOLOCK) ON ARCL.CODARTICULO = ART.CODARTICULO
                     LEFT JOIN PRECIOSVENTA PV WITH(NOLOCK) ON PV.CODARTICULO = ART.CODARTICULO AND PV.COLOR = '.' AND PV.TALLA = '.' AND PV.IDTARIFAV = 1
                     LEFT JOIN MARCA M WITH(NOLOCK) ON M.CODMARCA = ART.MARCA
+                    INNER JOIN ALBVENTALIN AVL WITH(NOLOCK) ON AVL.CODARTICULO = ART.CODARTICULO
                     WHERE ART.DPTO = 1
                       AND (ART.DESCATALOGADO = 'F' OR ART.DESCATALOGADO IS NULL)
-
-                    UNION ALL
-
-                    SELECT
-                        CONCAT(1, Codigo),
-                        Descripcion COLLATE Modern_Spanish_CI_AS,
-                        Marca       COLLATE Modern_Spanish_CI_AS,
-                        ROUND(Precio / dbo.F_GET_COTIZACION(GETDATE(), 1), 3),
-                        CodBarras   COLLATE Modern_Spanish_CI_AS
-                    FROM ListadoMaestroProteoFaltantes WITH (NOLOCK)
                 `),
                 pool.request().input('DESDE', desde).input('HASTA', hasta).query(`
                         SELECT
