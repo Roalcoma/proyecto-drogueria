@@ -174,9 +174,20 @@
           </v-btn>
         </div>
 
+        <v-text-field
+          v-model="buscarUsuario"
+          placeholder="Buscar por usuario, código o nombre de cliente..."
+          prepend-inner-icon="mdi-magnify"
+          variant="outlined"
+          density="compact"
+          hide-details
+          clearable
+          class="mb-3"
+        />
+
         <v-data-table
           :headers="headersUsuarios"
-          :items="usuarios"
+          :items="usuariosFiltrados"
           :loading="cargandoUsuarios"
           hover
           class="bg-white"
@@ -207,6 +218,48 @@
             </v-btn>
           </template>
         </v-data-table>
+      </v-card>
+
+      <!-- Formatos de archivos generados -->
+      <v-card rounded="xl" elevation="2" class="pa-6 mt-4">
+        <div class="text-subtitle-1 font-weight-bold mb-4">
+          <v-icon start color="secondary">mdi-information-outline</v-icon>
+          Formato de archivos generados
+        </div>
+
+        <div class="d-flex align-center mb-2">
+          <div class="text-subtitle-2 font-weight-medium">
+            <v-icon start size="18" color="primary">mdi-upload-outline</v-icon>
+            Pedidos — archivo que envía el cliente
+          </div>
+          <v-spacer />
+          <v-btn size="small" variant="tonal" color="primary" prepend-icon="mdi-content-copy" @click="() => copiarFormato(formatoPedidos)">Copiar</v-btn>
+        </div>
+        <v-card variant="outlined" class="pa-4 text-body-2 mb-5" style="font-family: monospace; white-space: pre-line;">{{ formatoPedidos }}</v-card>
+
+        <v-divider class="mb-5" />
+
+        <div class="d-flex align-center mb-2">
+          <div class="text-subtitle-2 font-weight-medium">
+            <v-icon start size="18" color="teal-darken-1">mdi-file-document-outline</v-icon>
+            inventario.txt — generado por cliente al conectarse
+          </div>
+          <v-spacer />
+          <v-btn size="small" variant="tonal" color="teal-darken-1" prepend-icon="mdi-content-copy" @click="() => copiarFormato(formatoInventario)">Copiar</v-btn>
+        </div>
+        <v-card variant="outlined" class="pa-4 text-body-2 mb-5" style="font-family: monospace; white-space: pre-line;">{{ formatoInventario }}</v-card>
+
+        <v-divider class="mb-5" />
+
+        <div class="d-flex align-center mb-2">
+          <div class="text-subtitle-2 font-weight-medium">
+            <v-icon start size="18" color="orange-darken-2">mdi-receipt-text-outline</v-icon>
+            Facturas — generadas por cliente al conectarse
+          </div>
+          <v-spacer />
+          <v-btn size="small" variant="tonal" color="orange-darken-2" prepend-icon="mdi-content-copy" @click="() => copiarFormato(formatoFacturas)">Copiar</v-btn>
+        </div>
+        <v-card variant="outlined" class="pa-4 text-body-2" style="font-family: monospace; white-space: pre-line;">{{ formatoFacturas }}</v-card>
       </v-card>
 
     </div><!-- /tab ftp -->
@@ -518,7 +571,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
 import axios from 'axios';
@@ -562,6 +615,18 @@ const textoConexion         = ref('');
 const conexionTienePassword = ref(false);
 const ipConexionClientes    = ref(localStorage.getItem('ftp_ip_conexion') ?? '');
 
+const buscarUsuario = ref('');
+
+const usuariosFiltrados = computed(() => {
+  const q = buscarUsuario.value.toLowerCase().trim();
+  if (!q) return usuarios.value;
+  return usuarios.value.filter(u =>
+    (u.USUARIO       || '').toLowerCase().includes(q) ||
+    (u.COD_CLIENTE   || '').toString().includes(q)    ||
+    (u.NOMBRE_CLIENTE|| '').toLowerCase().includes(q)
+  );
+});
+
 const headersUsuarios = [
   { title: 'Usuario',  key: 'USUARIO',       sortable: false },
   { title: 'Cliente',  key: 'COD_CLIENTE',    sortable: false },
@@ -569,6 +634,83 @@ const headersUsuarios = [
   { title: 'Creado',   key: 'FECHA_CREACION', sortable: false },
   { title: 'Acciones', key: 'acciones',       sortable: false },
 ];
+
+const formatoPedidos = `Ruta: c{CODCLIENTE}/Pedidos/{CODCLIENTE}P{NRO_PEDIDO}.txt
+
+Contenido (separado por ;):
+  CODARTICULO;DESCRIPCION;CANTIDAD;PRECIO_TOTAL
+  Ejemplo:
+  00668;CREMA GENTAMICINA 30GR;10;73.70
+  05066;ABRETIA 10MG X 10 CAPS;5;91.15
+
+Campos:
+  CODARTICULO    Código ICG del artículo
+  DESCRIPCION    Descripción del producto
+  CANTIDAD       Unidades solicitadas
+  PRECIO_TOTAL   Precio total de la línea (referencial; el sistema usa su propio precio)
+
+Ciclo del archivo:
+  {CODCLIENTE}P{NRO_PEDIDO}.txt  ← el cliente sube este archivo
+  {CODCLIENTE}P{NRO_PEDIDO}.bak  ← renombrado automáticamente al procesar`;
+
+const formatoInventario = `Ruta: c{CODCLIENTE}/inventario.txt
+
+Contenido (separado por ;):
+  CODARTICULO;REF_PROVEEDOR;DESCRIPCION;VENCE;PRECIO_SD;DESCUENTO;PRECIO_CD;STOCK;MARCA
+  Ejemplo:
+  00668;REF001;CREMA GENTAMICINA 30GR;31/12/2025;7.37;5+0+0+0;6.99;50;LAB ESAGEN
+  05066;AB123;ABRETIA 10MG X 10 CAPS;;91.15;0+0+0+0;91.15;12;LAB BAGO
+
+Campos:
+  CODARTICULO    Código ICG (5 dígitos, con cero a la izquierda)
+  REF_PROVEEDOR  Referencia del proveedor / código de barras
+  DESCRIPCION    Descripción larga (máx 45 caracteres)
+  VENCE          Fecha de vencimiento DD/MM/AAAA  (vacío si no aplica)
+  PRECIO_SD      Precio sin descuento (tarifa base)
+  DESCUENTO      Descuentos: D1+D2+Promo1+Promo2 (porcentajes separados por +)
+  PRECIO_CD      Precio con todos los descuentos aplicados
+  STOCK          Unidades disponibles en almacén
+  MARCA          Laboratorio/marca (máx 30 caracteres)`;
+
+const formatoFacturas = `Ruta: c{CODCLIENTE}/Facturas/F{NUMFACTURA_8_DIGITS}.txt
+
+Dos tipos de registros por archivo:
+
+Tipo R — línea de producto:
+  R;NUMFACTURA;NOFISCAL;CODARTICULO;REF;DESCRIPCION;CANTIDAD;NETO_LINEA;PRECIO_SD;DESCUENTOS;PRECIO_CD;LOTE;FECHA_LOTE;TASA_IVA
+
+Tipo E — encabezado/total (última línea del archivo):
+  E;NUMFACTURA;NOFISCAL;FECHA;TASA;(vacío);TOTAL_UNID;TOTAL_NETO;TOTAL_CON_IVA;DSCTO_LINEAL;TOTAL_IVA;(vacío);SICM;TOTAL_IVA
+
+Ejemplo:
+  R;00000123;12345678-1;00668;REF001;CREMA GENTAMICINA 30GR;10.000;73.70;7.37;5+0+0;6.99;L001;31/12/2025;16.00
+  R;00000123;12345678-1;05066;AB123;ABRETIA 10MG X 10 CAPS;5.000;455.75;91.15;0+0+0;91.15;;;16.00
+  E;00000123;12345678-1;25/01/2025;1.00;;15;529.45;614.16;0.00;84.71;;V12345678;84.71
+
+Campos Tipo R:
+  NUMFACTURA   Número de factura (8 dígitos con cero a la izquierda)
+  NOFISCAL     Número de control fiscal
+  CODARTICULO  Código ICG (5 dígitos)
+  REF          Referencia proveedor
+  DESCRIPCION  Descripción del artículo (máx 40 caracteres)
+  CANTIDAD     Unidades despachadas (3 decimales)
+  NETO_LINEA   Total de la línea con IVA incluido
+  PRECIO_SD    Precio sin descuento (bruto)
+  DESCUENTOS   Porcentajes de descuento: D1+D2+D3
+  PRECIO_CD    Precio unitario con descuento aplicado
+  LOTE         Código de lote (vacío si no aplica)
+  FECHA_LOTE   Fecha de vencimiento del lote DD/MM/AAAA
+  TASA_IVA     Porcentaje de IVA aplicado
+
+Campos Tipo E:
+  FECHA         Fecha de la factura DD/MM/AAAA
+  TASA          Tasa de cambio del día
+  TOTAL_UNID    Suma de unidades de todas las líneas
+  TOTAL_NETO    Total sin IVA
+  TOTAL_CON_IVA Total con IVA
+  DSCTO_LINEAL  Descuento lineal (diferencia bruto-neto)
+  TOTAL_IVA     Monto total del IVA
+  SICM          Código SICM del cliente`;
 
 // ── ICOMPRAS: estado ───────────────────────────────────────────────────────────
 
@@ -740,6 +882,11 @@ Contraseña: ${clave ?? '(no disponible — resetear con el botón de llave)'}`;
 const copiarConexion = () => {
   navigator.clipboard.writeText(textoConexion.value);
   mostrarSnack('Copiado al portapapeles', 'success');
+};
+
+const copiarFormato = (texto: string) => {
+  navigator.clipboard.writeText(texto);
+  mostrarSnack('Formato copiado al portapapeles', 'success');
 };
 
 const descargarConexion = () => {
