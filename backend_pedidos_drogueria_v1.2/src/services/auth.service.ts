@@ -154,11 +154,20 @@ export class AuthService {
                 ${CAMPO_USUARIO}                  AS USUARIO,
                 ISNULL(BLOQUEADO, 'F')            AS BLOQUEADO,
                 ISNULL(${CAMPO_VIS}, 0)           AS VISIBILIDAD,
-                ${CAMPO_ID}                       AS CODVENDEDOR
+                ${CAMPO_ID}                       AS CODVENDEDOR,
+                ISNULL(ACTIVO, 'F')               AS ACTIVO
             FROM VENDEDORES WITH (NOLOCK)
             ORDER BY ${CAMPO_USUARIO}
         `);
         return result.recordset;
+    }
+
+    static async toggleActivo(id: number, activo: boolean): Promise<void> {
+        const pool = await connectDb();
+        await pool.request()
+            .input('ACTIVO', activo ? 'T' : 'F')
+            .input('ID', id)
+            .query(`UPDATE VENDEDORES SET ACTIVO = @ACTIVO WHERE ${CAMPO_ID} = @ID`);
     }
 
     static async actualizarCodVendedor(_id: number, _codVendedor: number | null): Promise<void> {

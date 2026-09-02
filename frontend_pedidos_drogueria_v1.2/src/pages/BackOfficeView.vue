@@ -171,6 +171,18 @@
       <v-divider />
       <v-data-table :headers="headers" :items="usuariosFiltrados" :loading="cargando" item-value="ID" hover>
 
+        <!-- Estado activo/inactivo -->
+        <template v-slot:item.ACTIVO="{ item }">
+          <v-switch
+            :model-value="item.ACTIVO === 'T'"
+            color="success"
+            hide-details
+            density="compact"
+            :loading="togandoActivo === item.ID"
+            @update:model-value="(v) => toggleActivo(item, v as boolean)"
+          />
+        </template>
+
         <!-- Visibilidad actual -->
         <template v-slot:item.VISIBILIDAD="{ item }">
           <div class="d-flex flex-wrap gap-1 py-1">
@@ -734,6 +746,7 @@ const MODULOS = [
 
 const headers = [
   { title: 'Usuario',     key: 'USUARIO',      sortable: true  },
+  { title: 'Estado',      key: 'ACTIVO',       sortable: false },
   { title: 'Accesos',     key: 'VISIBILIDAD',  sortable: false },
   { title: 'Acciones',    key: 'acciones',     sortable: false },
 ];
@@ -786,6 +799,21 @@ const bitsDescripcion = computed(() => {
 // Retorna los módulos que tiene activos un usuario dado su valor numérico
 const modulosDeUsuario = (vis: number) =>
   MODULOS.filter(m => (Number(vis) & m.bit) !== 0);
+
+const togandoActivo = ref<number | null>(null);
+
+const toggleActivo = async (item: any, activo: boolean) => {
+  togandoActivo.value = item.ID;
+  try {
+    await axios.patch(`${API}/usuarios/${item.ID}/activo`, { activo });
+    item.ACTIVO = activo ? 'T' : 'F';
+    mostrarSnack(activo ? `${item.USUARIO} activado` : `${item.USUARIO} desactivado`, 'success');
+  } catch {
+    mostrarSnack('Error al cambiar estado del usuario', 'error');
+  } finally {
+    togandoActivo.value = null;
+  }
+};
 
 const cargarUsuarios = async () => {
   cargando.value = true;

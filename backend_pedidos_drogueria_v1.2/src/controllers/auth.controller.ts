@@ -81,6 +81,22 @@ export class AuthController {
         }
     }
 
+    // Activar / desactivar usuario (campo ACTIVO en VENDEDORES)
+    static async toggleActivo(req: RequestConUsuario, res: Response): Promise<void> {
+        const id     = parseInt(req.params['id'] as string);
+        const activo = req.body.activo;
+        if (isNaN(id) || typeof activo !== 'boolean') {
+            res.status(400).json({ success: false, message: 'Parámetros inválidos' });
+            return;
+        }
+        try {
+            await AuthService.toggleActivo(id, activo);
+            res.status(200).json({ success: true, message: activo ? 'Usuario activado' : 'Usuario desactivado' });
+        } catch {
+            res.status(500).json({ success: false, message: 'Error al cambiar estado del usuario' });
+        }
+    }
+
     // Cambiar clave de un usuario (encripta con algoritmo ICG)
     static async cambiarPassword(req: RequestConUsuario, res: Response): Promise<void> {
         const id       = parseInt(req.params['id'] as string);

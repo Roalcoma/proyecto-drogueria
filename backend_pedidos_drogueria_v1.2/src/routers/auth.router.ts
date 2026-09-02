@@ -16,5 +16,6 @@ authRouter.get('/usuarios',                    authMiddleware, adminMiddleware, 
 authRouter.patch('/usuarios/:id/visibilidad',  authMiddleware, adminMiddleware, AuthController.actualizarVisibilidad);
 authRouter.patch('/usuarios/:id/password',     authMiddleware, adminMiddleware, AuthController.cambiarPassword);
 authRouter.patch('/usuarios/:id/codvendedor',  authMiddleware, adminMiddleware, AuthController.actualizarCodVendedor);
+authRouter.patch('/usuarios/:id/activo',       authMiddleware, adminMiddleware, AuthController.toggleActivo);
 
 export default authRouter;
