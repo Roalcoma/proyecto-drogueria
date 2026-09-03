@@ -902,7 +902,7 @@ const headers = [
 
 const estatusOpciones = [
   'PENDIENTE', 'PENDIENTE POR AUTORIZACION', 'APROBACION PSICOTROPICOS',
-  'AUTORIZADO', 'ICG', 'OK', 'EMPACADO', 'FINALIZADO', 'CANCELADO',
+  'SANIDAD', 'AUTORIZADO', 'ICG', 'OK', 'EMPACADO', 'FINALIZADO', 'CANCELADO',
 ];
 
 const zonas  = ref<{ zona: string; display: string }[]>([]);

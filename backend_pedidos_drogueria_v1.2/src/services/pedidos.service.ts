@@ -633,6 +633,8 @@ export class PedidosServices {
                             FROM ARTICULOSLIN AL WITH (NOLOCK)
                             WHERE AL.CODARTICULO = LP.CODARTICULO
                               AND AL.GARANTIACOMPRA IS NOT NULL
+                              AND AL.COLOR <> '.'
+                              AND AL.TALLA <> '.'
                             ORDER BY AL.GARANTIACOMPRA ASC
                         ) LV
                     WHERE
