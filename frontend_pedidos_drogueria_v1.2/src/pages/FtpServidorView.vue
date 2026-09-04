@@ -19,6 +19,9 @@
       <v-tab value="farcompras">
         <v-icon start>mdi-truck-delivery-outline</v-icon>FARCOMPRAS
       </v-tab>
+      <v-tab value="seped">
+        <v-icon start>mdi-robot-outline</v-icon>SEPED
+      </v-tab>
     </v-tabs>
 
     <!-- ══════════════════════ TAB FTP ══════════════════════ -->
@@ -681,6 +684,188 @@
 
     </div><!-- /tab farcompras -->
 
+    <!-- ══════════════════════ TAB SEPED ══════════════════════ -->
+    <div v-show="tabActiva === 'seped'">
+
+      <!-- Config -->
+      <v-card rounded="xl" elevation="2" class="pa-6 mb-4">
+        <div class="d-flex align-center mb-4">
+          <div class="text-subtitle-1 font-weight-bold">
+            <v-icon start color="primary">mdi-cog-outline</v-icon>
+            Configuración SEPED
+          </div>
+          <v-spacer />
+          <v-chip :color="sepedSchedulerActivo ? 'success' : 'default'" variant="flat" class="mr-3">
+            <v-icon start>{{ sepedSchedulerActivo ? 'mdi-check-circle' : 'mdi-circle-off-outline' }}</v-icon>
+            {{ sepedSchedulerActivo ? 'Activo' : 'Inactivo' }}
+          </v-chip>
+        </div>
+
+        <!-- Conexión -->
+        <p class="text-caption text-medium-emphasis font-weight-medium mb-2 text-uppercase">Conexión</p>
+        <v-row dense class="mb-2">
+          <v-col cols="12" sm="5">
+            <v-text-field v-model="sepedCfg.baseUrl" label="URL Base" variant="outlined" density="compact" hide-details placeholder="https://sistema.ejemplo.com" />
+          </v-col>
+          <v-col cols="12" sm="3">
+            <v-text-field v-model="sepedCfg.loginPath" label="Ruta de login" variant="outlined" density="compact" hide-details placeholder="/login" />
+          </v-col>
+          <v-col cols="12" sm="2">
+            <v-text-field v-model="sepedCfg.username" label="Usuario" variant="outlined" density="compact" hide-details />
+          </v-col>
+          <v-col cols="12" sm="2">
+            <v-text-field v-model="sepedCfg.password" label="Contraseña" variant="outlined" density="compact" hide-details type="password" />
+          </v-col>
+        </v-row>
+
+        <!-- Rutas -->
+        <p class="text-caption text-medium-emphasis font-weight-medium mb-2 text-uppercase">Rutas del sistema</p>
+        <v-row dense class="mb-2">
+          <v-col cols="12" sm="4">
+            <v-text-field v-model="sepedCfg.listingPath" label="Listado de pedidos" variant="outlined" density="compact" hide-details placeholder="/seped/pedidos" />
+          </v-col>
+          <v-col cols="12" sm="4">
+            <v-text-field v-model="sepedCfg.editPathTemplate" label="Editar pedido (usa {id})" variant="outlined" density="compact" hide-details placeholder="/seped/alcabala/{id}" />
+          </v-col>
+          <v-col cols="12" sm="4">
+            <v-text-field v-model="sepedCfg.acceptPathTemplate" label="Aceptar pedido (usa {id})" variant="outlined" density="compact" hide-details placeholder="Igual al de editar si está vacío" />
+          </v-col>
+        </v-row>
+
+        <!-- Selectores HTML -->
+        <p class="text-caption text-medium-emphasis font-weight-medium mb-2 text-uppercase">Selectores CSS del listado</p>
+        <v-row dense class="mb-2">
+          <v-col cols="12" sm="3">
+            <v-text-field v-model="sepedCfg.orderRowSelector" label="Fila de pedido" variant="outlined" density="compact" hide-details placeholder="tr.pedido-row" />
+          </v-col>
+          <v-col cols="12" sm="3">
+            <v-text-field v-model="sepedCfg.orderIdSelector" label="ID del pedido" variant="outlined" density="compact" hide-details placeholder="td.id a" />
+          </v-col>
+          <v-col cols="12" sm="3">
+            <v-text-field v-model="sepedCfg.orderClientSelector" label="Cliente" variant="outlined" density="compact" hide-details placeholder="td.cliente" />
+          </v-col>
+          <v-col cols="12" sm="3">
+            <v-text-field v-model="sepedCfg.orderTotalSelector" label="Monto total" variant="outlined" density="compact" hide-details placeholder="td.monto" />
+          </v-col>
+        </v-row>
+
+        <!-- Comportamiento -->
+        <p class="text-caption text-medium-emphasis font-weight-medium mb-2 text-uppercase">Comportamiento</p>
+        <v-row dense class="mb-3">
+          <v-col cols="6" sm="2">
+            <v-text-field v-model.number="sepedCfg.intervaloSeg" label="Intervalo (seg)" type="number" variant="outlined" density="compact" hide-details min="10" />
+          </v-col>
+          <v-col cols="6" sm="2">
+            <v-text-field v-model.number="sepedCfg.acceptThreshold" label="Umbral de aceptación" type="number" variant="outlined" density="compact" hide-details min="0" hint="0 = acepta todos" />
+          </v-col>
+          <v-col cols="6" sm="2">
+            <v-text-field v-model.number="sepedCfg.maxRetries" label="Reintentos máx." type="number" variant="outlined" density="compact" hide-details min="1" max="10" />
+          </v-col>
+          <v-col cols="6" sm="2">
+            <v-text-field v-model.number="sepedCfg.backoffBase" label="Backoff base (seg)" type="number" variant="outlined" density="compact" hide-details min="1" />
+          </v-col>
+          <v-col cols="12" sm="4">
+            <v-text-field v-model="sepedCfg.noOpWindows" label="Ventanas sin operación" variant="outlined" density="compact" hide-details placeholder="22:00-06:00,12:00-14:00" />
+          </v-col>
+        </v-row>
+        <v-row dense class="mb-4">
+          <v-col cols="12" sm="5">
+            <v-text-field v-model="sepedCfg.snapshotDir" label="Carpeta de snapshots" variant="outlined" density="compact" hide-details placeholder="seped_snapshots" />
+          </v-col>
+          <v-col cols="auto"><v-switch v-model="sepedCfg.habilitado" label="Habilitado" color="primary" density="compact" hide-details /></v-col>
+          <v-col cols="auto"><v-switch v-model="sepedCfg.dryRun" label="Modo prueba (sin POST)" color="warning" density="compact" hide-details /></v-col>
+          <v-col cols="auto"><v-switch v-model="sepedCfg.ignoreSnapshotCheck" label="Ignorar snapshot check" color="info" density="compact" hide-details /></v-col>
+        </v-row>
+
+        <div class="d-flex gap-3">
+          <v-btn color="primary" variant="flat" prepend-icon="mdi-content-save" :loading="guardandoSepedCfg" @click="guardarSepedCfg">
+            Guardar
+          </v-btn>
+          <v-btn color="teal" variant="tonal" prepend-icon="mdi-play-circle-outline" :loading="ejecutandoCicloSeped" @click="ejecutarCicloSeped">
+            Ejecutar ahora
+          </v-btn>
+        </div>
+      </v-card>
+
+      <!-- Log en tiempo real -->
+      <v-card rounded="xl" elevation="2" class="pa-6 mb-4">
+        <div class="d-flex align-center mb-3">
+          <div class="text-subtitle-1 font-weight-bold">
+            <v-icon start color="primary">mdi-console</v-icon>
+            Log en tiempo real
+          </div>
+          <v-spacer />
+          <v-btn
+            v-if="!sepedSseActivo"
+            size="small" color="success" variant="tonal" prepend-icon="mdi-play"
+            class="mr-2" @click="iniciarSepedLog"
+          >Conectar</v-btn>
+          <v-btn
+            v-else
+            size="small" color="error" variant="tonal" prepend-icon="mdi-stop"
+            class="mr-2" @click="detenerSepedLog"
+          >Desconectar</v-btn>
+          <v-btn size="small" variant="text" prepend-icon="mdi-delete-sweep" @click="sepedLogLines = []">Limpiar</v-btn>
+        </div>
+        <div
+          ref="sepedLogRef"
+          class="seped-log pa-3 rounded-lg"
+          style="height:280px; overflow-y:auto; font-family:monospace; font-size:12px; line-height:1.6;"
+        >
+          <div v-if="!sepedLogLines.length" class="text-medium-emphasis text-caption pa-2">
+            Sin mensajes aún. Conecta el log para ver actividad en tiempo real.
+          </div>
+          <div
+            v-for="(line, i) in sepedLogLines"
+            :key="i"
+            :class="line.includes('[ERROR]') ? 'text-error' : line.includes('[WARN]') ? 'text-warning' : ''"
+          >{{ line }}</div>
+        </div>
+      </v-card>
+
+      <!-- Auditoría -->
+      <v-card rounded="xl" elevation="2" class="pa-6">
+        <div class="d-flex align-center mb-4">
+          <div class="text-subtitle-1 font-weight-bold">
+            <v-icon start color="primary">mdi-clipboard-list-outline</v-icon>
+            Auditoría de pedidos
+          </div>
+          <v-spacer />
+          <v-btn size="small" variant="tonal" color="primary" prepend-icon="mdi-refresh" :loading="cargandoSepedAuditoria" @click="cargarSepedAuditoria">
+            Actualizar
+          </v-btn>
+        </div>
+        <v-data-table
+          :headers="sepedAuditoriaHeaders"
+          :items="sepedAuditoria"
+          :loading="cargandoSepedAuditoria"
+          density="compact"
+          items-per-page="15"
+        >
+          <template v-slot:item.STATUS="{ item }">
+            <v-chip size="x-small"
+              :color="item.STATUS === 'success' ? 'success' : item.STATUS === 'failed' || item.STATUS === 'error' ? 'error' : item.STATUS === 'pending' ? 'warning' : 'default'"
+              variant="flat">
+              {{ item.STATUS }}
+            </v-chip>
+          </template>
+          <template v-slot:item.ACTION="{ item }">
+            <v-chip size="x-small" :color="item.ACTION === 'accept' ? 'teal' : 'default'" variant="tonal">
+              {{ item.ACTION }}
+            </v-chip>
+          </template>
+          <template v-slot:item.FECHA="{ item }">
+            {{ item.FECHA ? new Date(item.FECHA).toLocaleString('es-VE', { timeZone: brandingStore.zonaHoraria }) : '—' }}
+          </template>
+          <template v-slot:item.DETALLE="{ item }">
+            <span v-if="item.DETALLE" class="text-caption" :title="item.DETALLE">{{ item.DETALLE.slice(0, 60) }}{{ item.DETALLE.length > 60 ? '…' : '' }}</span>
+            <span v-else class="text-caption text-medium-emphasis">—</span>
+          </template>
+        </v-data-table>
+      </v-card>
+
+    </div><!-- /tab seped -->
+
     <!-- ══ Dialogs FTP ══ -->
 
     <!-- Dialog: Nuevo usuario FTP -->
@@ -833,7 +1018,7 @@ const API = `${import.meta.env.VITE_API_URL}/ftp`;
 const snack = ref({ show: false, text: '', color: 'success' });
 const mostrarSnack = (text: string, color = 'success') => { snack.value = { show: true, text, color }; };
 
-const tabActiva = ref<'ftp' | 'icompras' | 'farcompras'>('ftp');
+const tabActiva = ref<'ftp' | 'icompras' | 'farcompras' | 'seped'>('ftp');
 
 // ── FTP: Estado del servidor ───────────────────────────────────────────────────
 
@@ -1470,8 +1655,103 @@ const descargarDocumentacionFarcompras = () => {
   win.onload = () => win.print();
 };
 
+// ── SEPED ──────────────────────────────────────────────────────────────────
+const SEPED_API = `${import.meta.env.VITE_API_URL}/seped`;
+
+const sepedCfg = ref({
+  habilitado: false, intervaloSeg: 60, baseUrl: '', loginPath: '/login',
+  listingPath: '', editPathTemplate: '', acceptPathTemplate: '',
+  orderRowSelector: 'tr', orderIdSelector: 'td:first-child',
+  orderClientSelector: 'td:nth-child(2)', orderTotalSelector: 'td:last-child',
+  username: '', password: '', acceptThreshold: 0,
+  maxRetries: 3, backoffBase: 2, noOpWindows: '',
+  dryRun: false, ignoreSnapshotCheck: false, snapshotDir: 'seped_snapshots',
+});
+const sepedSchedulerActivo  = ref(false);
+const guardandoSepedCfg     = ref(false);
+const ejecutandoCicloSeped  = ref(false);
+const sepedAuditoria        = ref<any[]>([]);
+const cargandoSepedAuditoria = ref(false);
+const sepedLogLines         = ref<string[]>([]);
+const sepedSseActivo        = ref(false);
+const sepedLogRef           = ref<HTMLElement | null>(null);
+let   sepedSse: EventSource | null = null;
+
+const sepedAuditoriaHeaders = [
+  { title: 'ID',       key: 'ID',      width: 60  },
+  { title: 'Pedido',   key: 'ORDERID', width: 110 },
+  { title: 'Cliente',  key: 'CLIENT'              },
+  { title: 'Acción',   key: 'ACTION',  width: 100 },
+  { title: 'Estado',   key: 'STATUS',  width: 120 },
+  { title: 'Detalle',  key: 'DETALLE'             },
+  { title: 'Fecha',    key: 'FECHA',   width: 170 },
+];
+
+const cargarSepedCfg = async () => {
+  try {
+    const res = await axios.get(`${SEPED_API}/config`);
+    if (res.data.success) {
+      Object.assign(sepedCfg.value, res.data.data);
+      sepedSchedulerActivo.value = res.data.schedulerActivo;
+    }
+  } catch { /* silencioso en onMounted */ }
+};
+
+const guardarSepedCfg = async () => {
+  guardandoSepedCfg.value = true;
+  try {
+    const res = await axios.put(`${SEPED_API}/config`, sepedCfg.value);
+    if (res.data.success) {
+      sepedSchedulerActivo.value = res.data.schedulerActivo;
+      mostrarSnack('Configuración SEPED guardada');
+    }
+  } catch { mostrarSnack('Error al guardar configuración SEPED', 'error'); }
+  finally { guardandoSepedCfg.value = false; }
+};
+
+const ejecutarCicloSeped = async () => {
+  ejecutandoCicloSeped.value = true;
+  try {
+    await axios.post(`${SEPED_API}/ciclo`);
+    mostrarSnack('Ciclo SEPED iniciado');
+  } catch { mostrarSnack('Error al iniciar ciclo SEPED', 'error'); }
+  finally { ejecutandoCicloSeped.value = false; }
+};
+
+const cargarSepedAuditoria = async () => {
+  cargandoSepedAuditoria.value = true;
+  try {
+    const res = await axios.get(`${SEPED_API}/auditoria`);
+    if (res.data.success) sepedAuditoria.value = res.data.data;
+  } catch { mostrarSnack('Error al cargar auditoría SEPED', 'error'); }
+  finally { cargandoSepedAuditoria.value = false; }
+};
+
+const iniciarSepedLog = () => {
+  if (sepedSse) return;
+  const token = localStorage.getItem('token');
+  sepedSse = new EventSource(`${SEPED_API}/logs?token=${token ?? ''}`);
+  sepedSseActivo.value = true;
+  sepedSse.onmessage = (e) => {
+    sepedLogLines.value.push(JSON.parse(e.data));
+    if (sepedLogLines.value.length > 500) sepedLogLines.value.shift();
+    // auto-scroll
+    const el = sepedLogRef.value;
+    if (el) el.scrollTop = el.scrollHeight;
+  };
+  sepedSse.onerror = () => {
+    sepedSseActivo.value = false;
+    sepedSse?.close(); sepedSse = null;
+  };
+};
+
+const detenerSepedLog = () => {
+  sepedSse?.close(); sepedSse = null;
+  sepedSseActivo.value = false;
+};
+
 onMounted(async () => {
-  const tasks: Promise<any>[] = [cargarUsuarios(), cargarIcCfg(), cargarAuditoria(), cargarFcCfg(), cargarFcAuditoria()];
+  const tasks: Promise<any>[] = [cargarUsuarios(), cargarIcCfg(), cargarAuditoria(), cargarFcCfg(), cargarFcAuditoria(), cargarSepedCfg(), cargarSepedAuditoria()];
   if (authStore.esAdmin) tasks.push(cargarEstadoServidor());
   await Promise.all(tasks);
 });
@@ -1484,5 +1764,11 @@ onMounted(async () => {
   white-space: pre;
   line-height: 1.8;
   border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+.seped-log {
+  background: rgb(var(--v-theme-surface-variant));
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 </style>

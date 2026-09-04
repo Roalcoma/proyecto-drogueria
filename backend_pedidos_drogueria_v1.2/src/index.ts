@@ -31,6 +31,8 @@ import { ImsController }      from "./controllers/ims.controller";
 import { RechequeoService }  from "./services/rechequeo.service";
 import { IComprasService }    from "./services/icompras.service";
 import { FarcomprasService }  from "./services/farcompras.service";
+import { SepedService }       from "./services/seped.service";
+import sepedRouter             from "./routers/seped.router";
 import { RuteroService }      from "./services/rutero.service";
 import { BrandingService }    from "./services/branding.service";
 import { getDbConfig }        from "./services/dbconfig.service";
@@ -115,6 +117,7 @@ app.use('/ftp',        ftpRouter);
 app.use('/api/metas-vendedor', metasRouter);
 app.use('/ims',            imsRouter);
 app.use('/rechequeo',     rechequeoRouter);
+app.use('/seped',         sepedRouter);
 
 // ── Frontend estático (SPA) ───────────────────────────────────────────────
 const frontendDist = process.env.FRONTEND_DIST
@@ -156,6 +159,13 @@ app.listen(port, async () => {
         if (farcomprasCfg.habilitado && farcomprasCfg.rutaBase) FarcomprasService.iniciarScheduler(farcomprasCfg);
     } catch (e: any) {
         console.error('[Farcompras] Error cargando config inicial:', e.message);
+    }
+    await SepedService.initTablas();
+    try {
+        const sepedCfg = await SepedService.getConfig();
+        if (sepedCfg.habilitado) SepedService.iniciarScheduler(sepedCfg);
+    } catch (e: any) {
+        console.error('[Seped] Error cargando config inicial:', e.message);
     }
     if (getDbConfig().ftpHabilitado) {
         FtpService.iniciarServidor().catch(console.error);
