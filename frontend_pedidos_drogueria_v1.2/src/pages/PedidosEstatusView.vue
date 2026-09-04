@@ -767,7 +767,7 @@ const pdfMultipleCargando  = ref(false);
 
 const modalFusion = ref({ mostrar: false, cargando: false });
 
-const sufijo = (id: string) => (id.match(/[A-Za-z]*$/) || [''])[0];
+const sufijo = (id: string) => (id.replace(/-\d+$/, '').match(/[A-Za-z]*$/) || [''])[0];
 const VALIDOS_FUSION = ['PENDIENTE', 'PENDIENTE POR AUTORIZACION'];
 
 const errorFusion = computed(() => {

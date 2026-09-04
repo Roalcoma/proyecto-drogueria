@@ -870,7 +870,7 @@ export class PedidosServices {
             return { success: false, message: `El pedido ${invalido.ORDERID} tiene estado "${invalido.ESTATUS}" y no puede fusionarse` };
 
         // 4. Mismo sufijo (caracteres alfabéticos al final del ORDERID)
-        const sufijo = (id: string) => (id.match(/[A-Za-z]*$/) || [''])[0];
+        const sufijo = (id: string) => (id.replace(/-\d+$/, '').match(/[A-Za-z]*$/) || [''])[0];
         const sufijos = [...new Set(orders.map((o: any) => sufijo(o.ORDERID)))];
         if (sufijos.length > 1)
             return { success: false, message: 'Los pedidos deben ser del mismo tipo (mismo sufijo)' };
