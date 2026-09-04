@@ -7,12 +7,17 @@ export interface RequestConUsuario extends Request {
 
 export function authMiddleware(req: RequestConUsuario, res: Response, next: NextFunction): void {
     const authHeader = req.headers['authorization'];
-    if (!authHeader?.startsWith('Bearer ')) {
+    // EventSource no soporta headers; aceptamos token por query param como fallback (SSE)
+    const rawToken = authHeader?.startsWith('Bearer ')
+        ? authHeader.split(' ')[1]
+        : (req.query['token'] as string | undefined) ?? null;
+
+    if (!rawToken) {
         res.status(401).json({ success: false, message: 'Token de autenticación requerido' });
         return;
     }
 
-    const token = authHeader.split(' ')[1];
+    const token = rawToken;
     const payload = AuthService.verifyToken(token);
 
     if (!payload) {

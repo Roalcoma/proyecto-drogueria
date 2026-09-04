@@ -1724,6 +1724,7 @@ const ejecutarCicloSeped = async () => {
   try {
     await axios.post(`${SEPED_API}/ciclo`);
     mostrarSnack('Ciclo SEPED iniciado');
+    if (!sepedSseActivo.value) iniciarSepedLog();
   } catch { mostrarSnack('Error al iniciar ciclo SEPED', 'error'); }
   finally { ejecutandoCicloSeped.value = false; }
 };
@@ -1739,8 +1740,9 @@ const cargarSepedAuditoria = async () => {
 
 const iniciarSepedLog = () => {
   if (sepedSse) return;
-  const token = localStorage.getItem('token');
-  sepedSse = new EventSource(`${SEPED_API}/logs?token=${token ?? ''}`);
+  const raw   = localStorage.getItem('auth_session');
+  const token = raw ? (JSON.parse(raw)?.token ?? '') : '';
+  sepedSse = new EventSource(`${SEPED_API}/logs?token=${token}`);
   sepedSseActivo.value = true;
   sepedSse.onmessage = (e) => {
     sepedLogLines.value.push(JSON.parse(e.data));
