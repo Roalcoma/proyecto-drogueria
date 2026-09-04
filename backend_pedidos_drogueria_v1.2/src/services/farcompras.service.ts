@@ -31,16 +31,49 @@ export class FarcomprasService {
                         USUARIO_FTP   NVARCHAR(100) NOT NULL DEFAULT '',
                         CONSTRAINT CK_FARCOMPRAS_CFG_ID CHECK (ID = 1)
                     );
+                DECLARE @dc NVARCHAR(200);
+                -- Drop COD_CLIENTE (drop default constraint first if any)
+                SELECT @dc = dc.name FROM sys.default_constraints dc
+                JOIN sys.columns c ON dc.parent_object_id = c.object_id AND dc.parent_column_id = c.column_id
+                WHERE c.object_id = OBJECT_ID('${ESQ}.APP_FARCOMPRAS_CONFIG') AND c.name = 'COD_CLIENTE';
+                IF @dc IS NOT NULL EXEC('ALTER TABLE ${ESQ}.APP_FARCOMPRAS_CONFIG DROP CONSTRAINT ' + @dc);
                 IF EXISTS (SELECT 1 FROM sys.columns WHERE name = 'COD_CLIENTE' AND object_id = OBJECT_ID('${ESQ}.APP_FARCOMPRAS_CONFIG'))
                     ALTER TABLE ${ESQ}.APP_FARCOMPRAS_CONFIG DROP COLUMN COD_CLIENTE;
+                -- Drop COD_VENDEDOR
+                SET @dc = NULL;
+                SELECT @dc = dc.name FROM sys.default_constraints dc
+                JOIN sys.columns c ON dc.parent_object_id = c.object_id AND dc.parent_column_id = c.column_id
+                WHERE c.object_id = OBJECT_ID('${ESQ}.APP_FARCOMPRAS_CONFIG') AND c.name = 'COD_VENDEDOR';
+                IF @dc IS NOT NULL EXEC('ALTER TABLE ${ESQ}.APP_FARCOMPRAS_CONFIG DROP CONSTRAINT ' + @dc);
                 IF EXISTS (SELECT 1 FROM sys.columns WHERE name = 'COD_VENDEDOR' AND object_id = OBJECT_ID('${ESQ}.APP_FARCOMPRAS_CONFIG'))
                     ALTER TABLE ${ESQ}.APP_FARCOMPRAS_CONFIG DROP COLUMN COD_VENDEDOR;
+                -- Drop old FTP client columns
+                SET @dc = NULL;
+                SELECT @dc = dc.name FROM sys.default_constraints dc
+                JOIN sys.columns c ON dc.parent_object_id = c.object_id AND dc.parent_column_id = c.column_id
+                WHERE c.object_id = OBJECT_ID('${ESQ}.APP_FARCOMPRAS_CONFIG') AND c.name = 'FTP_HOST';
+                IF @dc IS NOT NULL EXEC('ALTER TABLE ${ESQ}.APP_FARCOMPRAS_CONFIG DROP CONSTRAINT ' + @dc);
                 IF EXISTS (SELECT 1 FROM sys.columns WHERE name = 'FTP_HOST' AND object_id = OBJECT_ID('${ESQ}.APP_FARCOMPRAS_CONFIG'))
                     ALTER TABLE ${ESQ}.APP_FARCOMPRAS_CONFIG DROP COLUMN FTP_HOST;
+                SET @dc = NULL;
+                SELECT @dc = dc.name FROM sys.default_constraints dc
+                JOIN sys.columns c ON dc.parent_object_id = c.object_id AND dc.parent_column_id = c.column_id
+                WHERE c.object_id = OBJECT_ID('${ESQ}.APP_FARCOMPRAS_CONFIG') AND c.name = 'FTP_PORT';
+                IF @dc IS NOT NULL EXEC('ALTER TABLE ${ESQ}.APP_FARCOMPRAS_CONFIG DROP CONSTRAINT ' + @dc);
                 IF EXISTS (SELECT 1 FROM sys.columns WHERE name = 'FTP_PORT' AND object_id = OBJECT_ID('${ESQ}.APP_FARCOMPRAS_CONFIG'))
                     ALTER TABLE ${ESQ}.APP_FARCOMPRAS_CONFIG DROP COLUMN FTP_PORT;
+                SET @dc = NULL;
+                SELECT @dc = dc.name FROM sys.default_constraints dc
+                JOIN sys.columns c ON dc.parent_object_id = c.object_id AND dc.parent_column_id = c.column_id
+                WHERE c.object_id = OBJECT_ID('${ESQ}.APP_FARCOMPRAS_CONFIG') AND c.name = 'FTP_USUARIO';
+                IF @dc IS NOT NULL EXEC('ALTER TABLE ${ESQ}.APP_FARCOMPRAS_CONFIG DROP CONSTRAINT ' + @dc);
                 IF EXISTS (SELECT 1 FROM sys.columns WHERE name = 'FTP_USUARIO' AND object_id = OBJECT_ID('${ESQ}.APP_FARCOMPRAS_CONFIG'))
                     ALTER TABLE ${ESQ}.APP_FARCOMPRAS_CONFIG DROP COLUMN FTP_USUARIO;
+                SET @dc = NULL;
+                SELECT @dc = dc.name FROM sys.default_constraints dc
+                JOIN sys.columns c ON dc.parent_object_id = c.object_id AND dc.parent_column_id = c.column_id
+                WHERE c.object_id = OBJECT_ID('${ESQ}.APP_FARCOMPRAS_CONFIG') AND c.name = 'FTP_PASSWORD';
+                IF @dc IS NOT NULL EXEC('ALTER TABLE ${ESQ}.APP_FARCOMPRAS_CONFIG DROP CONSTRAINT ' + @dc);
                 IF EXISTS (SELECT 1 FROM sys.columns WHERE name = 'FTP_PASSWORD' AND object_id = OBJECT_ID('${ESQ}.APP_FARCOMPRAS_CONFIG'))
                     ALTER TABLE ${ESQ}.APP_FARCOMPRAS_CONFIG DROP COLUMN FTP_PASSWORD;
                 IF EXISTS (SELECT 1 FROM sys.columns WHERE name = 'FTP_RUTA' AND object_id = OBJECT_ID('${ESQ}.APP_FARCOMPRAS_CONFIG'))
