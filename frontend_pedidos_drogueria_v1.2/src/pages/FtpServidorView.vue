@@ -5,7 +5,7 @@
       <v-icon color="primary" size="32" class="mr-3">mdi-server-network</v-icon>
       <div>
         <h1 class="text-h5 font-weight-black" style="color:#164E63;">Servidor FTP</h1>
-        <span class="text-caption text-medium-emphasis">Administración del servidor FTP y servicio ICompras</span>
+        <span class="text-caption text-medium-emphasis">Administración del servidor FTP, ICompras y Farcompras</span>
       </div>
     </div>
 
@@ -15,6 +15,9 @@
       </v-tab>
       <v-tab value="icompras">
         <v-icon start>mdi-download-circle-outline</v-icon>ICOMPRAS
+      </v-tab>
+      <v-tab value="farcompras">
+        <v-icon start>mdi-truck-delivery-outline</v-icon>FARCOMPRAS
       </v-tab>
     </v-tabs>
 
@@ -433,6 +436,251 @@
 
     </div><!-- /tab icompras -->
 
+    <!-- ══════════════════════ TAB FARCOMPRAS ══════════════════════ -->
+    <div v-show="tabActiva === 'farcompras'">
+
+      <!-- Configuración -->
+      <v-card v-if="authStore.esAdmin" rounded="xl" elevation="2" class="pa-6 mb-4">
+        <div class="text-subtitle-1 font-weight-bold mb-4">
+          <v-icon start color="deep-orange">mdi-cog-outline</v-icon>
+          Configuración Farcompras
+        </div>
+        <v-row>
+          <v-col cols="12" sm="6">
+            <v-text-field
+              v-model="fcCfg.rutaBase"
+              label="Carpeta base Farcompras"
+              variant="outlined"
+              density="compact"
+              placeholder="C:\FTP\farcompras"
+              hint="Carpeta raíz del usuario FTP de Farcompras. Debe contener 'pedidos/' como subcarpeta."
+              persistent-hint
+            />
+          </v-col>
+          <v-col cols="12" sm="3">
+            <v-text-field
+              v-model="fcCfg.usuarioFtp"
+              label="Usuario FTP"
+              variant="outlined"
+              density="compact"
+              placeholder="farcompras"
+              hint="Nombre del usuario FTP creado en la pestaña FTP"
+              persistent-hint
+            />
+          </v-col>
+          <v-col cols="12" sm="3">
+            <v-text-field
+              v-model.number="fcCfg.intervaloSeg"
+              label="Intervalo (segundos)"
+              type="number"
+              variant="outlined"
+              density="compact"
+              :min="30"
+              hint="Frecuencia del ciclo automático"
+              persistent-hint
+            />
+          </v-col>
+          <v-col cols="12" sm="3" class="d-flex align-center">
+            <v-switch
+              v-model="fcCfg.habilitado"
+              label="Activar ciclo automático"
+              color="deep-orange"
+              hide-details
+              density="compact"
+            />
+          </v-col>
+          <v-col cols="12" class="d-flex justify-end pt-0">
+            <v-btn color="deep-orange" :loading="guardandoFcCfg" prepend-icon="mdi-content-save-outline" @click="guardarFcCfg">
+              Guardar configuración
+            </v-btn>
+          </v-col>
+        </v-row>
+      </v-card>
+
+      <!-- Documentación de archivos -->
+      <v-card rounded="xl" elevation="2" class="pa-6 mb-4">
+        <div class="d-flex align-center mb-4">
+          <div class="text-subtitle-1 font-weight-bold">
+            <v-icon start color="deep-orange">mdi-file-document-multiple-outline</v-icon>
+            Documentación de archivos
+          </div>
+          <v-spacer />
+          <v-btn variant="tonal" color="deep-orange" size="small" prepend-icon="mdi-file-pdf-box" @click="descargarDocumentacionFarcompras">
+            Descargar PDF
+          </v-btn>
+        </div>
+
+        <v-row>
+          <!-- inventario.txt -->
+          <v-col cols="12" lg="4">
+            <div class="d-flex align-center mb-2">
+              <v-icon color="teal" size="18" class="mr-2">mdi-package-variant</v-icon>
+              <span class="text-subtitle-2 font-weight-bold">inventario.txt</span>
+              <v-chip size="x-small" color="teal" variant="tonal" class="ml-2">Saliente</v-chip>
+            </div>
+            <div class="text-caption text-medium-emphasis mb-3">
+              Generado automáticamente en cada ciclo y al conectar por FTP. Separado por punto y coma, codificación latin1.
+            </div>
+            <div class="text-caption font-weight-medium mb-1">Formato (una línea por artículo):</div>
+            <v-table density="compact" class="mb-3" style="font-size:11px">
+              <thead><tr>
+                <th>Campo</th><th>Descripción</th>
+              </tr></thead>
+              <tbody>
+                <tr><td><code>codarticulo</code></td><td>Código interno (5 dígitos, rellenado con ceros)</td></tr>
+                <tr><td><code>refproveedor</code></td><td>Referencia del proveedor</td></tr>
+                <tr><td><code>descripcion</code></td><td>Nombre del artículo (máx. 45 caracteres)</td></tr>
+                <tr><td><code>vence</code></td><td>Fecha de vencimiento más próxima (DD/MM/AAAA) o vacío</td></tr>
+                <tr><td><code>precio</code></td><td>Precio base de venta</td></tr>
+                <tr><td><code>descuentos</code></td><td>D1+D2+D3+D4. Si hay D2 activo: <code>0+10+0+0</code>. Sin descuento: vacío</td></tr>
+                <tr><td><code>precio</code></td><td>Precio base (igual al anterior — sin aplicar descuento)</td></tr>
+                <tr><td><code>stock</code></td><td>Unidades disponibles en almacén</td></tr>
+                <tr><td><code>marca</code></td><td>Nombre de la marca (máx. 30 caracteres)</td></tr>
+              </tbody>
+            </v-table>
+            <div class="text-caption font-weight-medium mb-1">Ejemplo:</div>
+            <pre class="text-caption pa-2 rounded" style="font-size:10px;line-height:1.6;background:rgba(0,0,0,.04);overflow-x:auto">00001;LAB001;AMOXICILINA 500MG;31/12/2025;8.50;;8.50;120;GENFAR
+00002;LAB002;IBUPROFENO 400MG;;5.20;0+10+0+0;5.20;85;BAYER
+00003;;PARACETAMOL 500MG;;;;4.10;;3.69;200;</pre>
+          </v-col>
+
+          <!-- clientes.txt -->
+          <v-col cols="12" lg="4">
+            <div class="d-flex align-center mb-2">
+              <v-icon color="teal" size="18" class="mr-2">mdi-account-group-outline</v-icon>
+              <span class="text-subtitle-2 font-weight-bold">clientes.txt</span>
+              <v-chip size="x-small" color="teal" variant="tonal" class="ml-2">Saliente</v-chip>
+            </div>
+            <div class="text-caption text-medium-emphasis mb-3">
+              Generado junto al inventario. Lista todos los clientes registrados en el sistema con su RIF y descuento D1. Codificación latin1.
+            </div>
+            <div class="text-caption font-weight-medium mb-1">Formato (una línea por cliente):</div>
+            <v-table density="compact" class="mb-3" style="font-size:11px">
+              <thead><tr>
+                <th>Campo</th><th>Descripción</th>
+              </tr></thead>
+              <tbody>
+                <tr><td><code>codcliente</code></td><td>Código interno del cliente en el ERP</td></tr>
+                <tr><td><code>nif20</code></td><td>RIF / cédula fiscal del cliente</td></tr>
+                <tr><td><code>nombrecliente</code></td><td>Razón social o nombre del cliente</td></tr>
+                <tr><td><code>d1</code></td><td>Descuento D1 asignado (porcentaje, 2 decimales). 0.00 si no tiene</td></tr>
+              </tbody>
+            </v-table>
+            <div class="text-caption font-weight-medium mb-1">Ejemplo:</div>
+            <pre class="text-caption pa-2 rounded" style="font-size:10px;line-height:1.6;background:rgba(0,0,0,.04);overflow-x:auto">1001;J-12345678-9;FARMACIA LA SALUD;5.00
+1002;V-87654321-0;CLINICA SANTA MARIA;0.00
+1003;J-98765432-1;DROGUERIA EL CENTRO;3.50</pre>
+          </v-col>
+
+          <!-- pedidos/*.txt -->
+          <v-col cols="12" lg="4">
+            <div class="d-flex align-center mb-2">
+              <v-icon color="deep-orange" size="18" class="mr-2">mdi-cart-arrow-down</v-icon>
+              <span class="text-subtitle-2 font-weight-bold">pedidos/*.txt</span>
+              <v-chip size="x-small" color="deep-orange" variant="tonal" class="ml-2">Entrante</v-chip>
+            </div>
+            <div class="text-caption text-medium-emphasis mb-3">
+              Farcompras deposita un archivo <code>.txt</code> por pedido dentro de <strong>carpeta_base/pedidos/</strong>.
+              Al procesarse correctamente se renombra a <code>.bak</code>. Si el RIF no existe en el sistema el archivo queda intacto y se registra el error en auditoría.
+            </div>
+            <div class="text-caption font-weight-medium mb-1">Formato:</div>
+            <v-table density="compact" class="mb-3" style="font-size:11px">
+              <thead><tr>
+                <th>Línea</th><th>Contenido</th>
+              </tr></thead>
+              <tbody>
+                <tr><td>1</td><td>RIF del cliente que hace el pedido (se busca en <code>NIF20</code> del ERP)</td></tr>
+                <tr><td>2…N</td><td><code>codarticulo;descripcion;cantidad;precioTotal</code> — una línea por artículo</td></tr>
+              </tbody>
+            </v-table>
+            <div class="text-caption font-weight-medium mb-1">Detalle de líneas de artículo:</div>
+            <v-table density="compact" class="mb-3" style="font-size:11px">
+              <thead><tr>
+                <th>Campo</th><th>Descripción</th>
+              </tr></thead>
+              <tbody>
+                <tr><td><code>codarticulo</code></td><td>Código interno del artículo</td></tr>
+                <tr><td><code>descripcion</code></td><td>Descripción (referencial, no se usa en la importación)</td></tr>
+                <tr><td><code>cantidad</code></td><td>Unidades solicitadas (entero)</td></tr>
+                <tr><td><code>precioTotal</code></td><td>Precio total de la línea (solo referencial)</td></tr>
+              </tbody>
+            </v-table>
+            <div class="text-caption font-weight-medium mb-1">Ejemplo:</div>
+            <pre class="text-caption pa-2 rounded" style="font-size:10px;line-height:1.6;background:rgba(0,0,0,.04);overflow-x:auto">J-12345678-9
+00001;AMOXICILINA 500MG;10;85.00
+00002;IBUPROFENO 400MG;5;26.00
+00015;PARACETAMOL 500MG;20;82.00</pre>
+            <v-alert type="info" variant="tonal" density="compact" class="mt-3" style="font-size:11px">
+              Los pedidos se separan automáticamente por tipo de artículo (Normal, NI, Psicotrópico) y se dividen en chunks si superan el máximo de líneas configurado, igual que el resto de flujos.
+            </v-alert>
+          </v-col>
+        </v-row>
+      </v-card>
+
+      <!-- Estado del scheduler + acciones -->
+      <v-card rounded="xl" elevation="2" class="pa-6 mb-4">
+        <div class="d-flex align-center mb-4">
+          <div class="text-subtitle-1 font-weight-bold">
+            <v-icon start color="deep-orange">mdi-timer-outline</v-icon>
+            Ciclo automático (inventario + pedidos)
+          </div>
+          <v-spacer />
+          <v-chip :color="fcSchedulerActivo ? 'success' : 'default'" variant="flat" class="mr-3">
+            <v-icon start>{{ fcSchedulerActivo ? 'mdi-check-circle' : 'mdi-circle-off-outline' }}</v-icon>
+            {{ fcSchedulerActivo ? 'En ejecución' : 'Detenido' }}
+          </v-chip>
+          <v-btn color="deep-orange" variant="tonal" prepend-icon="mdi-play-circle-outline"
+            :loading="ejecutandoFcCiclo" @click="ejecutarFcCiclo">
+            Ejecutar ahora
+          </v-btn>
+        </div>
+        <p class="text-caption text-medium-emphasis mb-0">
+          El ciclo regenera <code>inventario.txt</code> en la carpeta base y luego escanea
+          <code>pedidos/</code> en busca de archivos nuevos para importarlos a la app.
+        </p>
+      </v-card>
+
+      <!-- Auditoría -->
+      <v-card rounded="xl" elevation="2" class="pa-6">
+        <div class="d-flex align-center mb-4">
+          <div class="text-subtitle-1 font-weight-bold">
+            <v-icon start color="deep-orange">mdi-clipboard-list-outline</v-icon>
+            Auditoría de pedidos Farcompras
+          </div>
+          <v-spacer />
+          <v-btn variant="tonal" prepend-icon="mdi-refresh" size="small" :loading="cargandoFcAudit" @click="cargarFcAuditoria">
+            Actualizar
+          </v-btn>
+        </div>
+        <v-data-table
+          :headers="headersFcAudit"
+          :items="fcAuditoria"
+          :loading="cargandoFcAudit"
+          hover
+          density="compact"
+          class="bg-white"
+          no-data-text="Sin registros"
+          :items-per-page="20"
+        >
+          <template v-slot:item.EVENTO="{ item }">
+            <v-chip :color="colorEventoFc(item.EVENTO)" size="x-small" variant="flat">
+              {{ item.EVENTO }}
+            </v-chip>
+          </template>
+          <template v-slot:item.FECHA="{ item }">
+            {{ item.FECHA ? new Date(item.FECHA).toLocaleString('es-VE', { timeZone: brandingStore.zonaHoraria }) : '—' }}
+          </template>
+          <template v-slot:item.MENSAJE="{ item }">
+            <span v-if="item.MENSAJE" class="text-caption" :title="item.MENSAJE">
+              {{ item.MENSAJE.slice(0, 70) }}{{ item.MENSAJE.length > 70 ? '…' : '' }}
+            </span>
+            <span v-else class="text-caption text-medium-emphasis">—</span>
+          </template>
+        </v-data-table>
+      </v-card>
+
+    </div><!-- /tab farcompras -->
+
     <!-- ══ Dialogs FTP ══ -->
 
     <!-- Dialog: Nuevo usuario FTP -->
@@ -585,7 +833,7 @@ const API = `${import.meta.env.VITE_API_URL}/ftp`;
 const snack = ref({ show: false, text: '', color: 'success' });
 const mostrarSnack = (text: string, color = 'success') => { snack.value = { show: true, text, color }; };
 
-const tabActiva = ref<'ftp' | 'icompras'>('ftp');
+const tabActiva = ref<'ftp' | 'icompras' | 'farcompras'>('ftp');
 
 // ── FTP: Estado del servidor ───────────────────────────────────────────────────
 
@@ -740,6 +988,34 @@ const colorEstado = (estado: string) => {
     FACTURADO: 'teal', ANULADO: 'default', ERROR: 'error',
   };
   return m[estado] ?? 'default';
+};
+
+// ── FARCOMPRAS: estado ─────────────────────────────────────────────────────────
+const fcCfg = ref({
+  rutaBase: '', habilitado: false, intervaloSeg: 300, usuarioFtp: '',
+});
+const guardandoFcCfg    = ref(false);
+const fcSchedulerActivo = ref(false);
+const ejecutandoFcCiclo = ref(false);
+const fcAuditoria       = ref<any[]>([]);
+const cargandoFcAudit   = ref(false);
+
+const headersFcAudit = [
+  { title: 'ID',      key: 'ID',      sortable: false, width: 70 },
+  { title: 'Archivo', key: 'ARCHIVO', sortable: false },
+  { title: 'Evento',  key: 'EVENTO',  sortable: false, width: 160 },
+  { title: 'OrderID', key: 'ORDERID', sortable: false, width: 160 },
+  { title: 'Mensaje', key: 'MENSAJE', sortable: false },
+  { title: 'Fecha',   key: 'FECHA',   sortable: false, width: 170 },
+];
+
+const colorEventoFc = (evento: string) => {
+  const m: Record<string, string> = {
+    PROCESADO: 'success', YA_PROCESADO: 'info', PARSE_ERROR: 'warning',
+    ERROR_INSERCION: 'error', ERROR_CONFIG: 'error', ERROR_CRITICO: 'error',
+    CLIENTE_NO_ENCONTRADO: 'warning',
+  };
+  return m[evento] ?? 'default';
 };
 
 // ── FTP: métodos ──────────────────────────────────────────────────────────────
@@ -1049,8 +1325,153 @@ const cargarAuditoria = async () => {
   finally { cargandoAudit.value = false; }
 };
 
+// ── FARCOMPRAS: métodos ────────────────────────────────────────────────────────
+
+const cargarFcCfg = async () => {
+  try {
+    const res = await axios.get(`${API}/farcompras/config`);
+    if (res.data.success) {
+      fcCfg.value = res.data.data;
+      fcSchedulerActivo.value = res.data.schedulerActivo;
+    }
+  } catch {}
+};
+
+const guardarFcCfg = async () => {
+  guardandoFcCfg.value = true;
+  try {
+    const res = await axios.put(`${API}/farcompras/config`, fcCfg.value);
+    fcSchedulerActivo.value = res.data.schedulerActivo ?? fcCfg.value.habilitado;
+    mostrarSnack('Configuración Farcompras guardada', 'success');
+  } catch (e: any) {
+    mostrarSnack(e?.response?.data?.message ?? 'Error al guardar', 'error');
+  } finally { guardandoFcCfg.value = false; }
+};
+
+const ejecutarFcCiclo = async () => {
+  ejecutandoFcCiclo.value = true;
+  try {
+    await axios.post(`${API}/farcompras/ciclo`);
+    mostrarSnack('Ciclo Farcompras iniciado', 'success');
+    setTimeout(() => cargarFcAuditoria(), 3000);
+  } catch (e: any) {
+    mostrarSnack(e?.response?.data?.message ?? 'Error al ejecutar ciclo', 'error');
+  } finally { ejecutandoFcCiclo.value = false; }
+};
+
+const cargarFcAuditoria = async () => {
+  cargandoFcAudit.value = true;
+  try {
+    const res = await axios.get(`${API}/farcompras/auditoria`);
+    if (res.data.success) fcAuditoria.value = res.data.data;
+  } catch { mostrarSnack('Error al cargar auditoría Farcompras', 'error'); }
+  finally { cargandoFcAudit.value = false; }
+};
+
+const descargarDocumentacionFarcompras = () => {
+  const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<title>Documentación Integración Farcompras</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 12px; color: #111; padding: 32px; }
+  h1 { font-size: 20px; color: #c2410c; margin-bottom: 4px; }
+  .subtitle { font-size: 11px; color: #666; margin-bottom: 28px; }
+  h2 { font-size: 14px; color: #1e3a5f; margin: 0 0 4px; }
+  .badge { display:inline-block; font-size:9px; padding:2px 7px; border-radius:10px; font-weight:bold; margin-left:6px; vertical-align:middle; }
+  .badge-out { background:#d1fae5; color:#065f46; }
+  .badge-in  { background:#ffedd5; color:#9a3412; }
+  .desc { color:#555; font-size:11px; margin-bottom:10px; margin-top:4px; }
+  table { width:100%; border-collapse:collapse; margin-bottom:12px; }
+  th { background:#f1f5f9; text-align:left; padding:5px 8px; font-size:11px; border:1px solid #e2e8f0; }
+  td { padding:4px 8px; font-size:11px; border:1px solid #e2e8f0; vertical-align:top; }
+  td code, th code { background:#f1f5f9; padding:1px 4px; border-radius:3px; font-family:monospace; font-size:10px; }
+  pre { background:#f8fafc; border:1px solid #e2e8f0; border-radius:4px; padding:10px; font-size:10px; line-height:1.7; font-family:monospace; white-space:pre-wrap; margin-bottom:12px; }
+  .section { margin-bottom: 28px; page-break-inside: avoid; }
+  .note { background:#fff7ed; border-left:3px solid #f97316; padding:8px 12px; font-size:11px; color:#7c2d12; border-radius:0 4px 4px 0; margin-top:8px; }
+  hr { border:none; border-top:1px solid #e2e8f0; margin:24px 0; }
+  @media print { body { padding: 20px; } }
+</style>
+</head>
+<body>
+<h1>Documentación — Integración Farcompras</h1>
+<div class="subtitle">Generado automáticamente · Formato de archivos FTP</div>
+
+<div class="section">
+  <h2>inventario.txt <span class="badge badge-out">Saliente</span></h2>
+  <p class="desc">Generado automáticamente en cada ciclo y al conectar por FTP. Una línea por artículo. Separado por punto y coma (;). Codificación: latin1.</p>
+  <table>
+    <tr><th>Posición</th><th>Campo</th><th>Descripción</th></tr>
+    <tr><td>1</td><td><code>codarticulo</code></td><td>Código interno del artículo (5 dígitos, rellenado con ceros a la izquierda)</td></tr>
+    <tr><td>2</td><td><code>refproveedor</code></td><td>Referencia del proveedor</td></tr>
+    <tr><td>3</td><td><code>descripcion</code></td><td>Nombre del artículo (máx. 45 caracteres)</td></tr>
+    <tr><td>4</td><td><code>vence</code></td><td>Fecha de vencimiento más próxima en formato DD/MM/AAAA, o vacío si no aplica</td></tr>
+    <tr><td>5</td><td><code>precio</code></td><td>Precio base de venta (2 decimales)</td></tr>
+    <tr><td>6</td><td><code>descuentos</code></td><td>Descuentos en formato D1+D2+D3+D4. Si hay D2 activo: <code>0+10+0+0</code>. Sin descuento: vacío</td></tr>
+    <tr><td>7</td><td><code>precio</code></td><td>Precio base repetido (sin aplicar descuento)</td></tr>
+    <tr><td>8</td><td><code>stock</code></td><td>Unidades disponibles en almacén</td></tr>
+    <tr><td>9</td><td><code>marca</code></td><td>Nombre de la marca (máx. 30 caracteres)</td></tr>
+  </table>
+  <pre>00001;LAB001;AMOXICILINA 500MG;31/12/2025;8.50;;8.50;120;GENFAR
+00002;LAB002;IBUPROFENO 400MG;;5.20;0+10+0+0;5.20;85;BAYER
+00003;;PARACETAMOL 500MG;;4.10;;4.10;200;</pre>
+</div>
+
+<hr/>
+
+<div class="section">
+  <h2>clientes.txt <span class="badge badge-out">Saliente</span></h2>
+  <p class="desc">Generado junto al inventario. Lista todos los clientes del sistema con su RIF y descuento D1. Una línea por cliente. Separado por punto y coma (;). Codificación: latin1.</p>
+  <table>
+    <tr><th>Posición</th><th>Campo</th><th>Descripción</th></tr>
+    <tr><td>1</td><td><code>codcliente</code></td><td>Código interno del cliente en el ERP</td></tr>
+    <tr><td>2</td><td><code>nif20</code></td><td>RIF o cédula fiscal del cliente</td></tr>
+    <tr><td>3</td><td><code>nombrecliente</code></td><td>Razón social o nombre del cliente</td></tr>
+    <tr><td>4</td><td><code>d1</code></td><td>Descuento D1 asignado al cliente (porcentaje con 2 decimales). 0.00 si no tiene descuento</td></tr>
+  </table>
+  <pre>1001;J-12345678-9;FARMACIA LA SALUD;5.00
+1002;V-87654321-0;CLINICA SANTA MARIA;0.00
+1003;J-98765432-1;DROGUERIA EL CENTRO;3.50</pre>
+</div>
+
+<hr/>
+
+<div class="section">
+  <h2>pedidos/*.txt <span class="badge badge-in">Entrante</span></h2>
+  <p class="desc">Farcompras deposita un archivo .txt por pedido dentro de <strong>carpeta_base/pedidos/</strong>. Al procesarse correctamente se renombra a .bak. Si el RIF no existe en el sistema el archivo queda sin procesar y se registra el error en auditoría.</p>
+  <table>
+    <tr><th>Línea</th><th>Contenido</th><th>Descripción</th></tr>
+    <tr><td>1</td><td><code>RIF</code></td><td>RIF del cliente que realiza el pedido. Se busca en el campo NIF20 del ERP para identificar al cliente y su vendedor</td></tr>
+    <tr><td>2…N</td><td><code>codarticulo;descripcion;cantidad;precioTotal</code></td><td>Una línea por artículo solicitado</td></tr>
+  </table>
+  <table style="margin-top:8px">
+    <tr><th>Posición</th><th>Campo</th><th>Descripción</th></tr>
+    <tr><td>1</td><td><code>codarticulo</code></td><td>Código interno del artículo en el ERP</td></tr>
+    <tr><td>2</td><td><code>descripcion</code></td><td>Descripción referencial (no se utiliza en la importación)</td></tr>
+    <tr><td>3</td><td><code>cantidad</code></td><td>Unidades solicitadas</td></tr>
+    <tr><td>4</td><td><code>precioTotal</code></td><td>Precio total de la línea (referencial; el sistema recalcula con sus precios)</td></tr>
+  </table>
+  <pre>J-12345678-9
+00001;AMOXICILINA 500MG;10;85.00
+00002;IBUPROFENO 400MG;5;26.00
+00015;PARACETAMOL 500MG;20;82.00</pre>
+  <div class="note">
+    Los pedidos se separan automáticamente por tipo de artículo (Normal, NI, Psicotrópico, Sin Descuento) y se dividen en partes si superan el máximo de líneas configurado en el sistema, igual que todos los demás flujos de importación.
+  </div>
+</div>
+</body>
+</html>`;
+  const win = window.open('', '_blank');
+  if (!win) return;
+  win.document.write(html);
+  win.document.close();
+  win.onload = () => win.print();
+};
+
 onMounted(async () => {
-  const tasks: Promise<any>[] = [cargarUsuarios(), cargarIcCfg(), cargarAuditoria()];
+  const tasks: Promise<any>[] = [cargarUsuarios(), cargarIcCfg(), cargarAuditoria(), cargarFcCfg(), cargarFcAuditoria()];
   if (authStore.esAdmin) tasks.push(cargarEstadoServidor());
   await Promise.all(tasks);
 });

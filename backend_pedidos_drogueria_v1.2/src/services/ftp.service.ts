@@ -8,6 +8,7 @@ import { connectDb } from '../db/db.conection';
 import { getDbConfig } from './dbconfig.service';
 import { STOCK_DISPONIBLE_SQL } from './products.service';
 import { PromocionesService } from './promociones.service';
+import { FarcomprasService } from './farcompras.service';
 
 // ftp-srv's FileSystem normalizes '/' to '\' on Windows via path.normalize.
 // Subclass it to fix cwd after construction so PWD always returns '/'.
@@ -956,7 +957,14 @@ export class FtpService {
                 const ftpPath = await FtpService.getConfig();
                 if (!ftpPath) return reject(new Error('Ruta FTP no configurada en el servidor'));
 
-                if (user.COD_CLIENTE) {
+                // Usuario Farcompras: usa su carpeta dedicada y recibe inventario general
+                const farcomprasCfg = await FarcomprasService.getConfig();
+                if (farcomprasCfg.usuarioFtp && username === farcomprasCfg.usuarioFtp && farcomprasCfg.rutaBase) {
+                    fs.mkdirSync(path.join(farcomprasCfg.rutaBase, 'pedidos'), { recursive: true });
+                    FarcomprasService.generarInventario(farcomprasCfg.rutaBase).catch(console.error);
+                    FarcomprasService.generarClientes(farcomprasCfg.rutaBase).catch(console.error);
+                    resolve({ fs: new WinFtpFs(connection, { root: farcomprasCfg.rutaBase, cwd: '/' }) });
+                } else if (user.COD_CLIENTE) {
                     const cod = String(user.COD_CLIENTE);
                     FtpService._crearEstructuraCliente(cod, ftpPath);
                     // Regenerar inventario en cada conexión del cliente (datos frescos)

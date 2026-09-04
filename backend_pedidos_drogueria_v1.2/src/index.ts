@@ -29,7 +29,8 @@ import { FtpService }         from "./services/ftp.service";
 import { MetasService }       from "./services/metas.service";
 import { ImsController }      from "./controllers/ims.controller";
 import { RechequeoService }  from "./services/rechequeo.service";
-import { IComprasService }   from "./services/icompras.service";
+import { IComprasService }    from "./services/icompras.service";
+import { FarcomprasService }  from "./services/farcompras.service";
 import { RuteroService }      from "./services/rutero.service";
 import { BrandingService }    from "./services/branding.service";
 import { getDbConfig }        from "./services/dbconfig.service";
@@ -148,6 +149,13 @@ app.listen(port, async () => {
         if (iComprasCfg.habilitado) IComprasService.iniciarScheduler(iComprasCfg);
     } catch (e: any) {
         console.error('[ICompras] Error cargando config inicial:', e.message);
+    }
+    await FarcomprasService.initTablas();
+    try {
+        const farcomprasCfg = await FarcomprasService.getConfig();
+        if (farcomprasCfg.habilitado && farcomprasCfg.rutaBase) FarcomprasService.iniciarScheduler(farcomprasCfg);
+    } catch (e: any) {
+        console.error('[Farcompras] Error cargando config inicial:', e.message);
     }
     if (getDbConfig().ftpHabilitado) {
         FtpService.iniciarServidor().catch(console.error);

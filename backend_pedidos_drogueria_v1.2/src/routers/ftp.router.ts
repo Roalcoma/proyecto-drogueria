@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { FtpController } from '../controllers/ftp.controller';
 import { IComprasController } from '../controllers/icompras.controller';
+import { FarcomprasController } from '../controllers/farcompras.controller';
 import { authMiddleware, adminMiddleware, ftpUsuariosMiddleware } from '../middleware/auth.middleware';
 
 const ftpRouter = Router();
@@ -38,5 +39,12 @@ ftpRouter.get('/icompras/estado',      IComprasController.getEstado);
 ftpRouter.post('/icompras/ciclo',      adminMiddleware, IComprasController.ejecutarCiclo);
 ftpRouter.post('/icompras/reprocesar', adminMiddleware, IComprasController.reprocesarPedido);
 ftpRouter.get('/icompras/auditoria',   IComprasController.getAuditoria);
+
+// Farcompras
+ftpRouter.get('/farcompras/config',    adminMiddleware, FarcomprasController.getConfig);
+ftpRouter.put('/farcompras/config',    adminMiddleware, FarcomprasController.saveConfig);
+ftpRouter.get('/farcompras/estado',    FarcomprasController.getEstado);
+ftpRouter.post('/farcompras/ciclo',    adminMiddleware, FarcomprasController.ejecutarCiclo);
+ftpRouter.get('/farcompras/auditoria', FarcomprasController.getAuditoria);
 
 export default ftpRouter;
