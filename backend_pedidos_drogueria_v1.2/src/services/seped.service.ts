@@ -23,27 +23,52 @@ function emit(level: LogLevel, msg: string) {
 }
 
 export interface SepedConfig {
-    habilitado:            boolean;
-    intervaloSeg:          number;
-    baseUrl:               string;
-    loginPath:             string;
-    listingPath:           string;
-    editPathTemplate:      string;
-    acceptPathTemplate:    string;
-    orderRowSelector:      string;
-    orderIdSelector:       string;
-    orderClientSelector:   string;
-    orderTotalSelector:    string;
-    username:              string;
-    password:              string;
-    acceptThreshold:       number;
-    maxRetries:            number;
-    backoffBase:           number;
-    noOpWindows:           string;
-    dryRun:                boolean;
-    ignoreSnapshotCheck:   boolean;
-    snapshotDir:           string;
+    habilitado:                boolean;
+    intervaloSeg:              number;
+    baseUrl:                   string;
+    loginPath:                 string;
+    listingPath:               string;
+    editPathTemplate:          string;
+    acceptPathTemplate:        string;
+    orderRowSelector:          string;
+    orderIdSelector:           string;
+    orderClientSelector:       string;
+    orderTotalSelector:        string;
+    username:                  string;
+    password:                  string;
+    acceptThreshold:           number;
+    maxRetries:                number;
+    backoffBase:               number;
+    noOpWindows:               string;
+    dryRun:                    boolean;
+    ignoreSnapshotCheck:       boolean;
+    snapshotDir:               string;
+    snapshotIgnoreSelectors:   string;
 }
+
+const DEFAULT_CFG: SepedConfig = {
+    habilitado:              false,
+    intervaloSeg:            60,
+    baseUrl:                 'https://seped.drogueriaintercontinental.net',
+    loginPath:               '/login',
+    listingPath:             '/seped/alcabala',
+    editPathTemplate:        '/seped/alcabala/{id}/edit',
+    acceptPathTemplate:      '/seped/alcabala/{id}',
+    orderRowSelector:        'table.table tr',
+    orderIdSelector:         "td a[href*='/seped/alcabala/']",
+    orderClientSelector:     'td:nth-of-type(3) b',
+    orderTotalSelector:      "td:nth-of-type(11) span[title='MONTO EN OTRA MONEDA'] b, td:nth-of-type(11) b",
+    username:                '',
+    password:                '',
+    acceptThreshold:         1,
+    maxRetries:              3,
+    backoffBase:             1,
+    noOpWindows:             '',
+    dryRun:                  true,
+    ignoreSnapshotCheck:     false,
+    snapshotDir:             'data/snapshots',
+    snapshotIgnoreSelectors: '.colorAlcabala, .label.colorAlcabala',
+};
 
 interface Order { id: string; client: string; total: number; }
 
@@ -141,8 +166,16 @@ function decideAcceptance(orders: Order[], threshold: number) {
 }
 
 // ── Snapshots ────────────────────────────────────────────────────────────────
-function hashHtml(html: string): string {
-    return crypto.createHash('sha256').update(html).digest('hex');
+function normalizeHtml(html: string, ignoreSelectors: string): string {
+    if (!ignoreSelectors.trim()) return html;
+    const $ = $load(html);
+    for (const sel of ignoreSelectors.split(',').map(s => s.trim()).filter(Boolean))
+        try { $(sel).remove(); } catch { /* bad selector */ }
+    return $.html();
+}
+
+function hashHtml(html: string, ignoreSelectors = ''): string {
+    return crypto.createHash('sha256').update(normalizeHtml(html, ignoreSelectors)).digest('hex');
 }
 function prevHash(dir: string, name: string): string | null {
     try { return fs.readFileSync(path.join(dir, `${name}.hash`), 'utf8').trim(); } catch { return null; }
@@ -152,7 +185,7 @@ function saveSnap(dir: string, name: string, html: string) {
     const ts = new Date().toISOString().replace(/[:.]/g, '');
     fs.writeFileSync(path.join(dir, `${name}_${ts}.html`), html, 'utf8');
     fs.writeFileSync(path.join(dir, `${name}_latest.html`), html, 'utf8');
-    fs.writeFileSync(path.join(dir, `${name}.hash`), hashHtml(html), 'utf8');
+    fs.writeFileSync(path.join(dir, `${name}.hash`), hashHtml(html, ''), 'utf8');
 }
 
 // ── Audit ────────────────────────────────────────────────────────────────────
@@ -200,9 +233,12 @@ export class SepedService {
                         NO_OP_WINDOWS         NVARCHAR(500)  NOT NULL DEFAULT '',
                         DRY_RUN               CHAR(1)        NOT NULL DEFAULT 'F',
                         IGNORE_SNAPSHOT_CHECK CHAR(1)        NOT NULL DEFAULT 'F',
-                        SNAPSHOT_DIR          NVARCHAR(500)  NOT NULL DEFAULT 'seped_snapshots',
+                        SNAPSHOT_DIR                 NVARCHAR(500)  NOT NULL DEFAULT 'data/snapshots',
+                        SNAPSHOT_IGNORE_SELECTORS    NVARCHAR(500)  NOT NULL DEFAULT '.colorAlcabala, .label.colorAlcabala',
                         CONSTRAINT CK_SEPED_CFG_ID CHECK (ID=1)
                     );
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE name='SNAPSHOT_IGNORE_SELECTORS' AND object_id=OBJECT_ID('${ESQ}.APP_SEPED_CONFIG'))
+                    ALTER TABLE ${ESQ}.APP_SEPED_CONFIG ADD SNAPSHOT_IGNORE_SELECTORS NVARCHAR(500) NOT NULL DEFAULT '.colorAlcabala, .label.colorAlcabala';
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='APP_SEPED_AUDITORIA')
                     CREATE TABLE ${ESQ}.APP_SEPED_AUDITORIA (
                         ID      INT IDENTITY PRIMARY KEY,
@@ -223,36 +259,29 @@ export class SepedService {
         const r = (await pool.request().query(
             `SELECT * FROM ${ESQ}.APP_SEPED_CONFIG WITH(NOLOCK) WHERE ID=1`
         )).recordset[0];
-        if (!r) return {
-            habilitado: false, intervaloSeg: 60, baseUrl: '', loginPath: '/login',
-            listingPath: '', editPathTemplate: '', acceptPathTemplate: '',
-            orderRowSelector: 'tr', orderIdSelector: 'td:first-child',
-            orderClientSelector: 'td:nth-child(2)', orderTotalSelector: 'td:last-child',
-            username: '', password: '', acceptThreshold: 0,
-            maxRetries: 3, backoffBase: 2, noOpWindows: '',
-            dryRun: false, ignoreSnapshotCheck: false, snapshotDir: 'seped_snapshots',
-        };
+        if (!r) return { ...DEFAULT_CFG };
         return {
-            habilitado:          r.HABILITADO === 'T',
-            intervaloSeg:        r.INTERVALO_SEG,
-            baseUrl:             r.BASE_URL,
-            loginPath:           r.LOGIN_PATH,
-            listingPath:         r.LISTING_PATH,
-            editPathTemplate:    r.EDIT_PATH_TEMPLATE,
-            acceptPathTemplate:  r.ACCEPT_PATH_TEMPLATE,
-            orderRowSelector:    r.ORDER_ROW_SELECTOR,
-            orderIdSelector:     r.ORDER_ID_SELECTOR,
-            orderClientSelector: r.ORDER_CLIENT_SELECTOR,
-            orderTotalSelector:  r.ORDER_TOTAL_SELECTOR,
-            username:            r.USERNAME,
-            password:            r.PASSWORD,
-            acceptThreshold:     r.ACCEPT_THRESHOLD,
-            maxRetries:          r.MAX_RETRIES,
-            backoffBase:         r.BACKOFF_BASE,
-            noOpWindows:         r.NO_OP_WINDOWS,
-            dryRun:              r.DRY_RUN === 'T',
-            ignoreSnapshotCheck: r.IGNORE_SNAPSHOT_CHECK === 'T',
-            snapshotDir:         r.SNAPSHOT_DIR,
+            habilitado:              r.HABILITADO === 'T',
+            intervaloSeg:            r.INTERVALO_SEG,
+            baseUrl:                 r.BASE_URL,
+            loginPath:               r.LOGIN_PATH,
+            listingPath:             r.LISTING_PATH,
+            editPathTemplate:        r.EDIT_PATH_TEMPLATE,
+            acceptPathTemplate:      r.ACCEPT_PATH_TEMPLATE,
+            orderRowSelector:        r.ORDER_ROW_SELECTOR,
+            orderIdSelector:         r.ORDER_ID_SELECTOR,
+            orderClientSelector:     r.ORDER_CLIENT_SELECTOR,
+            orderTotalSelector:      r.ORDER_TOTAL_SELECTOR,
+            username:                r.USERNAME,
+            password:                r.PASSWORD,
+            acceptThreshold:         r.ACCEPT_THRESHOLD,
+            maxRetries:              r.MAX_RETRIES,
+            backoffBase:             r.BACKOFF_BASE,
+            noOpWindows:             r.NO_OP_WINDOWS,
+            dryRun:                  r.DRY_RUN === 'T',
+            ignoreSnapshotCheck:     r.IGNORE_SNAPSHOT_CHECK === 'T',
+            snapshotDir:             r.SNAPSHOT_DIR,
+            snapshotIgnoreSelectors: r.SNAPSHOT_IGNORE_SELECTORS ?? DEFAULT_CFG.snapshotIgnoreSelectors,
         };
     }
 
@@ -278,7 +307,8 @@ export class SepedService {
             .input('NOP', mssql.NVarChar(500),   cfg.noOpWindows)
             .input('DR',  mssql.Char(1),          cfg.dryRun ? 'T' : 'F')
             .input('ISC', mssql.Char(1),          cfg.ignoreSnapshotCheck ? 'T' : 'F')
-            .input('SD',  mssql.NVarChar(500),   cfg.snapshotDir);
+            .input('SD',  mssql.NVarChar(500),    cfg.snapshotDir)
+            .input('SIS', mssql.NVarChar(500),    cfg.snapshotIgnoreSelectors);
         await q.query(`
             IF EXISTS (SELECT 1 FROM ${ESQ}.APP_SEPED_CONFIG WHERE ID=1)
                 UPDATE ${ESQ}.APP_SEPED_CONFIG SET
@@ -288,15 +318,16 @@ export class SepedService {
                     ORDER_CLIENT_SELECTOR=@R3, ORDER_TOTAL_SELECTOR=@R4,
                     USERNAME=@UN, PASSWORD=@PW, ACCEPT_THRESHOLD=@AT,
                     MAX_RETRIES=@MR, BACKOFF_BASE=@BB, NO_OP_WINDOWS=@NOP,
-                    DRY_RUN=@DR, IGNORE_SNAPSHOT_CHECK=@ISC, SNAPSHOT_DIR=@SD
+                    DRY_RUN=@DR, IGNORE_SNAPSHOT_CHECK=@ISC, SNAPSHOT_DIR=@SD,
+                    SNAPSHOT_IGNORE_SELECTORS=@SIS
                 WHERE ID=1
             ELSE
                 INSERT INTO ${ESQ}.APP_SEPED_CONFIG
                     (ID,HABILITADO,INTERVALO_SEG,BASE_URL,LOGIN_PATH,LISTING_PATH,
                      EDIT_PATH_TEMPLATE,ACCEPT_PATH_TEMPLATE,ORDER_ROW_SELECTOR,ORDER_ID_SELECTOR,
                      ORDER_CLIENT_SELECTOR,ORDER_TOTAL_SELECTOR,USERNAME,PASSWORD,ACCEPT_THRESHOLD,
-                     MAX_RETRIES,BACKOFF_BASE,NO_OP_WINDOWS,DRY_RUN,IGNORE_SNAPSHOT_CHECK,SNAPSHOT_DIR)
-                VALUES (1,@H,@I,@BU,@LP,@LST,@EPT,@APT,@R1,@R2,@R3,@R4,@UN,@PW,@AT,@MR,@BB,@NOP,@DR,@ISC,@SD)
+                     MAX_RETRIES,BACKOFF_BASE,NO_OP_WINDOWS,DRY_RUN,IGNORE_SNAPSHOT_CHECK,SNAPSHOT_DIR,SNAPSHOT_IGNORE_SELECTORS)
+                VALUES (1,@H,@I,@BU,@LP,@LST,@EPT,@APT,@R1,@R2,@R3,@R4,@UN,@PW,@AT,@MR,@BB,@NOP,@DR,@ISC,@SD,@SIS)
         `);
         if (SepedService.scheduler) {
             SepedService.detenerScheduler();
@@ -368,7 +399,7 @@ export class SepedService {
 
         if (!cfg.ignoreSnapshotCheck) {
             const ph = prevHash(cfg.snapshotDir, 'listing');
-            const ch = hashHtml(listingHtml);
+            const ch = hashHtml(listingHtml, cfg.snapshotIgnoreSelectors);
             if (ph && ph !== ch) {
                 emit('WARN', 'Página de listado cambió; abortando ciclo y guardando snapshot');
                 saveSnap(cfg.snapshotDir, 'listing', listingHtml);
@@ -388,7 +419,7 @@ export class SepedService {
                 const { html: editHtml } = await sess.get(editUrl);
                 if (!cfg.ignoreSnapshotCheck) {
                     const ph = prevHash(cfg.snapshotDir, `edit_${o.id}`);
-                    const ch = hashHtml(editHtml);
+                    const ch = hashHtml(editHtml, cfg.snapshotIgnoreSelectors);
                     if (ph && ph !== ch) {
                         emit('WARN', `Página de edición de ${o.id} cambió; saltando`);
                         saveSnap(cfg.snapshotDir, `edit_${o.id}`, editHtml);

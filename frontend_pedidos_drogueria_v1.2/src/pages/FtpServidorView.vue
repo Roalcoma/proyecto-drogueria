@@ -769,8 +769,11 @@
           </v-col>
         </v-row>
         <v-row dense class="mb-4">
-          <v-col cols="12" sm="5">
-            <v-text-field v-model="sepedCfg.snapshotDir" label="Carpeta de snapshots" variant="outlined" density="compact" hide-details placeholder="seped_snapshots" />
+          <v-col cols="12" sm="4">
+            <v-text-field v-model="sepedCfg.snapshotDir" label="Carpeta de snapshots" variant="outlined" density="compact" hide-details placeholder="data/snapshots" />
+          </v-col>
+          <v-col cols="12" sm="4">
+            <v-text-field v-model="sepedCfg.snapshotIgnoreSelectors" label="Selectores a ignorar en snapshot (CSS, separados por coma)" variant="outlined" density="compact" hide-details placeholder=".colorAlcabala, .label.colorAlcabala" />
           </v-col>
           <v-col cols="auto"><v-switch v-model="sepedCfg.habilitado" label="Habilitado" color="primary" density="compact" hide-details /></v-col>
           <v-col cols="auto"><v-switch v-model="sepedCfg.dryRun" label="Modo prueba (sin POST)" color="warning" density="compact" hide-details /></v-col>
@@ -1659,13 +1662,20 @@ const descargarDocumentacionFarcompras = () => {
 const SEPED_API = `${import.meta.env.VITE_API_URL}/seped`;
 
 const sepedCfg = ref({
-  habilitado: false, intervaloSeg: 60, baseUrl: '', loginPath: '/login',
-  listingPath: '', editPathTemplate: '', acceptPathTemplate: '',
-  orderRowSelector: 'tr', orderIdSelector: 'td:first-child',
-  orderClientSelector: 'td:nth-child(2)', orderTotalSelector: 'td:last-child',
-  username: '', password: '', acceptThreshold: 0,
-  maxRetries: 3, backoffBase: 2, noOpWindows: '',
-  dryRun: false, ignoreSnapshotCheck: false, snapshotDir: 'seped_snapshots',
+  habilitado: false, intervaloSeg: 60,
+  baseUrl: 'https://seped.drogueriaintercontinental.net', loginPath: '/login',
+  listingPath: '/seped/alcabala',
+  editPathTemplate: '/seped/alcabala/{id}/edit',
+  acceptPathTemplate: '/seped/alcabala/{id}',
+  orderRowSelector: 'table.table tr',
+  orderIdSelector: "td a[href*='/seped/alcabala/']",
+  orderClientSelector: 'td:nth-of-type(3) b',
+  orderTotalSelector: "td:nth-of-type(11) span[title='MONTO EN OTRA MONEDA'] b, td:nth-of-type(11) b",
+  username: '', password: '', acceptThreshold: 1,
+  maxRetries: 3, backoffBase: 1, noOpWindows: '',
+  dryRun: true, ignoreSnapshotCheck: false,
+  snapshotDir: 'data/snapshots',
+  snapshotIgnoreSelectors: '.colorAlcabala, .label.colorAlcabala',
 });
 const sepedSchedulerActivo  = ref(false);
 const guardandoSepedCfg     = ref(false);

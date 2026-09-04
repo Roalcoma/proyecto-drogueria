@@ -30,9 +30,10 @@ export class SepedController {
                 maxRetries:           Number(b.maxRetries ?? 3),
                 backoffBase:          Number(b.backoffBase ?? 2),
                 noOpWindows:          String(b.noOpWindows ?? ''),
-                dryRun:               !!b.dryRun,
-                ignoreSnapshotCheck:  !!b.ignoreSnapshotCheck,
-                snapshotDir:          String(b.snapshotDir ?? 'seped_snapshots'),
+                dryRun:                    !!b.dryRun,
+                ignoreSnapshotCheck:       !!b.ignoreSnapshotCheck,
+                snapshotDir:               String(b.snapshotDir ?? 'data/snapshots'),
+                snapshotIgnoreSelectors:   String(b.snapshotIgnoreSelectors ?? '.colorAlcabala, .label.colorAlcabala'),
             });
             res.json({ success: true, schedulerActivo: SepedService.schedulerActivo() });
         } catch (e: any) { res.status(500).json({ success: false, message: e.message }); }
