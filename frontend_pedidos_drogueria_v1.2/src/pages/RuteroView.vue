@@ -1712,7 +1712,7 @@ const generarControlRuterosPDF = async () => {
 
   const brandingStore = useBrandingStore();
   const fecha = new Date().toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: brandingStore.zonaHoraria });
-  const doc   = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  const doc   = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter', compress: true });
 
   let logoData = '';
   try { logoData = await compressImageForPDF(brandingStore.logo, 28, 13, 0.85); } catch { /* sin logo */ }
@@ -1784,7 +1784,7 @@ const generarControlRuterosPDF = async () => {
 
 const generarPDF = async (numero: string, zonaDisplay: string, lista: any[]) => {
   const fecha = new Date().toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: useBrandingStore().zonaHoraria });
-  const doc   = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  const doc   = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter', compress: true });
 
   let logoData = '';
   try { logoData = await compressImageForPDF(useBrandingStore().logo, 28, 13, 0.85); } catch { /* sin logo */ }
@@ -1794,29 +1794,29 @@ const generarPDF = async (numero: string, zonaDisplay: string, lista: any[]) => 
       if (logoData) try { doc.addImage(logoData, 'JPEG', 10, 6, 28, 13); } catch { }
 
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(12);
+      doc.setFontSize(14);
       doc.setTextColor(31, 78, 121);
-      doc.text('DROGUERIA INTERCONTINENTAL, C.A.', 105, 11, { align: 'center' });
+      doc.text('DROGUERIA INTERCONTINENTAL, C.A.', 105, 12, { align: 'center' });
 
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
+      doc.setFontSize(9);
       doc.setTextColor(60, 60, 60);
-      doc.text('RIF: J-501590192', 105, 15.5, { align: 'center' });
+      doc.text('RIF: J-501590192', 105, 17, { align: 'center' });
 
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9);
+      doc.setFontSize(11);
       doc.setTextColor(31, 78, 121);
-      doc.text('REPARTO A CLIENTE', 105, 20, { align: 'center' });
+      doc.text('REPARTO A CLIENTE', 105, 22, { align: 'center' });
 
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7.5);
+      doc.setFontSize(9);
       doc.setTextColor(50, 50, 50);
       const infoLine = `Nro: ${numero}    Ruta: ${zonaDisplay}    Fecha: ${fecha}    Pág. ${pageNum} de ${totalPages}`;
-      doc.text(infoLine, 105, 24.5, { align: 'center' });
+      doc.text(infoLine, 105, 27, { align: 'center' });
 
       doc.setDrawColor(31, 78, 121);
       doc.setLineWidth(0.5);
-      doc.line(10, 27, 205, 27);
+      doc.line(10, 30, 205, 30);
     };
 
     // ── Agrupa por cliente ──────────────────────────────────────────────────
@@ -1867,7 +1867,8 @@ const generarPDF = async (numero: string, zonaDisplay: string, lista: any[]) => 
     ]);
 
     autoTable(doc, {
-      startY: 29,
+      startY: 32,
+      margin: { top: 32, left: 10, right: 10 },
       head: [['FACTURA', 'B/C', 'DOCS.', 'CESTAS', 'FIRMA / RECIBIDO']],
       body,
       theme: 'grid',
@@ -1881,14 +1882,9 @@ const generarPDF = async (numero: string, zonaDisplay: string, lista: any[]) => 
         4: { cellWidth: 99.9, minCellHeight: 8 },
       },
       rowPageBreak: 'avoid',
-      didDrawPage: (data) => {
-        const pageNum   = (doc as any).internal.getCurrentPageInfo().pageNumber;
-        const totalPgs  = (doc as any).internal.getNumberOfPages();
-        addHeader(pageNum, totalPgs);
-      },
     });
 
-    // Corregir cabeceras en páginas ya generadas
+    // Dibuja cabecera con total de páginas correcto (evita doble-draw)
     const totalPgs = (doc as any).internal.getNumberOfPages();
     for (let p = 1; p <= totalPgs; p++) {
       doc.setPage(p);
