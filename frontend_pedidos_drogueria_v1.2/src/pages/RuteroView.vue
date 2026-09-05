@@ -957,6 +957,7 @@ import { ref, computed, onMounted, reactive, nextTick, watch } from 'vue';
 import axios from 'axios';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { compressImageForPDF } from '../utils/pdfImageHelper';
 import { useBrandingStore } from '../stores/useBrandingStore';
 import { useAuthStore } from '../stores/useAuthStore';
 
@@ -1712,11 +1713,12 @@ const generarControlRuterosPDF = async () => {
   const brandingStore = useBrandingStore();
   const fecha = new Date().toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: brandingStore.zonaHoraria });
   const doc   = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
-  const logo  = new Image();
-  logo.src    = brandingStore.logo;
+
+  let logoData = '';
+  try { logoData = await compressImageForPDF(brandingStore.logo, 28, 13, 0.85); } catch { /* sin logo */ }
 
   const build = () => {
-    try { doc.addImage(logo, 'PNG', 10, 6, 28, 13); } catch { /* sin logo */ }
+    if (logoData) try { doc.addImage(logoData, 'JPEG', 10, 6, 28, 13); } catch { }
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
@@ -1777,23 +1779,19 @@ const generarControlRuterosPDF = async () => {
     generandoControlPDF.value = false;
   };
 
-  if (logo.complete && logo.naturalWidth > 0) {
-    build();
-  } else {
-    logo.onload  = build;
-    logo.onerror = build;
-  }
+  build();
 };
 
-const generarPDF = (numero: string, zonaDisplay: string, lista: any[]) => {
+const generarPDF = async (numero: string, zonaDisplay: string, lista: any[]) => {
   const fecha = new Date().toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: useBrandingStore().zonaHoraria });
   const doc   = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
-  const logo  = new Image();
-  logo.src    = useBrandingStore().logo;
+
+  let logoData = '';
+  try { logoData = await compressImageForPDF(useBrandingStore().logo, 28, 13, 0.85); } catch { /* sin logo */ }
 
   const build = () => {
     const addHeader = (pageNum: number, totalPages: number) => {
-      try { doc.addImage(logo, 'PNG', 10, 6, 28, 13); } catch { /* sin logo */ }
+      if (logoData) try { doc.addImage(logoData, 'JPEG', 10, 6, 28, 13); } catch { }
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
@@ -1901,11 +1899,6 @@ const generarPDF = (numero: string, zonaDisplay: string, lista: any[]) => {
     notify(`PDF ${numero} generado`, 'success');
   };
 
-  if (logo.complete && logo.naturalWidth > 0) {
-    build();
-  } else {
-    logo.onload  = build;
-    logo.onerror = build;
-  }
+  build();
 };
 </script>
