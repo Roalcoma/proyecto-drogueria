@@ -24,6 +24,8 @@ export class SepedController {
                 orderIdSelector:      String(b.orderIdSelector ?? 'td:first-child'),
                 orderClientSelector:  String(b.orderClientSelector ?? 'td:nth-child(2)'),
                 orderTotalSelector:   String(b.orderTotalSelector ?? 'td:last-child'),
+                orderStatusSelector:  String(b.orderStatusSelector ?? 'td:nth-child(8)'),
+                orderStatusValue:     String(b.orderStatusValue    ?? 'POR-APROBAR'),
                 username:             String(b.username ?? ''),
                 password:             String(b.password ?? ''),
                 acceptThreshold:      Number(b.acceptThreshold ?? 0),

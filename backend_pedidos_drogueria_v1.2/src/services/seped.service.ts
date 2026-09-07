@@ -4,6 +4,7 @@ import path from 'path';
 import crypto from 'crypto';
 import * as mssql from 'mssql';
 import { load as $load } from 'cheerio';
+import { chromium, type Page } from 'playwright';
 import { connectDb } from '../db/db.conection';
 
 const ESQ = 'dbo';
@@ -34,6 +35,8 @@ export interface SepedConfig {
     orderIdSelector:           string;
     orderClientSelector:       string;
     orderTotalSelector:        string;
+    orderStatusSelector:       string;
+    orderStatusValue:          string;
     username:                  string;
     password:                  string;
     acceptThreshold:           number;
@@ -54,10 +57,12 @@ const DEFAULT_CFG: SepedConfig = {
     listingPath:             '/seped/alcabala',
     editPathTemplate:        '/seped/alcabala/{id}/edit',
     acceptPathTemplate:      '/seped/alcabala/{id}',
-    orderRowSelector:        'table.table tr',
-    orderIdSelector:         "td a[href*='/seped/alcabala/']",
-    orderClientSelector:     'td:nth-of-type(3) b',
-    orderTotalSelector:      "td:nth-of-type(11) span[title='MONTO EN OTRA MONEDA'] b, td:nth-of-type(11) b",
+    orderRowSelector:        'table.table tbody tr',
+    orderIdSelector:         'td:nth-child(2)',
+    orderClientSelector:     'td:nth-child(3)',
+    orderTotalSelector:      'td:nth-child(11)',
+    orderStatusSelector:     'td:nth-child(8)',
+    orderStatusValue:        'POR-APROBAR',
     username:                '',
     password:                '',
     acceptThreshold:         1,
@@ -65,7 +70,7 @@ const DEFAULT_CFG: SepedConfig = {
     backoffBase:             1,
     noOpWindows:             '',
     dryRun:                  true,
-    ignoreSnapshotCheck:     false,
+    ignoreSnapshotCheck:     true,
     snapshotDir:             'data/snapshots',
     snapshotIgnoreSelectors: '.colorAlcabala, .label.colorAlcabala',
 };
@@ -90,48 +95,6 @@ function isInNoOp(windows: Array<[number, number]>): boolean {
     return windows.some(([s, e]) => s <= e ? now >= s && now < e : now >= s || now < e);
 }
 
-// ── HTTP session (Node 18 built-in fetch + cookie jar) ───────────────────────
-class HttpSession {
-    private jar: Map<string, string> = new Map();
-
-    private absorb(res: Response) {
-        const raw = (res as any).headers.getSetCookie?.() as string[] | undefined;
-        const fallback = res.headers.get('set-cookie');
-        const all: string[] = raw?.length ? raw : fallback ? [fallback] : [];
-        for (const h of all) {
-            const [kv] = h.split(';');
-            const eq = kv.indexOf('=');
-            if (eq > 0) this.jar.set(kv.slice(0, eq).trim(), kv.slice(eq + 1).trim());
-        }
-    }
-
-    private cookieHdr() { return [...this.jar.entries()].map(([k, v]) => `${k}=${v}`).join('; '); }
-
-    async get(url: string): Promise<{ html: string; status: number }> {
-        const res = await fetch(url, {
-            headers: { Cookie: this.cookieHdr(), 'User-Agent': 'Mozilla/5.0' },
-            redirect: 'follow',
-        });
-        this.absorb(res);
-        return { html: await res.text(), status: res.status };
-    }
-
-    async post(url: string, form: Record<string, string>, referer?: string): Promise<{ html: string; status: number }> {
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                Cookie: this.cookieHdr(),
-                'User-Agent': 'Mozilla/5.0',
-                ...(referer ? { Referer: referer } : {}),
-            },
-            body: new URLSearchParams(form).toString(),
-            redirect: 'follow',
-        });
-        this.absorb(res);
-        return { html: await res.text(), status: res.status };
-    }
-}
 
 // ── HTML helpers ─────────────────────────────────────────────────────────────
 function extractCsrf(html: string): string | null {
@@ -141,10 +104,16 @@ function extractCsrf(html: string): string | null {
         ?? null;
 }
 
-function parseListing(html: string, cfg: SepedConfig): Order[] {
+function parseListing(html: string, cfg: SepedConfig): { orders: Order[]; rowsFound: number } {
     const $ = $load(html);
+    const rows = $(cfg.orderRowSelector);
     const orders: Order[] = [];
-    $(cfg.orderRowSelector).each((_, el) => {
+    rows.each((_, el) => {
+        // Filtrar por status si está configurado
+        if (cfg.orderStatusSelector && cfg.orderStatusValue) {
+            const status = $(el).find(cfg.orderStatusSelector).text().trim();
+            if (!status.includes(cfg.orderStatusValue)) return;
+        }
         const id = $(el).find(cfg.orderIdSelector).text().trim()
                 || $(el).find(cfg.orderIdSelector).attr('href')?.match(/(\d+)/)?.[1] || '';
         const client = $(el).find(cfg.orderClientSelector).text().trim();
@@ -152,7 +121,7 @@ function parseListing(html: string, cfg: SepedConfig): Order[] {
         const total  = parseFloat(raw) || 0;
         if (id) orders.push({ id, client, total });
     });
-    return orders;
+    return { orders, rowsFound: rows.length };
 }
 
 function decideAcceptance(orders: Order[], threshold: number) {
@@ -180,12 +149,12 @@ function hashHtml(html: string, ignoreSelectors = ''): string {
 function prevHash(dir: string, name: string): string | null {
     try { return fs.readFileSync(path.join(dir, `${name}.hash`), 'utf8').trim(); } catch { return null; }
 }
-function saveSnap(dir: string, name: string, html: string) {
+function saveSnap(dir: string, name: string, html: string, ignoreSelectors = '') {
     fs.mkdirSync(dir, { recursive: true });
     const ts = new Date().toISOString().replace(/[:.]/g, '');
     fs.writeFileSync(path.join(dir, `${name}_${ts}.html`), html, 'utf8');
     fs.writeFileSync(path.join(dir, `${name}_latest.html`), html, 'utf8');
-    fs.writeFileSync(path.join(dir, `${name}.hash`), hashHtml(html, ''), 'utf8');
+    fs.writeFileSync(path.join(dir, `${name}.hash`), hashHtml(html, ignoreSelectors), 'utf8');
 }
 
 // ── Audit ────────────────────────────────────────────────────────────────────
@@ -194,7 +163,7 @@ async function audit(orderId: string, client: string, action: string, status: st
         const pool = await connectDb();
         await pool.request()
             .input('O', mssql.NVarChar(100), orderId)
-            .input('C', mssql.NVarChar(200), client)
+            .input('C', mssql.NVarChar(200), client?.slice(0, 200) ?? '')
             .input('A', mssql.NVarChar(50),  action)
             .input('S', mssql.NVarChar(50),  status)
             .input('D', mssql.NVarChar(500), detalle)
@@ -239,6 +208,17 @@ export class SepedService {
                     );
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE name='SNAPSHOT_IGNORE_SELECTORS' AND object_id=OBJECT_ID('${ESQ}.APP_SEPED_CONFIG'))
                     ALTER TABLE ${ESQ}.APP_SEPED_CONFIG ADD SNAPSHOT_IGNORE_SELECTORS NVARCHAR(500) NOT NULL DEFAULT '.colorAlcabala, .label.colorAlcabala';
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE name='ORDER_STATUS_SELECTOR' AND object_id=OBJECT_ID('${ESQ}.APP_SEPED_CONFIG'))
+                    ALTER TABLE ${ESQ}.APP_SEPED_CONFIG ADD ORDER_STATUS_SELECTOR NVARCHAR(300) NOT NULL DEFAULT 'td:nth-child(8)';
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE name='ORDER_STATUS_VALUE' AND object_id=OBJECT_ID('${ESQ}.APP_SEPED_CONFIG'))
+                    ALTER TABLE ${ESQ}.APP_SEPED_CONFIG ADD ORDER_STATUS_VALUE NVARCHAR(100) NOT NULL DEFAULT 'POR-APROBAR';
+                UPDATE ${ESQ}.APP_SEPED_CONFIG SET
+                    IGNORE_SNAPSHOT_CHECK='T',
+                    ORDER_ROW_SELECTOR='table.table tbody tr',
+                    ORDER_ID_SELECTOR='td:nth-child(2)',
+                    ORDER_CLIENT_SELECTOR='td:nth-child(3)',
+                    ORDER_TOTAL_SELECTOR='td:nth-child(11)'
+                WHERE ID=1;
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='APP_SEPED_AUDITORIA')
                     CREATE TABLE ${ESQ}.APP_SEPED_AUDITORIA (
                         ID      INT IDENTITY PRIMARY KEY,
@@ -272,6 +252,8 @@ export class SepedService {
             orderIdSelector:         r.ORDER_ID_SELECTOR,
             orderClientSelector:     r.ORDER_CLIENT_SELECTOR,
             orderTotalSelector:      r.ORDER_TOTAL_SELECTOR,
+            orderStatusSelector:     r.ORDER_STATUS_SELECTOR ?? DEFAULT_CFG.orderStatusSelector,
+            orderStatusValue:        r.ORDER_STATUS_VALUE    ?? DEFAULT_CFG.orderStatusValue,
             username:                r.USERNAME,
             password:                r.PASSWORD,
             acceptThreshold:         r.ACCEPT_THRESHOLD,
@@ -299,6 +281,8 @@ export class SepedService {
             .input('R2',  mssql.NVarChar(300),   cfg.orderIdSelector)
             .input('R3',  mssql.NVarChar(300),   cfg.orderClientSelector)
             .input('R4',  mssql.NVarChar(300),   cfg.orderTotalSelector)
+            .input('R5',  mssql.NVarChar(300),   cfg.orderStatusSelector)
+            .input('R6',  mssql.NVarChar(100),   cfg.orderStatusValue)
             .input('UN',  mssql.NVarChar(200),   cfg.username)
             .input('PW',  mssql.NVarChar(200),   cfg.password)
             .input('AT',  mssql.Float,            cfg.acceptThreshold)
@@ -316,6 +300,7 @@ export class SepedService {
                     LISTING_PATH=@LST, EDIT_PATH_TEMPLATE=@EPT, ACCEPT_PATH_TEMPLATE=@APT,
                     ORDER_ROW_SELECTOR=@R1, ORDER_ID_SELECTOR=@R2,
                     ORDER_CLIENT_SELECTOR=@R3, ORDER_TOTAL_SELECTOR=@R4,
+                    ORDER_STATUS_SELECTOR=@R5, ORDER_STATUS_VALUE=@R6,
                     USERNAME=@UN, PASSWORD=@PW, ACCEPT_THRESHOLD=@AT,
                     MAX_RETRIES=@MR, BACKOFF_BASE=@BB, NO_OP_WINDOWS=@NOP,
                     DRY_RUN=@DR, IGNORE_SNAPSHOT_CHECK=@ISC, SNAPSHOT_DIR=@SD,
@@ -325,9 +310,10 @@ export class SepedService {
                 INSERT INTO ${ESQ}.APP_SEPED_CONFIG
                     (ID,HABILITADO,INTERVALO_SEG,BASE_URL,LOGIN_PATH,LISTING_PATH,
                      EDIT_PATH_TEMPLATE,ACCEPT_PATH_TEMPLATE,ORDER_ROW_SELECTOR,ORDER_ID_SELECTOR,
-                     ORDER_CLIENT_SELECTOR,ORDER_TOTAL_SELECTOR,USERNAME,PASSWORD,ACCEPT_THRESHOLD,
-                     MAX_RETRIES,BACKOFF_BASE,NO_OP_WINDOWS,DRY_RUN,IGNORE_SNAPSHOT_CHECK,SNAPSHOT_DIR,SNAPSHOT_IGNORE_SELECTORS)
-                VALUES (1,@H,@I,@BU,@LP,@LST,@EPT,@APT,@R1,@R2,@R3,@R4,@UN,@PW,@AT,@MR,@BB,@NOP,@DR,@ISC,@SD,@SIS)
+                     ORDER_CLIENT_SELECTOR,ORDER_TOTAL_SELECTOR,ORDER_STATUS_SELECTOR,ORDER_STATUS_VALUE,
+                     USERNAME,PASSWORD,ACCEPT_THRESHOLD,MAX_RETRIES,BACKOFF_BASE,NO_OP_WINDOWS,
+                     DRY_RUN,IGNORE_SNAPSHOT_CHECK,SNAPSHOT_DIR,SNAPSHOT_IGNORE_SELECTORS)
+                VALUES (1,@H,@I,@BU,@LP,@LST,@EPT,@APT,@R1,@R2,@R3,@R4,@R5,@R6,@UN,@PW,@AT,@MR,@BB,@NOP,@DR,@ISC,@SD,@SIS)
         `);
         if (SepedService.scheduler) {
             SepedService.detenerScheduler();
@@ -383,65 +369,83 @@ export class SepedService {
             return;
         }
 
-        const sess = new HttpSession();
-        emit('INFO', 'Iniciando login...');
-        const { html: loginPage } = await sess.get(cfg.baseUrl.replace(/\/$/, '') + cfg.loginPath);
-        const csrf = extractCsrf(loginPage);
-        const { status: loginStatus } = await sess.post(
-            cfg.baseUrl.replace(/\/$/, '') + cfg.loginPath,
-            { _token: csrf ?? '', email: cfg.username, password: cfg.password },
-        );
-        if (loginStatus >= 400) { emit('ERROR', `Login falló: status ${loginStatus}`); return; }
-        emit('INFO', `Login OK (status ${loginStatus})`);
+        const browser = await chromium.launch({ headless: true });
+        try {
+            const context = await browser.newContext({ ignoreHTTPSErrors: true });
+            const page = await context.newPage();
 
-        const listingUrl = cfg.baseUrl.replace(/\/$/, '') + cfg.listingPath;
-        const { html: listingHtml } = await sess.get(listingUrl);
-
-        if (!cfg.ignoreSnapshotCheck) {
-            const ph = prevHash(cfg.snapshotDir, 'listing');
-            const ch = hashHtml(listingHtml, cfg.snapshotIgnoreSelectors);
-            if (ph && ph !== ch) {
-                emit('WARN', 'Página de listado cambió; abortando ciclo y guardando snapshot');
-                saveSnap(cfg.snapshotDir, 'listing', listingHtml);
+            // Login — mismo flujo que el bot Python: navegar, llenar, submit
+            emit('INFO', 'Iniciando login...');
+            const loginUrl = cfg.baseUrl.replace(/\/$/, '') + cfg.loginPath;
+            await page.goto(loginUrl, { waitUntil: 'domcontentloaded' });
+            const csrf = extractCsrf(await page.content());
+            await page.fill('input[name="email"]', cfg.username);
+            await page.fill('input[name="password"]', cfg.password);
+            await Promise.all([
+                page.waitForLoadState('domcontentloaded'),
+                page.click('button[type="submit"]'),
+            ]);
+            if (page.url().includes(cfg.loginPath)) {
+                emit('ERROR', 'Login falló: redirigido de vuelta al login');
                 return;
             }
-            saveSnap(cfg.snapshotDir, 'listing', listingHtml);
-        }
+            emit('INFO', `Login OK (url: ${page.url()})`);
 
-        const orders = parseListing(listingHtml, cfg);
-        emit('INFO', `Pedidos encontrados: ${orders.length}`);
-        const { toAccept, toHold } = decideAcceptance(orders, cfg.acceptThreshold);
-        emit('INFO', `A aceptar: ${toAccept.length} | En espera: ${toHold.length}`);
+            // Listado — waitUntil networkidle para que cargue el JS/AJAX de la tabla
+            const listingUrl = cfg.baseUrl.replace(/\/$/, '') + cfg.listingPath;
+            await page.goto(listingUrl, { waitUntil: 'networkidle' });
+            const listingHtml = await page.content();
+            emit('INFO', `Listado recibido: ${listingHtml.length} bytes`);
 
-        for (const o of toAccept) {
-            try {
-                const editUrl = cfg.baseUrl.replace(/\/$/, '') + cfg.editPathTemplate.replace('{id}', o.id);
-                const { html: editHtml } = await sess.get(editUrl);
-                if (!cfg.ignoreSnapshotCheck) {
-                    const ph = prevHash(cfg.snapshotDir, `edit_${o.id}`);
-                    const ch = hashHtml(editHtml, cfg.snapshotIgnoreSelectors);
-                    if (ph && ph !== ch) {
-                        emit('WARN', `Página de edición de ${o.id} cambió; saltando`);
-                        saveSnap(cfg.snapshotDir, `edit_${o.id}`, editHtml);
-                        await audit(o.id, o.client, 'accept', 'skipped_front_changed');
-                        continue;
-                    }
-                    saveSnap(cfg.snapshotDir, `edit_${o.id}`, editHtml);
+            if (!cfg.ignoreSnapshotCheck) {
+                const ph = prevHash(cfg.snapshotDir, 'listing');
+                const ch = hashHtml(listingHtml, cfg.snapshotIgnoreSelectors);
+                if (ph && ph !== ch) {
+                    emit('WARN', 'Página de listado cambió; abortando ciclo y guardando snapshot');
+                    saveSnap(cfg.snapshotDir, 'listing', listingHtml, cfg.snapshotIgnoreSelectors);
+                    return;
                 }
-                const csrfEdit = extractCsrf(editHtml) ?? csrf ?? '';
-                const ok = await SepedService._acceptOrder(sess, o.id, csrfEdit, cfg, editUrl);
-                await audit(o.id, o.client, 'accept', ok ? 'success' : 'failed');
-            } catch (e: any) {
-                emit('ERROR', `Pedido ${o.id}: ${e.message}`);
-                await audit(o.id, o.client, 'accept', 'error', e.message);
+                saveSnap(cfg.snapshotDir, 'listing', listingHtml, cfg.snapshotIgnoreSelectors);
             }
+
+            const { orders, rowsFound } = parseListing(listingHtml, cfg);
+            emit('INFO', `Filas en tabla: ${rowsFound} | Pedidos parseados: ${orders.length}`);
+            const { toAccept, toHold } = decideAcceptance(orders, cfg.acceptThreshold);
+            emit('INFO', `A aceptar: ${toAccept.length} | En espera: ${toHold.length}`);
+
+            for (const o of toAccept) {
+                try {
+                    const editUrl = cfg.baseUrl.replace(/\/$/, '') + cfg.editPathTemplate.replace('{id}', o.id);
+                    await page.goto(editUrl, { waitUntil: 'domcontentloaded' });
+                    const editHtml = await page.content();
+                    if (!cfg.ignoreSnapshotCheck) {
+                        const ph = prevHash(cfg.snapshotDir, `edit_${o.id}`);
+                        const ch = hashHtml(editHtml, cfg.snapshotIgnoreSelectors);
+                        if (ph && ph !== ch) {
+                            emit('WARN', `Página de edición de ${o.id} cambió; saltando`);
+                            saveSnap(cfg.snapshotDir, `edit_${o.id}`, editHtml, cfg.snapshotIgnoreSelectors);
+                            await audit(o.id, o.client, 'accept', 'skipped_front_changed');
+                            continue;
+                        }
+                        saveSnap(cfg.snapshotDir, `edit_${o.id}`, editHtml, cfg.snapshotIgnoreSelectors);
+                    }
+                    const csrfEdit = extractCsrf(editHtml) ?? csrf ?? '';
+                    const ok = await SepedService._acceptOrder(page, o.id, csrfEdit, cfg, editUrl);
+                    await audit(o.id, o.client, 'accept', ok ? 'success' : 'failed');
+                } catch (e: any) {
+                    emit('ERROR', `Pedido ${o.id}: ${e.message}`);
+                    await audit(o.id, o.client, 'accept', 'error', e.message);
+                }
+            }
+            for (const o of toHold) await audit(o.id, o.client, 'hold', 'pending');
+            emit('INFO', `Ciclo completado — aceptados: ${toAccept.length}, retenidos: ${toHold.length}`);
+        } finally {
+            await browser.close();
         }
-        for (const o of toHold) await audit(o.id, o.client, 'hold', 'pending');
-        emit('INFO', `Ciclo completado — aceptados: ${toAccept.length}, retenidos: ${toHold.length}`);
     }
 
     private static async _acceptOrder(
-        sess: HttpSession, orderId: string, csrf: string, cfg: SepedConfig, referer?: string,
+        page: Page, orderId: string, csrf: string, cfg: SepedConfig, referer?: string,
     ): Promise<boolean> {
         const url = cfg.baseUrl.replace(/\/$/, '')
             + (cfg.acceptPathTemplate || cfg.editPathTemplate).replace('{id}', orderId);
@@ -449,9 +453,12 @@ export class SepedService {
 
         for (let i = 0; i < cfg.maxRetries; i++) {
             try {
-                const { status } = await sess.post(url,
-                    { _method: 'PATCH', _token: csrf, status: 'PRE-APROBADO', observacion: 'AUTO' },
-                    referer);
+                const resp = await page.request.fetch(url, {
+                    method: 'POST',
+                    headers: { 'Referer': referer ?? '', 'X-CSRF-Token': csrf },
+                    form: { _method: 'PATCH', _token: csrf, status: 'PRE-APROBADO', observacion: 'AUTO' },
+                });
+                const status = resp.status();
                 if (status >= 200 && status < 300) { emit('INFO', `Pedido ${orderId} aceptado (${status})`); return true; }
                 if (status >= 500) {
                     const w = cfg.backoffBase * (2 ** i);
