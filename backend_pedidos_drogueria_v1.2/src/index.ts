@@ -144,6 +144,11 @@ app.listen(port, async () => {
     await FtpService.initTablas();
     await MetasService.initTablas();
     await ImsController.initTablas();
+    try {
+        const { ImsEmailService } = await import('./services/ims-email.service');
+        const imsEmailCfg = await ImsEmailService.getConfig();
+        if (imsEmailCfg.habilitado) ImsEmailService.iniciar(imsEmailCfg);
+    } catch (e: any) { console.error('[IMS-EMAIL] Error cargando config inicial:', e.message); }
     await RechequeoService.initTablas();
     await RechequeoService.initTablasCierre();
     await IComprasService.initTablas();
