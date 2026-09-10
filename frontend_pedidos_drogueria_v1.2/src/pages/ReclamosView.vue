@@ -491,13 +491,13 @@ const generarPdf = (rec: any, lineas: any[]) => {
   y += 5;
 
   lb('Direccion:', rec.DIRECCION || '', cw - 30);
-  y += 5;
+  y += Math.max(5, doc.splitTextToSize(rec.DIRECCION || '', (cw - 30) - doc.getTextWidth('Direccion:') - 2).length * 4.5);
 
   const zona = rec.NOMBRERUTA
     ? `${rec.CODZONA} (${rec.NOMBRERUTA})`
     : rec.CODZONA || '';
   lb('Zona:', zona);
-  y += 5;
+  y += Math.max(5, doc.splitTextToSize(zona, cw - doc.getTextWidth('Zona:') - 2).length * 4.5);
 
   lb('Estatus FC:', rec.ESTATUS === 'PENDIENTE' ? 'Factura Activa' : rec.ESTATUS);
   y += 5;
@@ -566,14 +566,64 @@ const generarPdf = (rec: any, lineas: any[]) => {
 
   let finalY: number = (doc as any).lastAutoTable.finalY + 8;
 
-  // ── NOTA ─────────────────────────────────────────────────────────────────
-  if (finalY > 240) { doc.addPage(); finalY = 15; }
+  // ── NOTA + INDICACIONES + FIRMAS ─────────────────────────────────────────
+  if (finalY > 230) { doc.addPage(); finalY = 15; }
 
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
   const nota = 'Nota: Toda devolución debe venir bien embalada. La empresa no se hace responsable por productos que lleguen en mal estado.';
   const notaLines = doc.splitTextToSize(nota, cw);
   doc.text(notaLines, lm, finalY);
+  let y2 = finalY + notaLines.length * 4.5 + 6;
+
+  // INDICACIONES
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'bold');
+  doc.text('INDICACIONES:', lm, y2);
+  y2 += 5;
+
+  doc.setFont('helvetica', 'normal');
+  doc.text('a. Notificar mediante vía telefónica al asesor de venta.', lm, y2);
+  y2 += 4.5;
+  doc.text('b. Realizar llenado de formato de reclamos y devoluciones:', lm, y2);
+  y2 += 4.5;
+
+  const checks = [
+    'Código otorgado por la droguería.',
+    'Nombre del Cliente',
+    'Número de factura asociada a la mercancía recibida',
+    'Nombre de producto y descripción. Por ejemplo: ACETAMINOFEN 125MG/5ML 120ML',
+    'Número de lote.',
+    'Fecha de vencimiento.',
+    'Fecha de recepción del pedido.',
+    'Cantidad enviada.',
+    'Motivo de devolución.',
+    'Número de bultos.',
+  ];
+  const indent = lm + 6;
+  for (const item of checks) {
+    doc.rect(indent, y2 - 2.8, 2.8, 2.8);
+    doc.text(item, indent + 4.5, y2);
+    y2 += 4.5;
+  }
+
+  doc.text('c. Enviar formato PDF al asesor de venta', lm, y2);
+  y2 += 14;
+
+  // Firmas
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.text('ENTREGADO POR (CLIENTE):', lm, y2);
+  doc.text('ANALISTA DE RECLAMOS.', W - rm, y2, { align: 'right' });
+  y2 += 12;
+  doc.setDrawColor(0);
+  doc.setLineWidth(0.3);
+  doc.line(lm, y2, lm + 70, y2);
+  doc.line(W - rm - 70, y2, W - rm, y2);
+  y2 += 12;
+  doc.text('ENTREGADO POR (CHOFER):', lm, y2);
+  y2 += 12;
+  doc.line(lm, y2, lm + 70, y2);
 
   doc.save(`Reclamo-${pad(rec.ID)}.pdf`);
 };

@@ -494,7 +494,7 @@ const exportarCatalogoSegmentos = async () => {
     const productos: any[] = res.data.data;
     if (!productos.length) { lanzarAviso('No hay artículos con precio en la tarifa base', 'warning'); return; }
 
-    const bannerBuffer = await fetch('/banner_lista_precios.png').then(r => r.arrayBuffer());
+    const bannerBuffer = await fetch('/banner_lista_precios.jpg').then(r => r.arrayBuffer());
     const FORMATO_DOLAR = '"$"#,##0.00';
     const FILA_HEADER = 6;
     const FILA_SUB    = 7;
@@ -557,7 +557,7 @@ const exportarCatalogoSegmentos = async () => {
     };
 
     const lastCol = String.fromCharCode(64 + NCOLS);
-    const bannerId = wb.addImage({ buffer: bannerBuffer, extension: 'png' });
+    const bannerId = wb.addImage({ buffer: bannerBuffer, extension: 'jpeg' });
 
     descuentos.forEach(dto => {
       const ws = wb.addWorksheet(dto === 0 ? 'Precios' : `Dto ${dto}%`);
