@@ -199,10 +199,10 @@ export class RechequeoController {
                             ISNULL(ARL.GARANTIACOMPRA, '') AS FECHAVENCE,
                             ACL.UNIDADESTOTAL AS CANTIDAD,
                             ISNULL(ROUND(
-                                ((PV.PNETO - ACL.PRECIO) / CASE WHEN ISNULL(PV.PNETO, 0) = 0 THEN 1 ELSE ISNULL(PV.PNETO, 1) END) * 100
+                                ((PV.PNETO - RIP.F_GET_COTIZACION_RIP(ACL.PRECIO, ACC.FECHAALBARAN, ACC.FACTORMONEDA, ACC.CODMONEDA, 2)) / CASE WHEN ISNULL(PV.PNETO, 0) = 0 THEN 1 ELSE ISNULL(PV.PNETO, 1) END) * 100
                             , 2), 0) AS MARGEN,
-                            ACL.PRECIO AS COSTO,
-                            ACL.TOTAL  AS IMPORTE
+                            RIP.F_GET_COTIZACION_RIP(ACL.PRECIO, ACC.FECHAALBARAN, ACC.FACTORMONEDA, ACC.CODMONEDA, 2) AS COSTO,
+                            RIP.F_GET_COTIZACION_RIP(ACL.TOTAL,  ACC.FECHAALBARAN, ACC.FACTORMONEDA, ACC.CODMONEDA, 2) AS IMPORTE
                         FROM ${ESQ}.ALBCOMPRACAB ACC WITH(NOLOCK)
                         INNER JOIN ${ESQ}.ALBCOMPRALIN ACL WITH(NOLOCK)
                             ON ACC.NUMSERIE = ACL.NUMSERIE AND ACC.NUMALBARAN = ACL.NUMALBARAN AND ACC.N = ACL.N

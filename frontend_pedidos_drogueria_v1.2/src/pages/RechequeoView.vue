@@ -153,38 +153,55 @@
                 <!-- Totales -->
                 <v-card rounded="xl" elevation="2">
                   <v-card-text>
+                    <v-row dense class="mb-1">
+                      <v-col cols="12">
+                        <div class="d-flex align-center gap-2">
+                          <v-chip size="x-small" color="teal-darken-2" variant="tonal" prepend-icon="mdi-currency-usd">
+                            Tasa: {{ fmt(Number(albDetalle.TASA)) }} Bs/USD
+                          </v-chip>
+                        </div>
+                      </v-col>
+                    </v-row>
                     <v-row dense>
                       <v-col cols="6" md="3">
                         <div class="text-caption text-medium-emphasis">Exento</div>
-                        <div class="text-body-2 font-weight-medium">{{ fmt(albDetalle.EXENTO) }}</div>
+                        <div class="text-body-2 font-weight-medium">{{ fmt(albDetalle.EXENTO) }} Bs</div>
+                        <div class="text-caption text-teal-darken-2">$ {{ fmtUSD(albDetalle.EXENTO, albDetalle.TASA) }}</div>
                       </v-col>
                       <v-col cols="6" md="3">
                         <div class="text-caption text-medium-emphasis">Base Imponible</div>
-                        <div class="text-body-2 font-weight-medium">{{ fmt(albDetalle.BASEIMPONIBLE) }}</div>
+                        <div class="text-body-2 font-weight-medium">{{ fmt(albDetalle.BASEIMPONIBLE) }} Bs</div>
+                        <div class="text-caption text-teal-darken-2">$ {{ fmtUSD(albDetalle.BASEIMPONIBLE, albDetalle.TASA) }}</div>
                       </v-col>
                       <v-col cols="6" md="3">
                         <div class="text-caption text-medium-emphasis">Total IVA</div>
-                        <div class="text-body-2 font-weight-medium">{{ fmt(albDetalle.TOTALIVA) }}</div>
+                        <div class="text-body-2 font-weight-medium">{{ fmt(albDetalle.TOTALIVA) }} Bs</div>
+                        <div class="text-caption text-teal-darken-2">$ {{ fmtUSD(albDetalle.TOTALIVA, albDetalle.TASA) }}</div>
                       </v-col>
                       <v-col cols="6" md="3">
                         <div class="text-caption text-medium-emphasis">Total</div>
-                        <div class="text-body-2 font-weight-bold text-primary">{{ fmt(albDetalle.TOTAL) }}</div>
+                        <div class="text-body-2 font-weight-bold text-primary">{{ fmt(albDetalle.TOTAL) }} Bs</div>
+                        <div class="text-caption font-weight-bold text-teal-darken-2">$ {{ fmtUSD(albDetalle.TOTAL, albDetalle.TASA) }}</div>
                       </v-col>
                       <v-col cols="6" md="3">
                         <div class="text-caption text-medium-emphasis">Ret. IVA</div>
-                        <div class="text-body-2 font-weight-medium">{{ fmt(albDetalle.RETIVA) }}</div>
+                        <div class="text-body-2 font-weight-medium">{{ fmt(albDetalle.RETIVA) }} Bs</div>
+                        <div class="text-caption text-teal-darken-2">$ {{ fmtUSD(albDetalle.RETIVA, albDetalle.TASA) }}</div>
                       </v-col>
                       <v-col cols="6" md="3">
                         <div class="text-caption text-medium-emphasis">ISLR</div>
-                        <div class="text-body-2 font-weight-medium">{{ fmt(albDetalle.ISLR) }}</div>
+                        <div class="text-body-2 font-weight-medium">{{ fmt(albDetalle.ISLR) }} Bs</div>
+                        <div class="text-caption text-teal-darken-2">$ {{ fmtUSD(albDetalle.ISLR, albDetalle.TASA) }}</div>
                       </v-col>
                       <v-col cols="6" md="3">
                         <div class="text-caption text-medium-emphasis">Neto CxP</div>
-                        <div class="text-body-2 font-weight-medium">{{ fmt(albDetalle.NETOCXP) }}</div>
+                        <div class="text-body-2 font-weight-medium">{{ fmt(albDetalle.NETOCXP) }} Bs</div>
+                        <div class="text-caption text-teal-darken-2">$ {{ fmtUSD(albDetalle.NETOCXP, albDetalle.TASA) }}</div>
                       </v-col>
                       <v-col cols="6" md="3">
                         <div class="text-caption text-medium-emphasis">Dto. Comercial</div>
-                        <div class="text-body-2 font-weight-medium">{{ fmt(albDetalle.DTOCOMERCIAL) }}</div>
+                        <div class="text-body-2 font-weight-medium">{{ fmt(albDetalle.DTOCOMERCIAL) }} Bs</div>
+                        <div class="text-caption text-teal-darken-2">$ {{ fmtUSD(albDetalle.DTOCOMERCIAL, albDetalle.TASA) }}</div>
                       </v-col>
                     </v-row>
                   </v-card-text>
@@ -197,7 +214,17 @@
 
       <!-- ═══════════════════════ TAB 2: RECHEQUEO ══════════════════════════ -->
       <v-window-item value="rechequeo" style="height:100%;overflow:hidden">
-        <v-container fluid class="pa-4" style="height:100%;overflow:hidden">
+
+        <!-- PRÓXIMAMENTE — cambiar HABILITADO a true para activar -->
+        <div v-if="!HABILITADO" class="d-flex align-center justify-center" style="height:100%">
+          <div class="text-center">
+            <v-icon size="72" color="teal-darken-2" class="mb-3">mdi-wrench-clock</v-icon>
+            <div class="text-h5 font-weight-bold text-teal-darken-2 mb-1">Próximamente</div>
+            <div class="text-body-2 text-medium-emphasis">Esta sección estará disponible pronto.</div>
+          </div>
+        </div>
+
+        <v-container v-else fluid class="pa-4" style="height:100%;overflow:hidden">
           <v-row style="height:100%">
 
             <!-- ── Panel izquierdo ──────────────────────────────────────────── -->
@@ -462,6 +489,7 @@
             </v-col>
           </v-row>
         </v-container>
+
       </v-window-item>
     </v-window>
 
@@ -553,6 +581,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
+
+const HABILITADO = false; // cambiar a true para activar la sección
 import axios from 'axios';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -625,6 +655,19 @@ function fmt(v: any) {
   return n.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// Ratio Bs→USD derivado de las líneas (IMPORTE ya convertido por RIP)
+// FACTORMONEDA = 1 para compras locales, no usar como tasa de cambio
+const albRatioUSD = computed(() => {
+  const totBs  = Number(albDetalle.value?.TOTAL) || 0;
+  const totUSD = albLineas.value.reduce((s: number, l: any) => s + (Number(l.IMPORTE) || 0), 0);
+  return totBs > 0 && totUSD > 0 ? totUSD / totBs : 0;
+});
+
+function fmtUSD(bs: any, _tasa?: any) {
+  const n = (Number(bs) || 0) * albRatioUSD.value;
+  return n.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 async function buscarAlbaranes() {
   cargandoAlb.value = true;
   try {
@@ -675,41 +718,35 @@ async function generarPdfAlbaran() {
     const W   = doc.internal.pageSize.getWidth();
     const H   = doc.internal.pageSize.getHeight();
     const lm  = 12, rm = 12;
-    let y = 10;
+    let y = 8;
 
-    // ── HEADER: logo + empresa ────────────────────────────────────────────────
-    const logoW = 44, logoH = 14;
+    // ── HEADER: logo + empresa + título en una sola banda ─────────────────────
+    const logoW = 36, logoH = 11;
+    const numAlb = `${cab.NUMSERIE}-${Number(cab.NUMALBARAN)}`;
     if (logoBase64.value) {
       doc.addImage(logoBase64.value, 'JPEG', lm, y, logoW, logoH);
     }
+    // Empresa (centro)
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
+    doc.setFontSize(9);
     doc.setTextColor(...TEAL);
-    doc.text('DROGUERÍA INTERCONTINENTAL, C.A.', W - rm, y + 4, { align: 'right' });
+    doc.text('DROGUERÍA INTERCONTINENTAL, C.A.', W / 2, y + 4, { align: 'center' });
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
+    doc.setFontSize(7);
     doc.setTextColor(...GRAY);
-    doc.text('Av. Principal, Zona Industrial  ·  Tel.: 0261-0000000', W - rm, y + 9, { align: 'right' });
-    doc.text('RIF: J-000000000-0', W - rm, y + 14, { align: 'right' });
+    doc.text('Av. Principal, Zona Industrial  ·  RIF: J-000000000-0', W / 2, y + 8.5, { align: 'center' });
+    // Número (derecha, grande)
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(...TEAL);
+    doc.text(numAlb, W - rm, y + 5, { align: 'right' });
 
-    y += logoH + 4;
+    y += logoH + 3;
     doc.setDrawColor(...TEAL);
     doc.setLineWidth(0.6);
     doc.line(lm, y, W - rm, y);
     doc.setLineWidth(0.2);
-    y += 7;
-
-    // ── TÍTULO ────────────────────────────────────────────────────────────────
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(14);
-    doc.setTextColor(...TEAL);
-    doc.text(`COMPRA ${cab.ESTATUS}`, W / 2, y, { align: 'center' });
-    y += 6;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
-    doc.setTextColor(...GRAY);
-    doc.text(`Número: ${cab.NUMSERIE}-${String(cab.NUMALBARAN).padStart(8,'0')}`, W / 2, y, { align: 'center' });
-    y += 8;
+    y += 5;
 
     // ── INFO GRID (tabla sin bordes, 2 columnas) ──────────────────────────────
     const midX  = W / 2;
@@ -811,11 +848,18 @@ async function generarPdfAlbaran() {
     let y2 = (doc as any).lastAutoTable.finalY + 5;
 
     // ── FOOTER: FIRMAS + TOTALES ──────────────────────────────────────────────
-    // tasa = Bs por 1 USD → dividir Bs entre tasa para obtener USD
-    const toUSD = (bs: number) => tasa > 0 ? bs / tasa : 0;
-    const subUSD = toUSD(Number(cab.BASEIMPONIBLE) || 0);
-    const ivaUSD = toUSD(Number(cab.TOTALIVA) || 0);
-    const totUSD = toUSD(Number(cab.TOTAL) || 0);
+    // USD total: suma de IMPORTE de líneas (ya convertido por RIP.F_GET_COTIZACION_RIP)
+    // Bs totals: directamente del ALBCOMPRACAB (moneda local ICG)
+    // FACTORMONEDA = 1 para compras en Bs, no sirve como tasa de cambio
+    const subBs  = Number(cab.BASEIMPONIBLE) || 0;
+    const ivaBs  = Number(cab.TOTALIVA)      || 0;
+    const totBs  = Number(cab.TOTAL)         || 0;
+    const totUSD = lineas.reduce((s, l) => s + (Number(l.IMPORTE) || 0), 0);
+    // Distribuir USD proporcionalmente a los componentes Bs
+    const ratio  = totBs > 0 ? totUSD / totBs : 0;
+    const subUSD = subBs * ratio;
+    const ivaUSD = ivaBs * ratio;
+    const toUSD  = (bs: number) => bs * ratio;
 
     // Firmas
     doc.setFontSize(8);
@@ -827,11 +871,12 @@ async function generarPdfAlbaran() {
     doc.text('Autorizado por:', lm, y2 + 14);
     doc.line(lm + 32, y2 + 14, lm + 80, y2 + 14);
 
-    // Caja de totales (derecha) — solo USD
-    const bX  = W - rm - 65;
-    const bW  = 65;
+    // Caja de totales (derecha) — USD + Bs
+    const bW  = 105;
+    const bX  = W - rm - bW;
     const bY  = y2;
     const bH  = 24;
+    const colU = bX + bW - 55; // inicio columna USD
 
     // Fondo encabezado
     doc.setFillColor(...TEAL);
@@ -839,27 +884,41 @@ async function generarPdfAlbaran() {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
     doc.setTextColor(255, 255, 255);
-    doc.text('CONCEPTO', bX + 2,      bY + 4);
-    doc.text('USD',       bX + bW - 2, bY + 4, { align: 'right' });
+    doc.text('CONCEPTO',     bX + 2,   bY + 4);
+    doc.text('USD',          colU - 1, bY + 4, { align: 'right' });
+    doc.text('Bs',           bX + bW - 2, bY + 4, { align: 'right' });
 
-    // Filas
+    // Fila SUB-TOTAL
     doc.setFillColor(245, 250, 252);
     doc.rect(bX, bY + 6, bW, 6, 'F');
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(30, 30, 30);
-    doc.text('SUB-TOTAL', bX + 2,      bY + 10);
-    doc.text(fmt(subUSD), bX + bW - 2, bY + 10, { align: 'right' });
+    doc.text('SUB-TOTAL',   bX + 2,   bY + 10);
+    doc.text(fmt(subUSD),   colU - 1, bY + 10, { align: 'right' });
+    doc.text(fmt(subBs),    bX + bW - 2, bY + 10, { align: 'right' });
 
+    // Fila IMPUESTO
+    doc.setFillColor(245, 250, 252);
     doc.rect(bX, bY + 12, bW, 6, 'F');
-    doc.text('IMPUESTO',  bX + 2,      bY + 16);
-    doc.text(fmt(ivaUSD), bX + bW - 2, bY + 16, { align: 'right' });
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(30, 30, 30);
+    doc.text('IMPUESTO',    bX + 2,   bY + 16);
+    doc.text(fmt(ivaUSD),   colU - 1, bY + 16, { align: 'right' });
+    doc.text(fmt(ivaBs),    bX + bW - 2, bY + 16, { align: 'right' });
 
+    // Fila TOTAL
     doc.setFillColor(...TEAL);
     doc.rect(bX, bY + 18, bW, 6, 'F');
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(255, 255, 255);
-    doc.text('TOTAL',     bX + 2,      bY + 22);
-    doc.text(fmt(totUSD), bX + bW - 2, bY + 22, { align: 'right' });
+    doc.text('TOTAL',       bX + 2,   bY + 22);
+    doc.text(fmt(totUSD),   colU - 1, bY + 22, { align: 'right' });
+    doc.text(fmt(totBs),    bX + bW - 2, bY + 22, { align: 'right' });
+
+    // Línea separadora entre columnas USD / Bs
+    doc.setDrawColor(180, 220, 230);
+    doc.setLineWidth(0.2);
+    doc.line(colU + 1, bY, colU + 1, bY + bH);
 
     // Borde de la caja
     doc.setDrawColor(...TEAL);
@@ -869,48 +928,6 @@ async function generarPdfAlbaran() {
 
     y2 += bH + 5;
 
-    // ── FILA INFERIOR DE TOTALES (USD) ────────────────────────────────────────
-    doc.setDrawColor(...TEAL);
-    doc.setLineWidth(0.4);
-    doc.line(lm, y2, W - rm, y2);
-    doc.setLineWidth(0.2);
-    y2 += 4;
-
-    const cols8 = ['Exento','Base Imponible','Impuesto','Total','Ret. IVA','ISLR','Neto CxP','Dto. Comerc.'];
-    const vals8 = [
-      fmt(toUSD(Number(cab.EXENTO)        || 0)),
-      fmt(toUSD(Number(cab.BASEIMPONIBLE) || 0)),
-      fmt(toUSD(Number(cab.TOTALIVA)      || 0)),
-      fmt(toUSD(Number(cab.TOTAL)         || 0)),
-      fmt(toUSD(Number(cab.RETIVA)        || 0)),
-      fmt(toUSD(Number(cab.ISLR)          || 0)),
-      fmt(toUSD(Number(cab.NETOCXP)       || 0)),
-      fmt(toUSD(Number(cab.DTOCOMERCIAL)  || 0)),
-    ];
-    const cW8 = (W - lm - rm) / 8;
-    doc.setFontSize(6.5);
-    for (let i = 0; i < 8; i++) {
-      const cx = lm + i * cW8;
-      // Header cell
-      doc.setFillColor(...TEAL);
-      doc.rect(cx, y2, cW8, 5, 'F');
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(255, 255, 255);
-      doc.text(cols8[i], cx + cW8 / 2, y2 + 3.5, { align: 'center' });
-      // Value cell
-      doc.setFillColor(245, 250, 252);
-      doc.rect(cx, y2 + 5, cW8, 5, 'F');
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(30, 30, 30);
-      doc.text(vals8[i], cx + cW8 / 2, y2 + 8.5, { align: 'center' });
-      // Separadores verticales
-      doc.setDrawColor(200, 200, 200);
-      if (i > 0) doc.line(cx, y2, cx, y2 + 10);
-    }
-    doc.setDrawColor(...TEAL);
-    doc.setLineWidth(0.4);
-    doc.rect(lm, y2, W - lm - rm, 10);
-    doc.setLineWidth(0.2);
 
     // Nro de página
     const pages = (doc as any).internal.getNumberOfPages();
@@ -921,8 +938,7 @@ async function generarPdfAlbaran() {
       doc.text(`Página ${p} / ${pages}`, W - rm, H - 5, { align: 'right' });
     }
 
-    const numPad = String(cab.NUMALBARAN).padStart(8, '0');
-    doc.save(`AlbaranCompra_${cab.NUMSERIE}-${numPad}.pdf`);
+    doc.save(`AlbaranCompra_${numAlb}.pdf`);
   } catch (e: any) {
     mostrarSnack('Error generando PDF: ' + e.message, 'error');
   } finally {

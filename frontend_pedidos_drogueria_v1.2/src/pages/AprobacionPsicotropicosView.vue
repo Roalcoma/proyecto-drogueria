@@ -162,7 +162,8 @@
         </v-card-text>
 
         <v-card-actions class="pa-4 pt-0">
-          <v-btn color="red-darken-2" variant="tonal" prepend-icon="mdi-cancel"
+          <v-btn v-if="modalDetalle.pedido?.ESTATUS === 'APROBACION PSICOTROPICOS'"
+            color="red-darken-2" variant="tonal" prepend-icon="mdi-cancel"
             :loading="cancelando" :disabled="aprobando" @click="confirmarCancelar = true">
             Cancelar pedido
           </v-btn>
@@ -460,6 +461,10 @@ const aprobar = async () => {
 
 const cancelarPedido = async () => {
   if (!pedidoOriginal.value) return;
+  if (pedidoOriginal.value.ESTATUS !== 'APROBACION PSICOTROPICOS') {
+    lanzarAviso('Solo se pueden cancelar pedidos en estado Pendiente por Psicotrópicos', 'error');
+    return;
+  }
   cancelando.value = true;
   confirmarCancelar.value = false;
   try {
