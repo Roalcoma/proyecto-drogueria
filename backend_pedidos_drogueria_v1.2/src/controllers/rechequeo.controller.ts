@@ -1,6 +1,10 @@
 import { Request, Response } from 'express';
+import mssql from 'mssql';
 import { RequestConUsuario } from '../middleware/auth.middleware';
 import { RechequeoService } from '../services/rechequeo.service';
+import { connectDb } from '../db/db.conection';
+
+const ESQ = process.env.DB_ESQUEMA || 'dbo';
 
 export class RechequeoController {
 
@@ -82,6 +86,143 @@ export class RechequeoController {
             res.json({ success: true, data });
         } catch (err: any) {
             res.status(500).json({ success: false, message: err.message });
+        }
+    }
+
+    // ── Albaranes de Compra ───────────────────────────────────────────────────
+
+    static async getAlbaranes(req: Request, res: Response): Promise<void> {
+        const page  = Math.max(1, parseInt(req.query['page']  as string) || 1);
+        const limit = Math.min(200, Math.max(1, parseInt(req.query['limit'] as string) || 50));
+        const offset = (page - 1) * limit;
+        const { desde, hasta, proveedor } = req.query as Record<string, string>;
+
+        const conditions: string[] = [];
+        if (desde)    conditions.push("CONVERT(DATE, CAB.FECHAALBARAN) >= @DESDE");
+        if (hasta)    conditions.push("CONVERT(DATE, CAB.FECHAALBARAN) <= @HASTA");
+        if (proveedor) conditions.push("P.NOMPROVEEDOR LIKE @PROV");
+        const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+
+        const buildReq = async () => {
+            const pool = await connectDb();
+            const r = pool.request();
+            if (desde)    r.input('DESDE', mssql.VarChar(10),   desde);
+            if (hasta)    r.input('HASTA', mssql.VarChar(10),   hasta);
+            if (proveedor) r.input('PROV', mssql.NVarChar(100), `%${proveedor}%`);
+            return r;
+        };
+
+        try {
+            const r1 = await buildReq();
+            r1.input('OFFSET', mssql.Int, offset).input('LIMIT', mssql.Int, limit);
+            const data = await r1.query(`
+                SELECT CAB.NUMSERIE, CAB.NUMALBARAN,
+                    CAST(CAB.IDESTADO AS VARCHAR(10)) AS ESTATUS,
+                    ISNULL(CONVERT(VARCHAR(10), CAB.FECHAALBARAN, 23), '') AS FECHA,
+                    ISNULL(CAB.CODPROVEEDOR, 0) AS CODPROVEEDOR,
+                    ISNULL(P.NOMPROVEEDOR, '') AS NOMPROVEEDOR,
+                    ISNULL(CAB.TOTALNETO, 0) AS TOTAL
+                FROM ${ESQ}.ALBCOMPRACAB CAB WITH(NOLOCK)
+                LEFT JOIN ${ESQ}.PROVEEDORES P WITH(NOLOCK) ON P.CODPROVEEDOR = CAB.CODPROVEEDOR
+                ${where}
+                ORDER BY CAB.FECHAALBARAN DESC, CAB.NUMALBARAN DESC
+                OFFSET @OFFSET ROWS FETCH NEXT @LIMIT ROWS ONLY
+            `);
+
+            const r2 = await buildReq();
+            const count = await r2.query(`
+                SELECT COUNT(*) AS TOTAL
+                FROM ${ESQ}.ALBCOMPRACAB CAB WITH(NOLOCK)
+                LEFT JOIN ${ESQ}.PROVEEDORES P WITH(NOLOCK) ON P.CODPROVEEDOR = CAB.CODPROVEEDOR
+                ${where}
+            `);
+
+            res.json({ success: true, data: data.recordset, total: count.recordset[0].TOTAL });
+        } catch (e: any) {
+            res.status(500).json({ success: false, message: e.message });
+        }
+    }
+
+    static async getAlbaran(req: Request, res: Response): Promise<void> {
+        const { numserie, numalbaran } = req.params as Record<string, string>;
+        try {
+            const pool = await connectDb();
+            const [cabRes, linRes] = await Promise.all([
+                pool.request()
+                    .input('NUMSERIE',   mssql.NVarChar(10), numserie)
+                    .input('NUMALBARAN', mssql.Int, parseInt(numalbaran))
+                    .query(`
+                        SELECT CAB.NUMSERIE, CAB.NUMALBARAN,
+                            CAST(CAB.IDESTADO AS VARCHAR(10)) AS ESTATUS,
+                            ISNULL(CONVERT(VARCHAR(10), CAB.FECHAALBARAN,   23), '') AS FECHA,
+                            ISNULL(CONVERT(VARCHAR(10), CAB.FECHAMODIFICADO, 23), '') AS FECHAACTUALIZADO,
+                            ISNULL(CONVERT(VARCHAR(10), CAB.FECHAENTRADA,    23), '') AS FECHAVENCIMIENTO,
+                            ISNULL(CAB.CODPROVEEDOR, 0) AS CODPROVEEDOR,
+                            ISNULL(P.NOMPROVEEDOR, '') AS NOMPROVEEDOR,
+                            ISNULL(
+                                (SELECT TOP 1 RTRIM(L.CODALMACEN)
+                                 FROM ${ESQ}.ALBCOMPRALIN L WITH(NOLOCK)
+                                 WHERE L.NUMSERIE=CAB.NUMSERIE AND L.NUMALBARAN=CAB.NUMALBARAN
+                                   AND L.CODALMACEN IS NOT NULL AND L.CODALMACEN <> ''), ''
+                            ) AS CODALMACEN,
+                            '' AS OBSERVACION,
+                            ISNULL(CAB.NBULTOS, 0) AS PESONETO,
+                            ISNULL(
+                                (SELECT SUM(L.UNID1)
+                                 FROM ${ESQ}.ALBCOMPRALIN L WITH(NOLOCK)
+                                 WHERE L.NUMSERIE=CAB.NUMSERIE AND L.NUMALBARAN=CAB.NUMALBARAN
+                                   AND L.UNID1 > 0), 0
+                            ) AS UNIDADES,
+                            ISNULL(CAB.FACTORMONEDA, 0) AS TASA,
+                            ISNULL(CAB.NBULTOS, 0) AS TASAUNIDADES,
+                            ISNULL(CAB.TOTALBRUTO,     0) AS BASEIMPONIBLE,
+                            ISNULL(CAB.TOTALIMPUESTOS, 0) AS TOTALIVA,
+                            ISNULL(CAB.TOTALNETO,      0) AS TOTAL,
+                            ISNULL(CAB.TOTALBRUTO - CAB.TOTALBRUTO, 0) AS EXENTO,
+                            0  AS RETIVA,
+                            0  AS ISLR,
+                            ISNULL(CAB.TOTALNETO,    0) AS NETOCXP,
+                            ISNULL(CAB.DTOCOMERCIAL, 0) AS DTOCOMERCIAL
+                        FROM ${ESQ}.ALBCOMPRACAB CAB WITH(NOLOCK)
+                        LEFT JOIN ${ESQ}.PROVEEDORES P WITH(NOLOCK) ON P.CODPROVEEDOR = CAB.CODPROVEEDOR
+                        WHERE CAB.NUMSERIE = @NUMSERIE AND CAB.NUMALBARAN = @NUMALBARAN
+                    `),
+                pool.request()
+                    .input('NUMSERIE',   mssql.NVarChar(10), numserie)
+                    .input('NUMALBARAN', mssql.Int, parseInt(numalbaran))
+                    .query(`
+                        SELECT
+                            ACL.CODARTICULO,
+                            ACL.DESCRIPCION,
+                            ISNULL(PV.PNETO, 0) AS PVENTA,
+                            ISNULL(ARL.CODBARRAS, '') AS LOTE,
+                            ISNULL(ARL.GARANTIACOMPRA, '') AS FECHAVENCE,
+                            ACL.UNIDADESTOTAL AS CANTIDAD,
+                            ISNULL(ROUND(
+                                ((PV.PNETO - ACL.PRECIO) / CASE WHEN ISNULL(PV.PNETO, 0) = 0 THEN 1 ELSE ISNULL(PV.PNETO, 1) END) * 100
+                            , 2), 0) AS MARGEN,
+                            ACL.PRECIO AS COSTO,
+                            ACL.TOTAL  AS IMPORTE
+                        FROM ${ESQ}.ALBCOMPRACAB ACC WITH(NOLOCK)
+                        INNER JOIN ${ESQ}.ALBCOMPRALIN ACL WITH(NOLOCK)
+                            ON ACC.NUMSERIE = ACL.NUMSERIE AND ACC.NUMALBARAN = ACL.NUMALBARAN AND ACC.N = ACL.N
+                        LEFT JOIN ${ESQ}.ARTICULOSLIN ARL WITH(NOLOCK)
+                            ON ARL.CODARTICULO = ACL.CODARTICULO AND ARL.COLOR = ACL.COLOR AND ARL.TALLA = ACL.TALLA
+                        LEFT JOIN ${ESQ}.PRECIOSVENTA PV WITH(NOLOCK)
+                            ON PV.CODARTICULO = ACL.CODARTICULO AND PV.COLOR = '.' AND PV.TALLA = '.' AND PV.IDTARIFAV = 1
+                        WHERE ACC.NUMSERIE = @NUMSERIE AND ACC.NUMALBARAN = @NUMALBARAN
+                          AND ACL.UNIDADESTOTAL > 0
+                        ORDER BY ACL.NUMLIN
+                    `),
+            ]);
+
+            if (!cabRes.recordset.length) {
+                res.status(404).json({ success: false, message: 'Albarán no encontrado' });
+                return;
+            }
+            res.json({ success: true, cabecera: cabRes.recordset[0], lineas: linRes.recordset });
+        } catch (e: any) {
+            res.status(500).json({ success: false, message: e.message });
         }
     }
 

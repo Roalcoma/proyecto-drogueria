@@ -282,16 +282,45 @@
           </v-card-title>
           <v-card-text class="pt-6 px-6">
             <p class="text-subtitle-1 font-weight-bold mb-4">{{ modalDescuento.linea?.DESCRIPCION }}</p>
-            <v-list v-if="descuentosDeLinea(modalDescuento.linea || {}).length" border class="rounded-lg mb-4">
-              <v-list-item v-for="(d, i) in descuentosDeLinea(modalDescuento.linea || {})" :key="i">
-                <v-list-item-title class="font-weight-bold text-orange-darken-3">Descuento: {{ d }}%</v-list-item-title>
+            <v-list border class="rounded-lg mb-4">
+              <!-- D1 y D2: solo lectura -->
+              <v-list-item v-if="Number(modalDescuento.linea?.DESCUENTO1 ?? 0)">
+                <v-list-item-title class="font-weight-medium text-grey-darken-2">
+                  <v-chip size="x-small" class="mr-2" color="grey">D1</v-chip>
+                  {{ modalDescuento.linea.DESCUENTO1 }}% <span class="text-caption text-grey ml-1">(heredado)</span>
+                </v-list-item-title>
+              </v-list-item>
+              <v-list-item v-if="Number(modalDescuento.linea?.DESCUENTO2 ?? 0)">
+                <v-list-item-title class="font-weight-medium text-grey-darken-2">
+                  <v-chip size="x-small" class="mr-2" color="grey">D2</v-chip>
+                  {{ modalDescuento.linea.DESCUENTO2 }}% <span class="text-caption text-grey ml-1">(promoción)</span>
+                </v-list-item-title>
+              </v-list-item>
+              <!-- D3 y D4: editables -->
+              <v-list-item v-if="Number(modalDescuento.linea?.DESCUENTO3 ?? 0)">
+                <v-list-item-title class="font-weight-bold text-orange-darken-3">
+                  <v-chip size="x-small" class="mr-2" color="orange-darken-2" text-color="white">D3</v-chip>
+                  {{ modalDescuento.linea.DESCUENTO3 }}%
+                </v-list-item-title>
                 <template v-slot:append>
-                  <v-btn icon="mdi-close-circle" variant="text" color="error" @click="quitarDescuento(modalDescuento.linea, i)" />
+                  <v-btn icon="mdi-close-circle" variant="text" color="error" @click="quitarDescuento(modalDescuento.linea, 'DESCUENTO3')" />
                 </template>
+              </v-list-item>
+              <v-list-item v-if="Number(modalDescuento.linea?.DESCUENTO4 ?? 0)">
+                <v-list-item-title class="font-weight-bold text-orange-darken-3">
+                  <v-chip size="x-small" class="mr-2" color="orange-darken-2" text-color="white">D4</v-chip>
+                  {{ modalDescuento.linea.DESCUENTO4 }}%
+                </v-list-item-title>
+                <template v-slot:append>
+                  <v-btn icon="mdi-close-circle" variant="text" color="error" @click="quitarDescuento(modalDescuento.linea, 'DESCUENTO4')" />
+                </template>
+              </v-list-item>
+              <v-list-item v-if="!Number(modalDescuento.linea?.DESCUENTO1 ?? 0) && !Number(modalDescuento.linea?.DESCUENTO2 ?? 0) && !Number(modalDescuento.linea?.DESCUENTO3 ?? 0) && !Number(modalDescuento.linea?.DESCUENTO4 ?? 0)">
+                <v-list-item-title class="text-grey text-caption">Sin descuentos aplicados</v-list-item-title>
               </v-list-item>
             </v-list>
             <div class="d-flex align-center">
-              <v-text-field v-model.number="modalDescuento.nuevoValor" label="Nuevo %" variant="outlined" type="number" hide-details />
+              <v-text-field v-model.number="modalDescuento.nuevoValor" label="Nuevo % (D3/D4)" variant="outlined" type="number" hide-details />
               <v-btn color="orange-darken-2" height="56" class="ml-2 font-weight-bold px-6" @click="agregarDescuento">AÑADIR</v-btn>
             </div>
           </v-card-text>
@@ -555,19 +584,17 @@ const agregarDescuento = () => {
   const val = modalDescuento.value.nuevoValor;
   if (!val || val <= 0 || val >= 100) return;
   const l = modalDescuento.value.linea;
-  const campos = ['DESCUENTO1', 'DESCUENTO2', 'DESCUENTO3', 'DESCUENTO4'] as const;
+  // Solo se puede escribir en D3 o D4
+  const campos = ['DESCUENTO3', 'DESCUENTO4'] as const;
   const libre = campos.find(c => !Number(l[c]));
-  if (!libre) { lanzarNotificacion('Máximo 4 descuentos por línea', 'warning'); return; }
+  if (!libre) { lanzarNotificacion('Máximo 2 descuentos comerciales por línea (D3 y D4)', 'warning'); return; }
   l[libre] = val;
   l.PRECIOUNITARIO = calcularPrecioConDescuentos(l);
   modalDescuento.value.nuevoValor = 0;
 };
 
-const quitarDescuento = (linea: any, idx: number) => {
-  const campos = ['DESCUENTO1', 'DESCUENTO2', 'DESCUENTO3', 'DESCUENTO4'] as const;
-  const vals = campos.map(c => Number(linea[c])).filter(v => v > 0);
-  vals.splice(idx, 1);
-  campos.forEach((c, i) => { linea[c] = vals[i] || 0; });
+const quitarDescuento = (linea: any, campo: 'DESCUENTO3' | 'DESCUENTO4') => {
+  linea[campo] = 0;
   linea.PRECIOUNITARIO = calcularPrecioConDescuentos(linea);
 };
 

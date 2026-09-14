@@ -18,7 +18,9 @@ import facturasRouter   from "./routers/facturas.router";
 import ftpRouter        from "./routers/ftp.router";
 import metasRouter      from "./routers/metas.router";
 import imsRouter        from "./routers/ims.router";
-import rechequeoRouter  from "./routers/rechequeo.router";
+import rechequeoRouter      from "./routers/rechequeo.router";
+import promoEspecialRouter  from "./routers/promoEspecial.router";
+import auditRouter          from "./routers/audit.router";
 import { ExchangeService }    from "./services/exchange.service";
 import { AuthService }        from "./services/auth.service";
 import { PromocionesService } from "./services/promociones.service";
@@ -28,7 +30,9 @@ import { EcommerceService }   from "./services/ecommerce.service";
 import { FtpService }         from "./services/ftp.service";
 import { MetasService }       from "./services/metas.service";
 import { ImsController }      from "./controllers/ims.controller";
-import { RechequeoService }  from "./services/rechequeo.service";
+import { RechequeoService }       from "./services/rechequeo.service";
+import { PromoEspecialService }   from "./services/promoEspecial.service";
+import { AuditService }          from "./services/audit.service";
 import { IComprasService }    from "./services/icompras.service";
 import { FarcomprasService }  from "./services/farcompras.service";
 import { SepedService }       from "./services/seped.service";
@@ -116,7 +120,9 @@ app.use('/facturas',   facturasRouter);
 app.use('/ftp',        ftpRouter);
 app.use('/api/metas-vendedor', metasRouter);
 app.use('/ims',            imsRouter);
-app.use('/rechequeo',     rechequeoRouter);
+app.use('/rechequeo',       rechequeoRouter);
+app.use('/api/promo-especial', promoEspecialRouter);
+app.use('/api/audit',         auditRouter);
 app.use('/seped',         sepedRouter);
 
 // ── Frontend estático (SPA) ───────────────────────────────────────────────
@@ -150,6 +156,8 @@ app.listen(port, async () => {
         if (imsEmailCfg.habilitado) ImsEmailService.iniciar(imsEmailCfg);
     } catch (e: any) { console.error('[IMS-EMAIL] Error cargando config inicial:', e.message); }
     await RechequeoService.initTablas();
+    await PromoEspecialService.initTablas();
+    await AuditService.initTabla();
     await RechequeoService.initTablasCierre();
     await IComprasService.initTablas();
     try {

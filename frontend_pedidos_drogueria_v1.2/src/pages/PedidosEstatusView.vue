@@ -189,6 +189,10 @@
                   variant="flat" prepend-icon="mdi-shopping" class="font-weight-bold">
                   Icompras
                 </v-chip>
+                <v-chip v-if="(item.ORDERID ?? '').startsWith('PE-')" size="x-small" color="deep-orange-darken-1"
+                  variant="flat" prepend-icon="mdi-star-circle" class="font-weight-bold">
+                  PE
+                </v-chip>
                 <v-tooltip v-if="item.OBSERVACIONES" location="top">
                   <template #activator="{ props }">
                     <v-chip v-bind="props" size="x-small" color="purple-darken-2" variant="flat"

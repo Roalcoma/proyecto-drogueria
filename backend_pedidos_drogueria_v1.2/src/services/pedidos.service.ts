@@ -1,6 +1,7 @@
 import mssql from 'mssql'
 import { connectDb } from "../db/db.conection";
 import { PromocionesService } from "./promociones.service";
+import { PromoEspecialService } from "./promoEspecial.service";
 import { getDbConfig } from './dbconfig.service';
 import 'dotenv/config'
 
@@ -177,7 +178,7 @@ export class PedidosServices {
     static async postPedidosCabecera(pedido: any, codusuario?: number, usuario?: string) {
         try {
             console.log('Datos recibidos para el pedido:', pedido);
-            const { clienteId, codVendedor, totalPed, lineas, sufijo, promocionesAplicadas } = pedido;
+            const { clienteId, codVendedor, totalPed, lineas, sufijo, promocionesAplicadas, diasMontofactura } = pedido;
             // Si el frontend pre-asignó un número, úsalo; si no, reserva uno nuevo
             let orderId: string;
             if (pedido.orderId) {
@@ -240,6 +241,7 @@ export class PedidosServices {
             }
 
             await PromocionesService.registrarAplicadas(orderId, promocionesAplicadas);
+            if (diasMontofactura) await PromoEspecialService.registrarPedido(orderId, diasMontofactura);
             await PedidosServices.registrarLog(orderId, null, estatusInicial, codusuario, usuario, `Pedido creado. Cliente: ${clienteId}. Total: ${totalPed}`);
 
             return { success: true, message: 'El pedido fue insertado de forma satisfactoria', orderId };

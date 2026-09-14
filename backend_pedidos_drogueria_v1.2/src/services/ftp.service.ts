@@ -632,7 +632,7 @@ export class FtpService {
                         INNER JOIN APP_GRUPOS_ARTICULOS G  ON G.ID = GA.IDGRUPO AND G.TIPO <> 'CONDICION'
                         INNER JOIN APP_GRUPOS_ARTICULOS_DETALLE D ON D.IDGRUPO = G.ID AND D.CODARTICULO = A.CODARTICULO
                         INNER JOIN APP_PROMOCIONES_ESCALAS E ON E.IDPROMOCION = P.ID
-                        WHERE P.ACTIVO = 1 AND ISNULL(P.SLOT_DESCUENTO, 2) = 1
+                        WHERE ISNULL(P.SLOT_DESCUENTO, 2) = 1
                           AND CAST(GETDATE() AS DATE) BETWEEN P.FECHAINICIO AND P.FECHAFIN
                           AND ISNULL(A.NODTOAPLICABLE, 0) = 0
                           AND (
@@ -650,7 +650,7 @@ export class FtpService {
                         INNER JOIN APP_GRUPOS_ARTICULOS G  ON G.ID = GA.IDGRUPO AND G.TIPO <> 'CONDICION'
                         INNER JOIN APP_GRUPOS_ARTICULOS_DETALLE D ON D.IDGRUPO = G.ID AND D.CODARTICULO = A.CODARTICULO
                         INNER JOIN APP_PROMOCIONES_ESCALAS E ON E.IDPROMOCION = P.ID
-                        WHERE P.ACTIVO = 1 AND ISNULL(P.SLOT_DESCUENTO, 2) = 2
+                        WHERE ISNULL(P.SLOT_DESCUENTO, 2) = 2
                           AND CAST(GETDATE() AS DATE) BETWEEN P.FECHAINICIO AND P.FECHAFIN
                           AND ISNULL(A.NODTOAPLICABLE, 0) = 0
                           AND (

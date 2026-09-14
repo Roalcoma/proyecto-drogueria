@@ -40,6 +40,7 @@
                     <v-chip v-if="item.ES_PSICOTROPICO === 'T'" color="purple-darken-2" size="x-small" variant="flat" class="font-weight-black ml-2">CONTROLADO</v-chip>
                     <v-chip v-else-if="item.NODTOAPLICABLE === 1 || item.NODTOAPLICABLE === true" color="orange-darken-3" size="x-small" variant="flat" class="font-weight-black ml-2">CONDICIONADO</v-chip>
                     <v-chip v-else-if="Number(item.DIASPROTECCION ?? 0) > 0" color="teal-darken-2" size="x-small" variant="flat" class="font-weight-black ml-2">NI {{ item.DIASPROTECCION }}d</v-chip>
+                    <v-chip v-if="esItemPE(item)" color="deep-orange-darken-1" size="x-small" variant="flat" prepend-icon="mdi-star-circle" class="font-weight-black ml-2">PE</v-chip>
                   </div>
                   <div v-if="!(item.NODTOAPLICABLE === 1 || item.NODTOAPLICABLE === true) && item.descuentos?.some((d: number) => d > 0)" class="mt-1">
                     <v-chip size="x-small" color="orange-darken-2" variant="flat" class="font-weight-bold">
@@ -117,10 +118,10 @@
               <div class="text-caption text-grey-darken-1 mt-1">Tasa: {{ carritoStore.tasa }}</div>
             </div>
             
-            <v-btn 
-              block color="primary" size="x-large" class="rounded-pill font-weight-bold mt-4 shadow-primary elevation-2" 
+            <v-btn
+              block color="primary" size="x-large" class="rounded-pill font-weight-bold mt-4 shadow-primary elevation-2"
               :loading="enviando"
-              :disabled="!carritoStore.articulos.length || !carritoStore.clienteSeleccionado" 
+              :disabled="!carritoStore.articulos.length || !carritoStore.clienteSeleccionado"
               @click="procesarVenta"
             >
               CONFIRMAR PEDIDO
@@ -209,7 +210,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import axios from 'axios';
 import { useCarritoStore } from '../stores/useCarritoStore';
 import MontoDisplay from '../components/MontoDisplay.vue';
@@ -326,6 +327,22 @@ const totalIVAUSD  = computed(() => carritoStore.articulos.reduce((acc, item) =>
 const totalUSD     = computed(() => totalNetoUSD.value);
 const totalBS      = computed(() => totalNetoUSD.value * carritoStore.tasa);
 
+// --- Promo Especial: aviso reactivo en carrito ---
+const peVigentes = ref<any[]>([]);
+onMounted(async () => {
+  try {
+    const r = await axios.get(`${import.meta.env.VITE_API_URL}/api/promo-especial/vigentes`);
+    if (r.data.success) peVigentes.value = r.data.data;
+  } catch { /* sin PE */ }
+});
+const peCodigos = computed(() => {
+  const s = new Set<number>();
+  for (const p of peVigentes.value) for (const c of (p.codigos_proveedor || [])) s.add(Number(c));
+  return s;
+});
+const itemsPE = computed(() => carritoStore.articulos.filter(a => peCodigos.value.has(Number(a.CODPROVEEDORICG ?? 0))));
+const esItemPE = (item: any) => peCodigos.value.has(Number(item.CODPROVEEDORICG ?? 0));
+
 const eliminarDelCarrito = (cod: any) => {
   const i = carritoStore.articulos.findIndex(a => a.CODARTICULO === cod);
   if (i !== -1) carritoStore.articulos.splice(i, 1);
@@ -377,24 +394,10 @@ const exportarPDF = async (ordenId?: string) => {
   });
 };
 
-// --- PROCESAR VENTA (SEPARACIÓN POR TIPO: P / SD / NI / normal) ---
+// --- PROCESAR VENTA (SEPARACIÓN POR TIPO: P / SD / NI / normal + PE) ---
 const procesarVenta = async () => {
   if (!carritoStore.clienteSeleccionado) return;
   enviando.value = true;
-
-  // Prioridad: psicotrópico > sin descuento > no indexado > normal
-  const itemsP  = carritoStore.articulos.filter(art => art.ES_PSICOTROPICO === 'T');
-  const itemsSD = carritoStore.articulos.filter(art =>
-    art.ES_PSICOTROPICO !== 'T' && (art.NODTOAPLICABLE === true || art.NODTOAPLICABLE === 1)
-  );
-  const itemsNI = carritoStore.articulos.filter(art =>
-    art.ES_PSICOTROPICO !== 'T' && !(art.NODTOAPLICABLE === true || art.NODTOAPLICABLE === 1) &&
-    Number(art.DIASPROTECCION ?? 0) > 0
-  );
-  const itemsNormal = carritoStore.articulos.filter(art =>
-    art.ES_PSICOTROPICO !== 'T' && !(art.NODTOAPLICABLE === true || art.NODTOAPLICABLE === 1) &&
-    !(Number(art.DIASPROTECCION ?? 0) > 0)
-  );
 
   const mapearLineas = (items: any[]) => items.map(art => {
     const precioNeto = calcularPrecioConDescuento(art);
@@ -405,7 +408,7 @@ const procesarVenta = async () => {
       codalmacen:    'ZAV',
       idtarifav:     1,
       cantidad:      art.cantidad,
-      precio:        precioNeto,          // ERP recibe precio neto sin IVA
+      precio:        precioNeto,
       PRECIOBRUTO:   obtenerPrecioBase(art),
       DESCUENTO1:    art.descuentos?.[0] || 0,
       DESCUENTO2:    art.descuentos?.[1] || 0,
@@ -416,14 +419,16 @@ const procesarVenta = async () => {
     };
   });
 
-  const num = await reservarNumeroPedido();
+  const [num, pePromos, maxLineas] = await Promise.all([
+    reservarNumeroPedido(),
+    axios.get(`${import.meta.env.VITE_API_URL}/api/promo-especial/vigentes`).then(r => r.data.success ? r.data.data : []).catch(() => []),
+    axios.get(`${import.meta.env.VITE_API_URL}/sistema/max-lineas`).then(r => r.data.maxLineasPorPedido ?? 50).catch(() => 50),
+  ]);
+
   const promesas: Promise<any>[] = [];
   const clienteId  = parseInt(String(carritoStore.clienteSeleccionado.CODCLIENTE));
   const codVendedor = authStore.usuario?.codVendedor ?? 1;
   const promocionesAplicadas = carritoStore.promocionesAplicadas;
-
-  const maxLineas = await axios.get(`${import.meta.env.VITE_API_URL}/sistema/max-lineas`)
-    .then(r => r.data.maxLineasPorPedido ?? 50).catch(() => 50);
 
   const chunkArray = (arr: any[], size: number) => {
     const chunks: any[][] = [];
@@ -431,18 +436,89 @@ const procesarVenta = async () => {
     return chunks;
   };
 
-  const crearPedido = (sufijo: string, items: any[]) => {
+  const crearPedido = (sufijo: string, items: any[], diasMontofactura?: number) => {
     const total = items.reduce((acc, art) => acc + (calcularPrecioConDescuento(art) * art.cantidad), 0);
     return axios.post(`${import.meta.env.VITE_API_URL}/pedidos`, {
-      pedidos: { orderId: `${num}${sufijo}`, clienteId, codVendedor, totalPed: total, lineas: mapearLineas(items), promocionesAplicadas }
+      pedidos: { orderId: `${num}${sufijo}`, clienteId, codVendedor, totalPed: total, lineas: mapearLineas(items), promocionesAplicadas, diasMontofactura }
     });
   };
 
-  const crearPedidosGrupo = (sufijo: string, items: any[]) => {
+  const crearPedidosGrupo = (sufijo: string, items: any[], diasMontofactura?: number) => {
     const chunks = chunkArray(items, maxLineas);
-    if (chunks.length === 1) return [crearPedido(sufijo, chunks[0])];
-    return chunks.map((chunk, i) => crearPedido(`${sufijo}-${i + 1}`, chunk));
+    if (chunks.length === 1) return [crearPedido(sufijo, chunks[0], diasMontofactura)];
+    return chunks.map((chunk, i) => crearPedido(`${sufijo}-${i + 1}`, chunk, diasMontofactura));
   };
+
+  // PE: orderId = PE-{num}{subSufijo} (ej. PE-10921NI)
+  const crearPedidoPE = (subSufijo: string, items: any[], diasMontofactura?: number) => {
+    const total = items.reduce((acc, art) => acc + (calcularPrecioConDescuento(art) * art.cantidad), 0);
+    return axios.post(`${import.meta.env.VITE_API_URL}/pedidos`, {
+      pedidos: { orderId: `PE-${num}${subSufijo}`, clienteId, codVendedor, totalPed: total, lineas: mapearLineas(items), promocionesAplicadas, diasMontofactura }
+    });
+  };
+  const crearPedidosPE = (subSufijo: string, items: any[], dmf?: number) => {
+    const chunks = chunkArray(items, maxLineas);
+    if (chunks.length === 1) return [crearPedidoPE(subSufijo, chunks[0], dmf)];
+    return chunks.map((chunk, i) => crearPedidoPE(`${subSufijo}-${i + 1}`, chunk, dmf));
+  };
+
+  // --- Separación PE ---
+  const peCodigos = new Set<number>();
+  const pePromoById = new Map<number, any>();
+  for (const p of pePromos) {
+    pePromoById.set(p.ID, p);
+    for (const cod of (p.codigos_proveedor || [])) peCodigos.add(Number(cod));
+  }
+
+  const peItemsByPromo = new Map<number, any[]>(); // promoId → items
+  const nonPeArticulos: any[] = [];
+
+  for (const art of carritoStore.articulos) {
+    const cod = Number(art.CODPROVEEDORICG ?? 0);
+    let matched = false;
+    if (cod && peCodigos.has(cod)) {
+      for (const p of pePromos) {
+        if (p.codigos_proveedor.includes(cod)) {
+          if (!peItemsByPromo.has(p.ID)) peItemsByPromo.set(p.ID, []);
+          peItemsByPromo.get(p.ID)!.push(art);
+          matched = true;
+          break;
+        }
+      }
+    }
+    if (!matched) nonPeArticulos.push(art);
+  }
+
+  // --- Pedidos PE (por promo, sub-clasificados) ---
+  for (const [promoId, peArts] of peItemsByPromo) {
+    const dmf = pePromoById.get(promoId)?.DIASMONTOFACTURA ?? 0;
+    const isPsico = (a: any) => a.ES_PSICOTROPICO === 'T';
+    const isSD    = (a: any) => !isPsico(a) && (a.NODTOAPLICABLE === true || a.NODTOAPLICABLE === 1);
+    // NI no aplica en PE: diasMontofactura de la promo se sobrepone
+    const isNorm  = (a: any) => !isPsico(a) && !isSD(a);
+
+    const pePsico = peArts.filter(isPsico);
+    const peSD    = peArts.filter(isSD);
+    const peNorm  = peArts.filter(isNorm);
+
+    if (peNorm.length  > 0) promesas.push(...crearPedidosPE('',   peNorm,  dmf));
+    if (pePsico.length > 0) promesas.push(...crearPedidosPE('P',  pePsico, dmf));
+    if (peSD.length    > 0) promesas.push(...crearPedidosPE('SD', peSD,    dmf));
+  }
+
+  // --- Pedidos normales ---
+  const itemsP  = nonPeArticulos.filter(art => art.ES_PSICOTROPICO === 'T');
+  const itemsSD = nonPeArticulos.filter(art =>
+    art.ES_PSICOTROPICO !== 'T' && (art.NODTOAPLICABLE === true || art.NODTOAPLICABLE === 1)
+  );
+  const itemsNI = nonPeArticulos.filter(art =>
+    art.ES_PSICOTROPICO !== 'T' && !(art.NODTOAPLICABLE === true || art.NODTOAPLICABLE === 1) &&
+    Number(art.DIASPROTECCION ?? 0) > 0
+  );
+  const itemsNormal = nonPeArticulos.filter(art =>
+    art.ES_PSICOTROPICO !== 'T' && !(art.NODTOAPLICABLE === true || art.NODTOAPLICABLE === 1) &&
+    !(Number(art.DIASPROTECCION ?? 0) > 0)
+  );
 
   if (itemsNormal.length > 0) promesas.push(...crearPedidosGrupo('',   itemsNormal));
   if (itemsP.length  > 0)     promesas.push(...crearPedidosGrupo('P',  itemsP));

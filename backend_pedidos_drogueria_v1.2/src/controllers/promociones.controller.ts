@@ -1,6 +1,10 @@
 import { Request, Response } from "express";
 import { PromocionesService } from "../services/promociones.service";
 import { RequestConUsuario } from "../middleware/auth.middleware";
+import { AuditService } from "../services/audit.service";
+
+const uid = (req: RequestConUsuario) => (req as any).usuario?.id   ?? null;
+const usr = (req: RequestConUsuario) => (req as any).usuario?.usuario ?? null;
 
 export class PromocionesController {
 
@@ -16,22 +20,24 @@ export class PromocionesController {
         res.status(200).json({ success: true, ...result });
     }
 
-    static async crearGrupoArticulos(req: Request, res: Response): Promise<void> {
+    static async crearGrupoArticulos(req: RequestConUsuario, res: Response): Promise<void> {
         const { nombre, tipo, condiciones } = req.body;
         if (!nombre) { res.status(400).json({ success: false, message: 'Nombre requerido' }); return; }
         try {
             const id = await PromocionesService.crearGrupoArticulos(nombre, tipo || 'MANUAL', condiciones);
+            await AuditService.log('GRUPO_ARTICULOS', 'CREAR', id, nombre, uid(req), usr(req), { nombre, tipo, condiciones });
             res.status(201).json({ success: true, id });
         } catch (error) {
             res.status(400).json({ success: false, message: error instanceof Error ? error.message : 'Error al crear el grupo' });
         }
     }
 
-    static async actualizarGrupoArticulos(req: Request, res: Response): Promise<void> {
+    static async actualizarGrupoArticulos(req: RequestConUsuario, res: Response): Promise<void> {
         const id = parseInt(req.params['id'] as string);
         const { nombre, activo, tipo, condiciones } = req.body;
         try {
             await PromocionesService.actualizarGrupoArticulos(id, nombre, activo, tipo, condiciones);
+            await AuditService.log('GRUPO_ARTICULOS', 'ACTUALIZAR', id, nombre ?? String(id), uid(req), usr(req), req.body);
             res.status(200).json({ success: true });
         } catch (error) {
             res.status(400).json({ success: false, message: error instanceof Error ? error.message : 'Error al actualizar el grupo' });
@@ -231,29 +237,32 @@ export class PromocionesController {
         res.status(200).json({ success: true, ...result });
     }
 
-    static async crearPromocion(req: Request, res: Response): Promise<void> {
+    static async crearPromocion(req: RequestConUsuario, res: Response): Promise<void> {
         try {
             const id = await PromocionesService.crearPromocion(req.body);
+            await AuditService.log('PROMOCION', 'CREAR', id, req.body.nombre ?? String(id), uid(req), usr(req), req.body);
             res.status(201).json({ success: true, id });
         } catch (error) {
             res.status(500).json({ success: false, message: 'Error al crear la promoción', error: error instanceof Error ? error.message : 'Error desconocido' });
         }
     }
 
-    static async actualizarPromocion(req: Request, res: Response): Promise<void> {
+    static async actualizarPromocion(req: RequestConUsuario, res: Response): Promise<void> {
         try {
             const id = parseInt(req.params['id'] as string);
             await PromocionesService.actualizarPromocion(id, req.body);
+            await AuditService.log('PROMOCION', 'ACTUALIZAR', id, req.body.nombre ?? String(id), uid(req), usr(req), req.body);
             res.status(200).json({ success: true });
         } catch (error) {
             res.status(500).json({ success: false, message: 'Error al actualizar la promoción', error: error instanceof Error ? error.message : 'Error desconocido' });
         }
     }
 
-    static async cambiarActivoPromocion(req: Request, res: Response): Promise<void> {
+    static async cambiarActivoPromocion(req: RequestConUsuario, res: Response): Promise<void> {
         const id = parseInt(req.params['id'] as string);
         const { activo } = req.body;
         await PromocionesService.cambiarActivoPromocion(id, !!activo);
+        await AuditService.log('PROMOCION', 'ACTUALIZAR', id, String(id), uid(req), usr(req), { activo });
         res.status(200).json({ success: true });
     }
 

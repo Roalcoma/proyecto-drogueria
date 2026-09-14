@@ -12,6 +12,8 @@ rechequeoRouter.post('/tomar',                             authMiddleware, Reche
 rechequeoRouter.post('/conteo',                            authMiddleware, RechequeoController.guardarConteo);
 rechequeoRouter.post('/cerrar',                            authMiddleware, RechequeoController.cerrarConteo);
 rechequeoRouter.get('/cerrados',                           authMiddleware, RechequeoController.getPedidosCerrados);
+rechequeoRouter.get('/albaranes',                          authMiddleware, RechequeoController.getAlbaranes);
+rechequeoRouter.get('/albaranes/:numserie/:numalbaran',    authMiddleware, RechequeoController.getAlbaran);
 rechequeoRouter.get('/cerrados/:idcab/detalle',            authMiddleware, RechequeoController.getDetalleCerrado);
 
 export default rechequeoRouter;

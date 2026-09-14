@@ -11,6 +11,8 @@
     <v-tabs v-model="tab" color="primary" class="mb-4">
       <v-tab value="promos">Promociones</v-tab>
       <v-tab value="grupos">Grupos de Artículos</v-tab>
+      <v-tab value="pe">Promo Especial</v-tab>
+      <v-tab value="auditoria">Auditoría</v-tab>
     </v-tabs>
 
     <v-window v-model="tab">
@@ -47,6 +49,67 @@
             </template>
             <template v-slot:item.acciones="{ item }">
               <v-btn icon="mdi-pencil" variant="text" size="small" @click="abrirEditarPromo(item)" />
+            </template>
+          </v-data-table-server>
+        </v-card>
+      </v-window-item>
+
+      <!-- ===================== PROMO ESPECIAL ===================== -->
+      <v-window-item value="pe">
+        <v-card rounded="xl" elevation="2">
+          <v-card-title class="pa-4 d-flex align-center">
+            <v-spacer />
+            <v-btn color="primary" prepend-icon="mdi-plus" @click="abrirNuevaPE">Nueva Promo Especial</v-btn>
+          </v-card-title>
+          <v-divider />
+          <v-data-table :headers="headersPE" :items="promoEspeciales" :loading="cargandoPE" item-value="ID">
+            <template v-slot:item.proveedores="{ item }">
+              <v-chip v-for="p in (item.proveedores || [])" :key="p.CODPROVEEDOR" size="x-small" color="teal" variant="flat" class="mr-1 mb-1">
+                {{ p.NOMPROVEEDOR }}
+              </v-chip>
+            </template>
+            <template v-slot:item.ACTIVO="{ item }">
+              <v-chip v-if="item.VIGENTE_HOY" color="success" size="x-small" variant="flat" prepend-icon="mdi-check-circle">Vigente hoy</v-chip>
+              <v-chip v-else-if="item.ACTIVO && new Date(item.FECHAINICIO) > new Date()" color="blue" size="x-small" variant="flat" prepend-icon="mdi-clock-outline">Próxima</v-chip>
+              <v-chip v-else-if="!item.ACTIVO" color="grey" size="x-small" variant="flat">Inactiva</v-chip>
+              <v-chip v-else color="warning" size="x-small" variant="flat" prepend-icon="mdi-calendar-remove">Expirada</v-chip>
+            </template>
+            <template v-slot:item.FECHAINICIO="{ item }">{{ (item.FECHAINICIO || '').slice(0,10) }}</template>
+            <template v-slot:item.FECHAFIN="{ item }">{{ (item.FECHAFIN || '').slice(0,10) }}</template>
+            <template v-slot:item.acciones="{ item }">
+              <v-btn icon="mdi-pencil" variant="text" size="small" @click="abrirEditarPE(item)" />
+              <v-btn icon="mdi-delete-outline" variant="text" size="small" color="error" @click="eliminarPE(item.ID)" />
+            </template>
+          </v-data-table>
+        </v-card>
+      </v-window-item>
+
+      <!-- ===================== AUDITORÍA ===================== -->
+      <v-window-item value="auditoria">
+        <v-card rounded="xl" elevation="2">
+          <v-card-title class="pa-4 d-flex align-center gap-3">
+            <v-select v-model="auditFiltroEntidad" :items="auditEntidades" label="Entidad" variant="outlined"
+              density="compact" hide-details clearable style="max-width:220px" @update:model-value="cargarAuditoria" />
+            <v-spacer />
+            <v-btn prepend-icon="mdi-refresh" variant="tonal" @click="cargarAuditoria">Actualizar</v-btn>
+          </v-card-title>
+          <v-divider />
+          <v-data-table-server
+            :headers="headersAudit" :items="auditRows" :items-length="auditTotal" :loading="cargandoAudit"
+            v-model:items-per-page="auditPerPage" @update:options="cargarPaginaAudit"
+            :items-per-page-options="[10, 25, 50, 100]" density="compact">
+            <template v-slot:item.ENTIDAD="{ item }">
+              <v-chip size="x-small" :color="colorEntidad(item.ENTIDAD)" variant="flat" class="font-weight-bold">{{ item.ENTIDAD }}</v-chip>
+            </template>
+            <template v-slot:item.ACCION="{ item }">
+              <v-chip size="x-small" :color="colorAccion(item.ACCION)" variant="tonal" class="font-weight-bold">{{ item.ACCION }}</v-chip>
+            </template>
+            <template v-slot:item.FECHA="{ item }">
+              <span class="text-caption">{{ new Date(item.FECHA).toLocaleString('es-VE') }}</span>
+            </template>
+            <template v-slot:item.DATOS="{ item }">
+              <v-btn v-if="item.DATOS" size="x-small" variant="text" prepend-icon="mdi-code-json"
+                @click="auditDetalle = item; modalAuditDetalle = true">Ver</v-btn>
             </template>
           </v-data-table-server>
         </v-card>
@@ -243,6 +306,45 @@
           <v-spacer /><v-btn variant="text" @click="modalPromo.mostrar = false">Cancelar</v-btn>
           <v-btn color="primary" variant="elevated" :loading="guardandoPromo" @click="guardarPromo">Guardar</v-btn>
         </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog: crear/editar Promo Especial -->
+    <v-dialog v-model="modalPE.mostrar" max-width="600" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 bg-teal-darken-3 text-white">{{ modalPE.id ? 'Editar' : 'Nueva' }} Promo Especial</v-card-title>
+        <v-card-text class="pa-4">
+          <v-text-field v-model="modalPE.nombre" label="Nombre" variant="outlined" density="comfortable" class="mb-3" autofocus />
+          <v-text-field v-model.number="modalPE.diasMontofactura" label="Días de monto factura" type="number" min="0"
+            variant="outlined" density="comfortable" class="mb-3"
+            hint="Días que se asignarán al pedido PE generado" persistent-hint />
+          <v-row dense class="mb-3">
+            <v-col cols="6"><v-text-field v-model="modalPE.fechaInicio" type="date" label="Fecha inicio" variant="outlined" density="comfortable" /></v-col>
+            <v-col cols="6"><v-text-field v-model="modalPE.fechaFin" type="date" label="Fecha fin" variant="outlined" density="comfortable" /></v-col>
+          </v-row>
+          <v-autocomplete v-model="modalPE.proveedores" :items="todosLosProveedores"
+            item-title="NOMPROVEEDOR" item-value="CODPROVEEDOR"
+            label="Proveedores" variant="outlined" density="comfortable" class="mb-3"
+            multiple chips closable-chips clearable
+            hint="Productos de estos proveedores irán en pedidos PE separados" persistent-hint />
+          <v-switch v-if="modalPE.id" v-model="modalPE.activo" color="success" label="Activa" hide-details />
+        </v-card-text>
+        <v-card-actions class="pa-4">
+          <v-spacer /><v-btn variant="text" @click="modalPE.mostrar = false">Cancelar</v-btn>
+          <v-btn color="teal-darken-3" variant="elevated" :loading="guardandoPE" @click="guardarPE">Guardar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog: detalle auditoría -->
+    <v-dialog v-model="modalAuditDetalle" max-width="600">
+      <v-card rounded="xl">
+        <v-card-title class="pa-4">Detalle — {{ auditDetalle?.ENTIDAD }} {{ auditDetalle?.ACCION }}</v-card-title>
+        <v-card-text>
+          <div class="text-caption text-grey mb-2">{{ auditDetalle?.USUARIO ?? 'Sistema' }} · {{ auditDetalle?.FECHA ? new Date(auditDetalle.FECHA).toLocaleString('es-VE') : '' }}</div>
+          <pre class="rounded-lg pa-3 text-caption" style="background:var(--v-theme-surface-variant);overflow-x:auto;white-space:pre-wrap;">{{ auditDetalle?.DATOS ? JSON.stringify(JSON.parse(auditDetalle.DATOS), null, 2) : '' }}</pre>
+        </v-card-text>
+        <v-card-actions class="pa-4"><v-spacer /><v-btn variant="text" @click="modalAuditDetalle = false">Cerrar</v-btn></v-card-actions>
       </v-card>
     </v-dialog>
 
@@ -531,8 +633,119 @@ const quitarMiembro = async (codArticulo: number) => {
   } catch { lanzarAviso('Error al quitar artículo', 'error'); }
 };
 
+// ---------- AUDITORÍA ----------
+const auditRows         = ref<any[]>([]);
+const auditTotal        = ref(0);
+const cargandoAudit     = ref(false);
+const auditPerPage      = usePageSize('promos-audit');
+const auditPagina       = ref(1);
+const auditFiltroEntidad = ref<string | null>(null);
+const auditDetalle      = ref<any>(null);
+const modalAuditDetalle = ref(false);
+const auditEntidades    = ['PROMOCION', 'GRUPO_ARTICULOS', 'GRUPO_CLIENTES', 'PROMO_ESPECIAL'];
+
+const colorEntidad = (e: string) => ({
+  PROMOCION: 'blue-darken-2', GRUPO_ARTICULOS: 'orange-darken-2',
+  GRUPO_CLIENTES: 'purple-darken-2', PROMO_ESPECIAL: 'teal-darken-2',
+}[e] ?? 'grey');
+const colorAccion = (a: string) => ({ CREAR: 'success', ACTUALIZAR: 'orange', ELIMINAR: 'error' }[a] ?? 'grey');
+
+const headersAudit = [
+  { title: 'Fecha',    key: 'FECHA',          width: 140 },
+  { title: 'Entidad',  key: 'ENTIDAD',         width: 130, sortable: false },
+  { title: 'Acción',   key: 'ACCION',          width: 100, sortable: false },
+  { title: 'Registro', key: 'REGISTRO_NOMBRE', sortable: false },
+  { title: 'Usuario',  key: 'USUARIO',         width: 120, sortable: false },
+  { title: 'Datos',    key: 'DATOS',           width: 70,  sortable: false },
+];
+
+const cargarAuditoria = async () => {
+  cargandoAudit.value = true;
+  try {
+    const res = await axios.get(`${API}/audit/promos`, {
+      params: { page: auditPagina.value, limit: auditPerPage.value, entidad: auditFiltroEntidad.value || undefined },
+    });
+    if (res.data.success) { auditRows.value = res.data.data; auditTotal.value = res.data.total; }
+  } finally { cargandoAudit.value = false; }
+};
+const cargarPaginaAudit = (opt: any) => { auditPagina.value = opt.page; auditPerPage.value = opt.itemsPerPage; cargarAuditoria(); };
+
+// ---------- PROMO ESPECIAL ----------
+const promoEspeciales = ref<any[]>([]);
+const cargandoPE      = ref(false);
+const guardandoPE     = ref(false);
+const headersPE = [
+  { title: 'Nombre',      key: 'NOMBRE' },
+  { title: 'Proveedores', key: 'proveedores', sortable: false },
+  { title: 'Días MF',     key: 'DIASMONTOFACTURA', width: 90 },
+  { title: 'Inicio',      key: 'FECHAINICIO',       width: 100 },
+  { title: 'Fin',         key: 'FECHAFIN',          width: 100 },
+  { title: 'Estado',      key: 'ACTIVO',            sortable: false },
+  { title: '',            key: 'acciones',          sortable: false },
+];
+const emptyPE = () => ({ mostrar: true, id: null as number|null, nombre: '', diasMontofactura: 0, fechaInicio: '', fechaFin: '', activo: true, proveedores: [] as number[] });
+const modalPE = ref<any>({ ...emptyPE(), mostrar: false });
+
+const cargarPromoEspeciales = async () => {
+  cargandoPE.value = true;
+  try {
+    const res = await axios.get(`${API}/promo-especial`);
+    if (res.data.success) promoEspeciales.value = res.data.data;
+  } finally { cargandoPE.value = false; }
+};
+
+const abrirNuevaPE = () => { modalPE.value = emptyPE(); cargarPromoEspeciales(); };
+const abrirEditarPE = (item: any) => {
+  modalPE.value = {
+    mostrar: true, id: item.ID, nombre: item.NOMBRE,
+    diasMontofactura: item.DIASMONTOFACTURA,
+    fechaInicio: (item.FECHAINICIO || '').slice(0, 10),
+    fechaFin:    (item.FECHAFIN || '').slice(0, 10),
+    activo: !!item.ACTIVO,
+    proveedores: (item.proveedores || []).map((p: any) => p.CODPROVEEDOR),
+  };
+};
+
+const guardarPE = async () => {
+  if (!modalPE.value.nombre || !modalPE.value.fechaInicio || !modalPE.value.fechaFin || !modalPE.value.proveedores.length) {
+    lanzarAviso('Completa nombre, fechas y al menos un proveedor', 'warning'); return;
+  }
+  guardandoPE.value = true;
+  try {
+    const proveedoresPayload = modalPE.value.proveedores.map((cod: number) => {
+      const found = todosLosProveedores.value.find((p: any) => p.CODPROVEEDOR === cod);
+      return { CODPROVEEDOR: cod, NOMPROVEEDOR: found?.NOMPROVEEDOR ?? String(cod) };
+    });
+    const payload = {
+      nombre: modalPE.value.nombre,
+      diasMontofactura: modalPE.value.diasMontofactura,
+      fechaInicio: modalPE.value.fechaInicio,
+      fechaFin: modalPE.value.fechaFin,
+      activo: modalPE.value.activo,
+      proveedores: proveedoresPayload,
+    };
+    if (modalPE.value.id) await axios.put(`${API}/promo-especial/${modalPE.value.id}`, payload);
+    else await axios.post(`${API}/promo-especial`, payload);
+    lanzarAviso('Promo Especial guardada');
+    modalPE.value.mostrar = false;
+    cargarPromoEspeciales();
+  } catch { lanzarAviso('Error al guardar la Promo Especial', 'error'); }
+  finally { guardandoPE.value = false; }
+};
+
+const eliminarPE = async (id: number) => {
+  if (!confirm('¿Eliminar esta Promo Especial?')) return;
+  try {
+    await axios.delete(`${API}/promo-especial/${id}`);
+    lanzarAviso('Promo Especial eliminada');
+    cargarPromoEspeciales();
+  } catch { lanzarAviso('Error al eliminar', 'error'); }
+};
+
 onMounted(() => {
   cargarSelectsGrupos();
   cargarCamposDisponibles();
+  cargarPromoEspeciales();
+  cargarAuditoria();
 });
 </script>
