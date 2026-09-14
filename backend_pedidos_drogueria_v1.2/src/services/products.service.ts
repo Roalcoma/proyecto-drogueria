@@ -47,7 +47,8 @@ export class ProductsService {
                             OR UPPER(A.DESCRIPCION) LIKE @FILTRO
                             OR UPPER(AL.CODBARRAS) LIKE @FILTRO
                             OR UPPER(ACL.DESCRIPCIONLARGA) LIKE @FILTRO
-                            OR UPPER(ACL.PRINCIPIOACTIVO) LIKE @FILTRO)
+                            OR UPPER(ACL.PRINCIPIOACTIVO) LIKE @FILTRO
+                            OR CAST(A.CODARTICULO AS NVARCHAR) LIKE @FILTRO)
                         AND (
                             @STOCK_STATUS = 'todos'
                             OR (@STOCK_STATUS = 'con_stock' AND ${STOCK_DISPONIBLE_SQL} > 0)
@@ -87,23 +88,8 @@ export class ProductsService {
                 .query(`
                     DECLARE @FILTRO AS NVARCHAR(50)='%'+UPPER(REPLACE(LTRIM(RTRIM(@ARTICULO)),' ','%'))+'%'
 
-                    CREATE TABLE #PROMO (
-                        CODGRUPO INT,
-                        GRUPO_DESC NVARCHAR(MAX),
-                        CODARTICULO INT,
-                        REFERENCIA NVARCHAR(MAX)
-                    )
-
-                    INSERT INTO #PROMO
-                    EXEC [rip].[GET_ARTICULOS_EN_PROMOCION_SP]
-
-                    SELECT DISTINCT A.CODARTICULO, A.REFPROVEEDOR, A.NODTOAPLICABLE, ACL.DESCRIPCIONLARGA DESCRIPCION, ACL.PRINCIPIOACTIVO, ISNULL(ACL.CODPROVEEDORICG, 0) AS CODPROVEEDORICG, CASE WHEN A.SECCION = @dptoPsico THEN 'T' ELSE 'F' END ES_PSICOTROPICO, ISNULL(PCL.DIASPROTECCION, 0) AS DIASPROTECCION, ISNULL(IMP.IVA, 0) AS PORCENTAJEIVA, ISNULL((SELECT
-                        TOP 1 LEFT(AP.VALOR, CHARINDEX('|', AP.VALOR + '|') - 1) PORCENTAJE_DESCUENTO
-                    FROM
-                        PROMOCIONES P
-                        INNER JOIN #PROMO G ON G.CODGRUPO = P.IDGRUPO
-                        INNER JOIN ACCIONESPROMOCION AP ON AP.IDPROMOCION = P.IDPROMOCION
-                    WHERE CAST(GETDATE() AS DATE) BETWEEN P.FECHAINICIAL AND P.FECHAFINAL AND PRIORIDAD = 1 AND G.CODARTICULO = A.CODARTICULO), 0) DESCUENTOART,
+                    SELECT DISTINCT A.CODARTICULO, A.REFPROVEEDOR, A.NODTOAPLICABLE, ACL.DESCRIPCIONLARGA DESCRIPCION, ACL.PRINCIPIOACTIVO, ISNULL(ACL.CODPROVEEDORICG, 0) AS CODPROVEEDORICG, CASE WHEN A.SECCION = @dptoPsico THEN 'T' ELSE 'F' END ES_PSICOTROPICO, ISNULL(PCL.DIASPROTECCION, 0) AS DIASPROTECCION, ISNULL(IMP.IVA, 0) AS PORCENTAJEIVA,
+                        0 AS DESCUENTOART,
                         ${STOCK_DISPONIBLE_SQL} AS STOCKTOTAL
                     FROM ARTICULOS A WITH(NOLOCK)
                         INNER JOIN ARTICULOSLIN AL WITH(NOLOCK) ON A.CODARTICULO=AL.CODARTICULO
@@ -116,7 +102,8 @@ export class ProductsService {
                             OR UPPER(A.DESCRIPCION) LIKE @FILTRO
                             OR UPPER(AL.CODBARRAS) LIKE @FILTRO
                             OR UPPER(ACL.DESCRIPCIONLARGA) LIKE @FILTRO
-                            OR UPPER(ACL.PRINCIPIOACTIVO) LIKE @FILTRO)
+                            OR UPPER(ACL.PRINCIPIOACTIVO) LIKE @FILTRO
+                            OR CAST(A.CODARTICULO AS NVARCHAR) LIKE @FILTRO)
                         AND (
                             @STOCK_STATUS = 'todos'
                             OR (@STOCK_STATUS = 'con_stock' AND ${STOCK_DISPONIBLE_SQL} > 0)

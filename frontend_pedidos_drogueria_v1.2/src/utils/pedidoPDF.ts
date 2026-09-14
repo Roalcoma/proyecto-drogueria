@@ -154,26 +154,37 @@ async function renderPedidoEnDoc(doc: jsPDF, data: PedidoPDFData, preloadedLogo?
     const ocultarDescuentos = fmt === 'sin_desc';      // oculta todos los descuentos, mantiene precios
 
     // --- Tabla de líneas ---
+    // Helper: formatea un descuento individual como "X%" o "" si es 0/nulo
+    const fmtD = (val?: number) => (val && val > 0) ? `${val}%` : '';
+
     let headCols: string[];
     const filas: any[][] = isPsico
         ? data.lineas.map(l => {
             if (sinPrecios) return [l.codigo, (l.descripcion || '') + (l.esControlado ? ' (CONTROLADO)' : ''),
                 l.cantidad, l.lote || '', l.fechaVencimiento || ''];
-            const descs = ocultarDescuentos ? [] : (l.descuentos ?? []).slice(sinDescCab ? 1 : 0);
-            const descPct = (!l.sinDescuento && descs.length) ? `${descs.join('%+')}%` : '';
+            const d = l.sinDescuento || ocultarDescuentos ? [] : (l.descuentos ?? []);
             const pct = l.porcentajeIva ?? 0;
             return [l.codigo, (l.descripcion || '') + (l.esControlado ? ' (CONTROLADO)' : ''),
-                l.cantidad, '', '', '', descPct, pct > 0 ? `+${pct}%` : '',
+                l.cantidad,
+                sinDescCab ? '' : fmtD(d[0]),  // ESC PRD = D1
+                fmtD(d[1]),                     // ESC PRD = D2
+                fmtD(d[2]),                     // ESC PRV = D3
+                fmtD(d[3]),                     // DESC    = D4
+                pct > 0 ? `+${pct}%` : '',
                 l.precioUnitario.toFixed(2), (l.precioUnitario * l.cantidad).toFixed(2),
                 l.lote || '', l.fechaVencimiento || ''];
         })
         : data.lineas.map(l => {
-            const descs = ocultarDescuentos ? [] : (l.descuentos ?? []).slice(sinDescCab ? 1 : 0);
-            const descPct = (!sinPrecios && !l.sinDescuento && descs.length) ? `${descs.join('%+')}%` : '';
+            const d = l.sinDescuento || ocultarDescuentos ? [] : (l.descuentos ?? []);
             const pct = l.porcentajeIva ?? 0;
             const ivaTag = (!sinPrecios && pct > 0) ? `+${pct}%` : '';
             const row: any[] = [l.codigo, (l.descripcion || '') + (l.esControlado ? ' (CONTROLADO)' : ''),
-                l.cantidad, '', '', '', descPct];
+                l.cantidad,
+                sinDescCab ? '' : fmtD(d[0]),  // ESC PRD = D1
+                fmtD(d[1]),                     // ESC PRD = D2
+                fmtD(d[2]),                     // ESC PRV = D3
+                fmtD(d[3]),                     // DESC    = D4
+            ];
             if (!sinPrecios) { row.push(ivaTag); row.push(l.precioUnitario.toFixed(2)); row.push((l.precioUnitario * l.cantidad).toFixed(2)); }
             row.push(l.lote || ''); row.push(l.fechaVencimiento || '');
             return row;

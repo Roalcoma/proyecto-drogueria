@@ -57,13 +57,24 @@ export class PromocionesController {
         res.status(200).json({ success: true, ...result });
     }
 
+    static async buscarArticulos(req: Request, res: Response): Promise<void> {
+        const q = ((req.query['q'] as string) || '').trim();
+        if (!q) { res.json({ success: true, data: [] }); return; }
+        try {
+            const data = await PromocionesService.buscarArticulos(q, Number(req.query['limit']) || 15);
+            res.json({ success: true, data });
+        } catch (err) {
+            res.status(500).json({ success: false, message: err instanceof Error ? err.message : 'Error' });
+        }
+    }
+
     static async agregarArticuloAGrupo(req: Request, res: Response): Promise<void> {
         const idGrupo = parseInt(req.params['id'] as string);
         const { codArticulo } = req.body;
         if (!codArticulo) { res.status(400).json({ success: false, message: 'codArticulo requerido' }); return; }
         try {
-            await PromocionesService.agregarArticuloAGrupo(idGrupo, Number(codArticulo));
-            res.status(200).json({ success: true });
+            const { insertado } = await PromocionesService.agregarArticuloAGrupo(idGrupo, Number(codArticulo));
+            res.status(200).json({ success: true, insertado });
         } catch (error) {
             res.status(400).json({ success: false, message: error instanceof Error ? error.message : 'Error al agregar artículo' });
         }

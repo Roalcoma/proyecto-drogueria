@@ -12,6 +12,7 @@ promocionesRouter.get('/campos-disponibles', PromocionesController.getCamposDisp
 promocionesRouter.get('/proveedores', PromocionesController.getProveedores);
 promocionesRouter.get('/marcas', PromocionesController.getMarcas);
 
+promocionesRouter.get('/buscar-articulos', PromocionesController.buscarArticulos);
 promocionesRouter.get('/grupos-articulos', PromocionesController.getGruposArticulos);
 promocionesRouter.post('/grupos-articulos', PromocionesController.crearGrupoArticulos);
 promocionesRouter.put('/grupos-articulos/:id', PromocionesController.actualizarGrupoArticulos);

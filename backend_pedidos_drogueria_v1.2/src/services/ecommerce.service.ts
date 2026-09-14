@@ -2,8 +2,9 @@ import fs from 'fs';
 import path from 'path';
 import mssql from 'mssql';
 import { connectDb } from '../db/db.conection';
-import { PromocionesService } from './promociones.service';
-import { getDbConfig }        from './dbconfig.service';
+import { PromocionesService }    from './promociones.service';
+import { PromoEspecialService }  from './promoEspecial.service';
+import { getDbConfig }           from './dbconfig.service';
 
 const VED     = Number(process.env.VED) || 1;
 const esquema = process.env.DB_ESQUEMA  || 'dbo';
@@ -407,6 +408,7 @@ export class EcommerceService {
         const barcodeToArt = new Map<string, {
             codarticulo: number; nodto: boolean; ref: string;
             seccion: number; diasProteccion: number; precioUnitario: number;
+            codproveedoricg: number;
         }>();
         if (barcodes.length > 0) {
             const artReq = pool.request();
@@ -418,7 +420,8 @@ export class EcommerceService {
                        ISNULL(A.REFPROVEEDOR,'')      AS REFPROVEEDOR,
                        ISNULL(A.SECCION, 0)           AS SECCION,
                        ISNULL(PCL.DIASPROTECCION, 0)  AS DIASPROTECCION,
-                       ISNULL(PV.PNETO, 0)            AS PNETO
+                       ISNULL(PV.PNETO, 0)            AS PNETO,
+                       ISNULL(ACL.CODPROVEEDORICG, 0) AS CODPROVEEDORICG
                 FROM ARTICULOS A WITH (NOLOCK)
                 LEFT JOIN ARTICULOSCAMPOSLIBRES ACL WITH (NOLOCK) ON ACL.CODARTICULO = A.CODARTICULO
                 LEFT JOIN PROVEEDORESCAMPOSLIBRES PCL WITH (NOLOCK) ON PCL.CODPROVEEDOR = ACL.CODPROVEEDORICG
@@ -427,12 +430,13 @@ export class EcommerceService {
             `);
             artRes.recordset.forEach((r: any) => {
                 barcodeToArt.set(String(r.LOOKUP_KEY), {
-                    codarticulo:    Number(r.CODARTICULO),
-                    nodto:          r.NODTOAPLICABLE === true || r.NODTOAPLICABLE === 1,
-                    ref:            r.REFPROVEEDOR,
-                    seccion:        Number(r.SECCION),
-                    diasProteccion: Number(r.DIASPROTECCION),
-                    precioUnitario: Number(r.PNETO),
+                    codarticulo:     Number(r.CODARTICULO),
+                    nodto:           r.NODTOAPLICABLE === true || r.NODTOAPLICABLE === 1,
+                    ref:             r.REFPROVEEDOR,
+                    seccion:         Number(r.SECCION),
+                    diasProteccion:  Number(r.DIASPROTECCION),
+                    precioUnitario:  Number(r.PNETO),
+                    codproveedoricg: Number(r.CODPROVEEDORICG),
                 });
             });
         }
@@ -472,16 +476,35 @@ export class EcommerceService {
             }
         } catch { /* sin promociones activas */ }
 
+        // PE vigentes: map codarticulo → { promoId, diasMontofactura }
+        const artPEMap = new Map<number, { promoId: number; diasMontofactura: number }>();
+        try {
+            const peVigentes = await PromoEspecialService.getVigentes();
+            for (const promo of peVigentes) {
+                for (const [, art] of barcodeToArt) {
+                    if (art.codproveedoricg > 0 && promo.codigos_proveedor.includes(art.codproveedoricg))
+                        artPEMap.set(art.codarticulo, { promoId: promo.ID, diasMontofactura: promo.DIASMONTOFACTURA });
+                }
+            }
+        } catch { /* sin PE activas */ }
+
         // 7. Separar líneas en grupos: P (psicotrópico) > SD (sin dto) > NI (no indexado) > normal
         //    Misma lógica que CarritoView.vue
         type GrupoLinea = { linea: any; art: typeof barcodeToArt extends Map<any, infer V> ? V : never };
         const grupos: Record<string, GrupoLinea[]> = { normal: [], P: [], SD: [], NI: [] };
         const lineasSinArticulo: string[] = [];
+        const lineasPE = new Map<number, { items: GrupoLinea[]; diasMontofactura: number }>();
 
         for (const l of lineas) {
             const barcode = String(l.COD_ARTICULO).trim();
             const art = barcodeToArt.get(barcode);
             if (!art) { lineasSinArticulo.push(barcode); continue; }
+            const pe = artPEMap.get(art.codarticulo);
+            if (pe) {
+                if (!lineasPE.has(pe.promoId)) lineasPE.set(pe.promoId, { items: [], diasMontofactura: pe.diasMontofactura });
+                lineasPE.get(pe.promoId)!.items.push({ linea: l, art });
+                continue;
+            }
             if (art.seccion === getDbConfig().dptoPsicotropicos)                  grupos.P.push({ linea: l, art });
             else if (art.nodto)                                                  grupos.SD.push({ linea: l, art });
             else if (art.diasProteccion > 0)                                     grupos.NI.push({ linea: l, art });
@@ -497,8 +520,8 @@ export class EcommerceService {
 
         // 8. Helper: armar tabla e insertar un grupo (dentro de una transacción).
         //    Si el grupo supera maxLineasPorPedido, se parte en pedidos consecutivos.
-        const insertarGrupo = async (sufijo: string, items: GrupoLinea[], tx: mssql.Transaction): Promise<string[]> => {
-            const orderIdBase = sufijo === 'normal' ? orderId : orderId + sufijo;
+        const insertarGrupo = async (sufijo: string, items: GrupoLinea[], tx: mssql.Transaction, baseOverride?: string): Promise<string[]> => {
+            const orderIdBase = baseOverride ?? (sufijo === 'normal' ? orderId : orderId + sufijo);
             const estatus     = sufijo === 'P' ? 'APROBACION PSICOTROPICOS' : 'PENDIENTE';
             const maxLineas   = getDbConfig().maxLineasPorPedido;
 
@@ -607,12 +630,29 @@ export class EcommerceService {
 
         // 9. Insertar cada grupo dentro de una transacción — si falla alguno, todos se revierten
         const idsCreados: string[] = [];
+        const peOrderIdBase = `PE-EC-${ped.NUMERO_PEDIDO}`;
         const tx = new mssql.Transaction(pool);
         await tx.begin();
         try {
             for (const [sufijo, items] of gruposConLineas) {
                 const ids = await insertarGrupo(sufijo, items, tx);
                 idsCreados.push(...ids);
+            }
+            // Pedidos de Promoción Especial
+            for (const [, { items: peItems, diasMontofactura }] of lineasPE) {
+                const peGrupos: Record<string, GrupoLinea[]> = { normal: [], P: [], SD: [] };
+                for (const item of peItems) {
+                    const tipo = item.art.seccion === getDbConfig().dptoPsicotropicos ? 'P'
+                               : item.art.nodto ? 'SD' : 'normal';
+                    peGrupos[tipo].push(item);
+                }
+                for (const [sufijo, items] of Object.entries(peGrupos)) {
+                    if (!items.length) continue;
+                    const peBase = sufijo === 'normal' ? peOrderIdBase : peOrderIdBase + sufijo;
+                    const ids = await insertarGrupo(sufijo, items, tx, peBase);
+                    for (const oid of ids) await PromoEspecialService.registrarPedido(oid, diasMontofactura);
+                    idsCreados.push(...ids);
+                }
             }
             await tx.commit();
         } catch (err) {

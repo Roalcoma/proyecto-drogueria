@@ -193,12 +193,17 @@
         </v-card-title>
         <v-card-text class="pa-4">
           <template v-if="modalMiembros.grupo?.TIPO !== 'CONDICION'">
-            <v-text-field v-model="busquedaArticuloAgregar" label="Buscar artículo para agregar" prepend-inner-icon="mdi-magnify"
-              variant="outlined" density="compact" class="mb-3" @keyup.enter="buscarArticulosParaAgregar" />
+            <div class="d-flex gap-2 mb-3">
+              <v-text-field v-model="busquedaArticuloAgregar" label="Buscar por código, referencia o descripción"
+                prepend-inner-icon="mdi-magnify" variant="outlined" density="compact" hide-details
+                @keyup.enter="buscarArticulosParaAgregar" @click:prepend-inner="buscarArticulosParaAgregar" />
+              <v-btn color="primary" variant="tonal" @click="buscarArticulosParaAgregar" :disabled="!busquedaArticuloAgregar">Buscar</v-btn>
+            </div>
             <v-list v-if="resultadosArticulo.length" border rounded class="mb-4" max-height="200" style="overflow-y:auto;">
-              <v-list-item v-for="art in resultadosArticulo" :key="art.CODARTICULO" :title="art.DESCRIPCION" :subtitle="art.REFPROVEEDOR">
+              <v-list-item v-for="art in resultadosArticulo" :key="art.CODARTICULO" :title="art.DESCRIPCION" :subtitle="`${art.CODARTICULO} · ${art.REFPROVEEDOR}`">
                 <template v-slot:append>
-                  <v-btn size="small" color="success" @click="agregarMiembro(art.CODARTICULO)">Agregar</v-btn>
+                  <v-chip v-if="codigosEnGrupo.has(art.CODARTICULO)" size="small" color="warning" variant="tonal" prepend-icon="mdi-check-circle">Ya en grupo</v-chip>
+                  <v-btn v-else size="small" color="success" @click="agregarMiembro(art.CODARTICULO)">Agregar</v-btn>
                 </template>
               </v-list-item>
             </v-list>
@@ -569,6 +574,7 @@ const headersMiembrosCondicion = [
 ];
 const busquedaArticuloAgregar = ref('');
 const resultadosArticulo = ref<any[]>([]);
+const codigosEnGrupo = ref(new Set<number>());
 const importandoExcel = ref(false);
 const resultadoImport = ref('');
 
@@ -598,7 +604,9 @@ const abrirMiembros = (grupo: any) => {
   resultadosArticulo.value = [];
   busquedaArticuloAgregar.value = '';
   resultadoImport.value = '';
+  codigosEnGrupo.value = new Set();
   cargarMiembros();
+  cargarTodosLosCodigos(grupo.ID);
 };
 const cargarMiembros = async () => {
   if (!modalMiembros.value.grupo) return;
@@ -610,23 +618,40 @@ const cargarMiembros = async () => {
 };
 const cargarPaginaMiembros = (opt: any) => { paginaMiembros.value = opt.page; itemsPerPageMiembros.value = opt.itemsPerPage; cargarMiembros(); };
 
+const cargarTodosLosCodigos = async (idGrupo: number) => {
+  try {
+    const res = await axios.get(`${API}/promociones/grupos-articulos/${idGrupo}/articulos`, { params: { page: 1, limit: 9999 } });
+    if (res.data.success) codigosEnGrupo.value = new Set(res.data.data.map((a: any) => a.CODARTICULO));
+  } catch { /* silencioso */ }
+};
+
 const buscarArticulosParaAgregar = async () => {
-  if (!busquedaArticuloAgregar.value) { resultadosArticulo.value = []; return; }
-  const res = await axios.get(`${API}/products/get-products`, { params: { articulo: busquedaArticuloAgregar.value, page: 1, limit: 10 } });
-  if (res.data.success) resultadosArticulo.value = res.data.data;
+  const q = busquedaArticuloAgregar.value.trim();
+  if (!q) { resultadosArticulo.value = []; return; }
+  try {
+    const res = await axios.get(`${API}/promociones/buscar-articulos`, { params: { q, limit: 15 } });
+    if (res.data.success) resultadosArticulo.value = res.data.data;
+  } catch { lanzarAviso('Error al buscar artículos', 'error'); }
 };
 
 const agregarMiembro = async (codArticulo: number) => {
   try {
-    await axios.post(`${API}/promociones/grupos-articulos/${modalMiembros.value.grupo.ID}/articulos`, { codArticulo });
-    lanzarAviso('Artículo agregado');
-    cargarMiembros();
-    cargarGrupos();
+    const res = await axios.post(`${API}/promociones/grupos-articulos/${modalMiembros.value.grupo.ID}/articulos`, { codArticulo });
+    if (res.data.insertado === false) {
+      lanzarAviso('Este artículo ya está en el grupo', 'warning');
+    } else {
+      codigosEnGrupo.value = new Set([...codigosEnGrupo.value, codArticulo]);
+      lanzarAviso('Artículo agregado');
+      cargarMiembros();
+      cargarGrupos();
+    }
   } catch { lanzarAviso('Error al agregar artículo', 'error'); }
 };
 const quitarMiembro = async (codArticulo: number) => {
   try {
     await axios.delete(`${API}/promociones/grupos-articulos/${modalMiembros.value.grupo.ID}/articulos/${codArticulo}`);
+    codigosEnGrupo.value.delete(codArticulo);
+    codigosEnGrupo.value = new Set(codigosEnGrupo.value);
     lanzarAviso('Artículo quitado');
     cargarMiembros();
     cargarGrupos();

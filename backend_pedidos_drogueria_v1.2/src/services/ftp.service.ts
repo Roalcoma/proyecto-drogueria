@@ -8,6 +8,7 @@ import { connectDb } from '../db/db.conection';
 import { getDbConfig } from './dbconfig.service';
 import { STOCK_DISPONIBLE_SQL } from './products.service';
 import { PromocionesService } from './promociones.service';
+import { PromoEspecialService } from './promoEspecial.service';
 import { FarcomprasService } from './farcompras.service';
 
 // ftp-srv's FileSystem normalizes '/' to '\' on Windows via path.normalize.
@@ -306,7 +307,7 @@ export class FtpService {
         // Precios y descuentos del sistema; ignoramos precio del archivo
         const codigos = lineasAgrupadas.map(l => l.codarticulo).join(',');
 
-        const [preciosRes, dtoCliRes, artInfoRes, vigentesPromociones] = await Promise.all([
+        const [preciosRes, dtoCliRes, artInfoRes, vigentesPromociones, peVigentes] = await Promise.all([
             pool.request()
                 .input('TARIFA', mssql.Int, tarifa)
                 .query(`SELECT CODARTICULO, PNETO FROM PRECIOSVENTA WITH (NOLOCK) WHERE IDTARIFAV = @TARIFA AND COLOR = '.' AND TALLA = '.' AND CODARTICULO IN (${codigos})`),
@@ -319,24 +320,33 @@ export class FtpService {
                     SELECT A.CODARTICULO,
                         ISNULL(A.NODTOAPLICABLE,0) AS NODTO,
                         CASE WHEN A.SECCION = @dptoPsico THEN 1 ELSE 0 END AS ES_PSICO,
-                        ISNULL(PCL.DIASPROTECCION,0) AS DIAS_PROT
+                        ISNULL(PCL.DIASPROTECCION,0) AS DIAS_PROT,
+                        ISNULL(ACL.CODPROVEEDORICG, 0) AS CODPROVEEDORICG
                     FROM ARTICULOS A WITH(NOLOCK)
                     LEFT JOIN ARTICULOSCAMPOSLIBRES ACL WITH(NOLOCK) ON ACL.CODARTICULO = A.CODARTICULO
                     LEFT JOIN PROVEEDORESCAMPOSLIBRES PCL WITH(NOLOCK) ON PCL.CODPROVEEDOR = ACL.CODPROVEEDORICG
                     WHERE A.CODARTICULO IN (${codigos})
                 `),
             PromocionesService.getVigentes(),
+            PromoEspecialService.getVigentes(),
         ]);
 
         const preciosSistema = new Map<number, number>(preciosRes.recordset.map((r: any) => [r.CODARTICULO, Number(r.PNETO)]));
         const d1Cliente  = Number(dtoCliRes.recordset[0]?.D1 ?? 0);
         const cclD3      = Number(dtoCliRes.recordset[0]?.D3 ?? 0);
-        const artInfoMap = new Map<number, { nodto: boolean; esPsico: boolean; diasProt: number }>(
+        const artInfoMap = new Map<number, { nodto: boolean; esPsico: boolean; diasProt: number; codproveedoricg: number }>(
             artInfoRes.recordset.map((r: any) => [
                 Number(r.CODARTICULO),
-                { nodto: !!r.NODTO, esPsico: !!r.ES_PSICO, diasProt: Number(r.DIAS_PROT) }
+                { nodto: !!r.NODTO, esPsico: !!r.ES_PSICO, diasProt: Number(r.DIAS_PROT), codproveedoricg: Number(r.CODPROVEEDORICG) }
             ])
         );
+        const artPEMap = new Map<number, { promoId: number; diasMontofactura: number }>();
+        for (const promo of peVigentes) {
+            for (const [cod, art] of artInfoMap) {
+                if (art.codproveedoricg > 0 && promo.codigos_proveedor.includes(art.codproveedoricg))
+                    artPEMap.set(cod, { promoId: promo.ID, diasMontofactura: promo.DIASMONTOFACTURA });
+            }
+        }
         const getTipo = (cod: number): string => {
             const info = artInfoMap.get(cod);
             if (!info)             return 'N';
@@ -400,9 +410,22 @@ export class FtpService {
             dtoMap.set(l.codarticulo, { d1, d2, d3, precioFinal });
         }
 
+        // Separar artículos de PE antes del split normal
+        const lineasPE = new Map<number, { lines: typeof lineasAgrupadas; diasMontofactura: number }>();
+        const lineasNormales: typeof lineasAgrupadas = [];
+        for (const l of lineasAgrupadas) {
+            const pe = artPEMap.get(l.codarticulo);
+            if (pe) {
+                if (!lineasPE.has(pe.promoId)) lineasPE.set(pe.promoId, { lines: [], diasMontofactura: pe.diasMontofactura });
+                lineasPE.get(pe.promoId)!.lines.push(l);
+            } else {
+                lineasNormales.push(l);
+            }
+        }
+
         // Agrupar por tipo: P (psicotrópicos), SD (sin descuento), NI (nuevos), N (normal)
         const grupos = new Map<string, typeof lineasAgrupadas>();
-        for (const l of lineasAgrupadas) {
+        for (const l of lineasNormales) {
             const tipo = getTipo(l.codarticulo);
             if (!grupos.has(tipo)) grupos.set(tipo, []);
             grupos.get(tipo)!.push(l);
@@ -416,8 +439,79 @@ export class FtpService {
             return baseId + typeSuf + chunkSuf;
         };
 
+        const peBaseId = `PE-F${cliPart}${numPart}`; // 14 chars
+        const buildPEChunkId = (tipo: string, chunk: number): string => {
+            const typeSuf  = tipo === 'N' ? '' : tipo;
+            const chunkSuf = chunk > 1 ? String(Math.min(chunk, 9)) : '';
+            return peBaseId + typeSuf + chunkSuf;
+        };
+
         const orderIds: string[] = [];
         try {
+            // ── Pedidos de Promoción Especial ────────────────────────────────────
+            for (const [promoId, { lines: peLines, diasMontofactura }] of lineasPE) {
+                const peGrupos = new Map<string, typeof lineasAgrupadas>();
+                for (const l of peLines) {
+                    const tipo = getTipo(l.codarticulo) === 'NI' ? 'N' : getTipo(l.codarticulo); // PE no tiene NI
+                    if (!peGrupos.has(tipo)) peGrupos.set(tipo, []);
+                    peGrupos.get(tipo)!.push(l);
+                }
+                for (const [tipo, artsTipo] of peGrupos) {
+                    const tipoCh: (typeof lineas)[] = [];
+                    const sz = step === Infinity ? artsTipo.length : step;
+                    for (let i = 0; i < artsTipo.length; i += sz) tipoCh.push(artsTipo.slice(i, i + sz));
+                    for (let ci = 0; ci < tipoCh.length; ci++) {
+                        const chunk      = tipoCh[ci];
+                        const chunkId    = buildPEChunkId(tipo, ci + 1);
+                        const totalChunk = chunk.reduce((s, l) => s + l.precioTotal, 0);
+                        const estatusInicial = tipo === 'P' ? 'APROBACION PSICOTROPICOS' : 'PENDIENTE';
+                        await pool.request()
+                            .input('OID', mssql.NVarChar(50), chunkId)
+                            .input('CLI', mssql.Int, CODCLIENTE)
+                            .input('VND', mssql.Int, CODVENDEDOR)
+                            .input('TOT', mssql.Decimal(18, 2), totalChunk)
+                            .input('EST', mssql.NVarChar(50), estatusInicial)
+                            .query(`INSERT INTO ${esquema}.CABECERA_PED (ORDERID, CLIENTEID, FECHA, ESTATUS, CODVENDEDOR, TOTALPRECIO)
+                                    VALUES (@OID, @CLI, GETDATE(), @EST, @VND, @TOT)`);
+                        const tabla = new mssql.Table(`${esquema}.LINEA_PED`);
+                        tabla.create = false;
+                        tabla.columns.add('ORDERID',        mssql.VarChar(50),  { nullable: false });
+                        tabla.columns.add('CODARTICULO',    mssql.Int,           { nullable: false });
+                        tabla.columns.add('REFERENCIA',     mssql.VarChar(50),  { nullable: true  });
+                        tabla.columns.add('CODALMACEN',     mssql.VarChar(10),  { nullable: false });
+                        tabla.columns.add('IDTARIFAV',      mssql.Int,           { nullable: false });
+                        tabla.columns.add('PRODUCTCOUNT',   mssql.Int,           { nullable: false });
+                        tabla.columns.add('PRECIOUNITARIO', mssql.Float,         { nullable: false });
+                        tabla.columns.add('DESCUENTO1',     mssql.Float,         { nullable: true  });
+                        tabla.columns.add('DESCUENTO2',     mssql.Float,         { nullable: true  });
+                        tabla.columns.add('DESCUENTO3',     mssql.Float,         { nullable: true  });
+                        tabla.columns.add('DESCUENTO4',     mssql.Float,         { nullable: true  });
+                        tabla.columns.add('PRECIOBRUTO',    mssql.Float,         { nullable: true  });
+                        tabla.columns.add('PORCENTAJEIVA',  mssql.Float,         { nullable: true  });
+                        tabla.columns.add('MONTOIVA',       mssql.Float,         { nullable: true  });
+                        for (const l of chunk) {
+                            const dto = dtoMap.get(l.codarticulo) ?? { d1: 0, d2: 0, d3: 0, precioFinal: l.precioUnit };
+                            tabla.rows.add(chunkId, l.codarticulo, '', almacen, tarifa,
+                                Math.round(l.cantidad), dto.precioFinal,
+                                dto.d1, dto.d2, dto.d3, 0,
+                                l.precioUnit, 0, 0);
+                        }
+                        await pool.request().bulk(tabla);
+                        await pool.request()
+                            .input('OID', mssql.NVarChar(50), chunkId)
+                            .input('EST', mssql.NVarChar(50), estatusInicial)
+                            .input('DET', mssql.NVarChar(500),
+                                `Pedido FTP PE (promo ${promoId}) desde ${archivo}. Tipo: ${tipo}. Parte ${ci + 1}/${tipoCh.length}.`)
+                            .query(`INSERT INTO ${esquema}.APP_PEDIDO_LOG (ORDERID, EST_ANTERIOR, EST_NUEVO, USUARIO, DETALLES)
+                                    VALUES (@OID, NULL, @EST, 'FTP', @DET)`);
+                        await PromoEspecialService.registrarPedido(chunkId, diasMontofactura);
+                        orderIds.push(chunkId);
+                        console.log(`[FTP] ${archivo} → ${chunkId} (PE promo ${promoId}, ${chunk.length} líneas, tipo ${tipo})`);
+                    }
+                }
+            }
+
+            // ── Pedidos normales ─────────────────────────────────────────────────
             for (const [tipo, artsTipo] of grupos) {
                 const tipoCh: (typeof lineas)[] = [];
                 const sz = step === Infinity ? artsTipo.length : step;

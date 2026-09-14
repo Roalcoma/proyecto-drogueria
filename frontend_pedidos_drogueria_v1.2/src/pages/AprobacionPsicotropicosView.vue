@@ -558,7 +558,7 @@ const imprimirPDF = async (item: any, sinPrecios: boolean) => {
         descripcion:      l.DESCRIPCION || '',
         cantidad:         Number(l.PRODUCTCOUNT),
         precioUnitario:   Number(l.PRECIOUNITARIO ?? 0),
-        descuentos:       [l.DESCUENTO1, l.DESCUENTO2, l.DESCUENTO3, l.DESCUENTO4].map(Number).filter(d => d > 0),
+        descuentos:       [l.DESCUENTO1, l.DESCUENTO2, l.DESCUENTO3, l.DESCUENTO4].map(Number),
         diasProteccion:   Number(l.DIASPROTECCION ?? 0),
         porcentajeIva:    Number(l.PORCENTAJEIVA ?? 0),
         esControlado:     true,

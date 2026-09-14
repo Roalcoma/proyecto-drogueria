@@ -135,9 +135,28 @@
                 Añadir Producto
               </v-btn>
             </div>
+            <!-- Barra de acción masiva -->
+            <div v-if="puedeDescuentoLinea && seleccionados.size > 0" class="d-flex align-center gap-3 px-4 py-2 bg-orange-lighten-5 border-b">
+              <v-icon color="orange-darken-2">mdi-check-all</v-icon>
+              <span class="text-body-2 font-weight-bold text-orange-darken-3">{{ seleccionados.size }} artículo{{ seleccionados.size > 1 ? 's' : '' }} seleccionado{{ seleccionados.size > 1 ? 's' : '' }}</span>
+              <v-spacer />
+              <v-btn size="small" color="orange-darken-2" variant="flat" rounded="pill" prepend-icon="mdi-sale" @click="modalBulk = true">
+                Aplicar descuentos
+              </v-btn>
+              <v-btn size="small" variant="text" color="grey" icon="mdi-close" @click="seleccionados.clear()" />
+            </div>
+
             <v-table hover>
               <thead>
                 <tr>
+                  <th v-if="puedeDescuentoLinea" style="width:44px;padding:0 4px">
+                    <v-checkbox
+                      :model-value="todosSeleccionados"
+                      :indeterminate="algunosMarcados && !todosSeleccionados"
+                      @update:model-value="toggleTodos"
+                      hide-details density="compact"
+                    />
+                  </th>
                   <th class="text-left font-weight-bold">Producto</th>
                   <th class="text-center font-weight-bold">Cantidad</th>
                   <th class="text-right font-weight-bold">Precio Unit.</th>
@@ -147,6 +166,13 @@
               </thead>
               <tbody>
                 <tr v-for="(linea, index) in lineasEditadas" :key="index">
+                  <td v-if="puedeDescuentoLinea" style="padding:0 4px">
+                    <v-checkbox
+                      :model-value="seleccionados.has(linea.CODARTICULO)"
+                      @update:model-value="val => val ? seleccionados.add(linea.CODARTICULO) : seleccionados.delete(linea.CODARTICULO)"
+                      hide-details density="compact"
+                    />
+                  </td>
                   <td class="py-3">
                     <div class="font-weight-bold text-on-surface">{{ linea.DESCRIPCION || 'Sin descripción' }}</div>
                     <div class="text-caption text-grey">Código: {{ linea.CODARTICULO }}</div>
@@ -367,6 +393,68 @@
       </v-dialog>
     </template>
 
+    <!-- Modal descuentos masivos -->
+    <v-dialog v-model="modalBulk" max-width="460">
+      <v-card class="rounded-xl overflow-hidden">
+        <div class="bg-orange-darken-2 pa-5 d-flex align-center gap-3">
+          <v-icon color="white" size="28">mdi-sale</v-icon>
+          <div>
+            <div class="text-white font-weight-black text-h6">Descuentos masivos</div>
+            <div class="text-orange-lighten-4 text-body-2">{{ seleccionados.size }} artículo{{ seleccionados.size > 1 ? 's' : '' }} seleccionado{{ seleccionados.size > 1 ? 's' : '' }}</div>
+          </div>
+        </div>
+        <v-card-text class="pa-6">
+          <p class="text-body-2 text-grey-darken-1 mb-5">
+            Ingresá el porcentaje que querés aplicar. Podés completar uno o ambos.
+            El valor sobreescribirá el descuento existente en cada artículo seleccionado.
+          </p>
+          <v-row dense>
+            <v-col cols="6">
+              <v-text-field
+                v-model.number="bulkD3"
+                label="D3 (%)"
+                type="number"
+                variant="outlined"
+                prefix="D3"
+                hide-details="auto"
+                min="0" max="99"
+                hint="Primer descuento comercial"
+                persistent-hint
+              />
+            </v-col>
+            <v-col cols="6">
+              <v-text-field
+                v-model.number="bulkD4"
+                label="D4 (%)"
+                type="number"
+                variant="outlined"
+                prefix="D4"
+                hide-details="auto"
+                min="0" max="99"
+                hint="Segundo descuento comercial"
+                persistent-hint
+              />
+            </v-col>
+          </v-row>
+
+          <v-alert v-if="bulkD3 > 0 || bulkD4 > 0" type="info" variant="tonal" density="compact" class="mt-5 text-body-2">
+            Se aplicará
+            <strong v-if="bulkD3 > 0">D3: {{ bulkD3 }}%</strong>
+            <span v-if="bulkD3 > 0 && bulkD4 > 0"> y </span>
+            <strong v-if="bulkD4 > 0">D4: {{ bulkD4 }}%</strong>
+            a los {{ seleccionados.size }} artículos seleccionados.
+          </v-alert>
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0 gap-2">
+          <v-btn variant="text" color="grey" @click="modalBulk = false">Cancelar</v-btn>
+          <v-spacer />
+          <v-btn color="orange-darken-2" variant="flat" rounded="pill" prepend-icon="mdi-check" @click="aplicarBulkDescuentos">
+            Aplicar descuentos
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-snackbar v-model="notificacion.show" :color="notificacion.color" rounded="pill">
       {{ notificacion.text }}
     </v-snackbar>
@@ -460,6 +548,38 @@ const modalDescuento    = ref({ mostrar: false, nuevoValor: 0, linea: null as an
 const confirmarEliminar = ref({ mostrar: false, index: -1, descripcion: '' });
 const modalCantidad     = ref({ mostrar: false, nuevaCantidad: 1, linea: null as any });
 
+const seleccionados      = ref(new Set<number>());
+const bulkD3             = ref<number>(0);
+const bulkD4             = ref<number>(0);
+const modalBulk          = ref(false);
+const todosSeleccionados = computed(() =>
+  lineasEditadas.value.length > 0 && lineasEditadas.value.every(l => seleccionados.value.has(l.CODARTICULO))
+);
+const algunosMarcados    = computed(() => seleccionados.value.size > 0);
+
+const toggleTodos = (val: boolean | null) => {
+  if (val) lineasEditadas.value.forEach(l => seleccionados.value.add(l.CODARTICULO));
+  else seleccionados.value.clear();
+};
+
+const aplicarBulkDescuentos = () => {
+  if (!bulkD3.value && !bulkD4.value) { lanzarNotificacion('Ingresá al menos un valor de descuento', 'warning'); return; }
+  let count = 0;
+  for (const linea of lineasEditadas.value) {
+    if (!seleccionados.value.has(linea.CODARTICULO)) continue;
+    if (!linea.PRECIOBRUTO) linea.PRECIOBRUTO = linea.PRECIOUNITARIO;
+    if (bulkD3.value > 0 && bulkD3.value < 100) linea.DESCUENTO3 = bulkD3.value;
+    if (bulkD4.value > 0 && bulkD4.value < 100) linea.DESCUENTO4 = bulkD4.value;
+    linea.PRECIOUNITARIO = calcularPrecioConDescuentos(linea);
+    count++;
+  }
+  lanzarNotificacion(`Descuentos aplicados a ${count} artículos`, 'success');
+  seleccionados.value.clear();
+  bulkD3.value = 0;
+  bulkD4.value = 0;
+  modalBulk.value = false;
+};
+
 const totalNuevo = computed(() =>
   lineasEditadas.value.reduce((acc, l) => acc + (l.PRECIOUNITARIO * l.PRODUCTCOUNT), 0)
 );
@@ -483,6 +603,7 @@ const cargarPedido = async (id: string) => {
       pedidoOriginal.value = res.data.data;
       lineasEditadas.value = JSON.parse(JSON.stringify(res.data.data.lineas));
       codVendedorEditado.value = res.data.data.CODVENDEDOR ?? null;
+      seleccionados.value.clear();
     } else {
       lanzarNotificacion('No se encontró el pedido', 'error');
     }

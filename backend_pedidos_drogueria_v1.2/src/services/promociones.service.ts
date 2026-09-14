@@ -534,17 +534,38 @@ export class PromocionesService {
         return { data: result.recordset, total: countResult.recordset[0].TOTAL };
     }
 
-    static async agregarArticuloAGrupo(idGrupo: number, codArticulo: number) {
+    static async buscarArticulos(q: string, limit = 15) {
+        const pool = await connectDb();
+        const filtro = `%${q.toUpperCase().replace(/ /g, '%')}%`;
+        const res = await pool.request()
+            .input('FILTRO', mssql.NVarChar, filtro)
+            .input('LIMIT', mssql.Int, Math.min(limit, 50))
+            .query(`
+                SELECT TOP (@LIMIT) A.CODARTICULO, A.REFPROVEEDOR,
+                    ISNULL(ACL.DESCRIPCIONLARGA, A.DESCRIPCION) AS DESCRIPCION
+                FROM ARTICULOS A WITH (NOLOCK)
+                LEFT JOIN ARTICULOSCAMPOSLIBRES ACL WITH (NOLOCK) ON ACL.CODARTICULO = A.CODARTICULO
+                WHERE A.TIPOARTICULO = 'A' AND A.DESCATALOGADO = 'F'
+                  AND (UPPER(ISNULL(ACL.DESCRIPCIONLARGA, A.DESCRIPCION)) LIKE @FILTRO
+                    OR UPPER(ISNULL(A.REFPROVEEDOR,'')) LIKE @FILTRO
+                    OR CAST(A.CODARTICULO AS NVARCHAR) LIKE @FILTRO)
+                ORDER BY ISNULL(ACL.DESCRIPCIONLARGA, A.DESCRIPCION)
+            `);
+        return res.recordset;
+    }
+
+    static async agregarArticuloAGrupo(idGrupo: number, codArticulo: number): Promise<{ insertado: boolean }> {
         const tipo = await this.getTipoGrupoArticulos(idGrupo);
         if (tipo === 'CONDICION') throw new Error('Grupo dinámico: edita las condiciones, no se agregan artículos manualmente.');
         const pool = await connectDb();
-        await pool.request()
+        const res = await pool.request()
             .input('IDGRUPO', mssql.Int, idGrupo)
             .input('CODARTICULO', mssql.Int, codArticulo)
             .query(`
                 IF NOT EXISTS (SELECT 1 FROM APP_GRUPOS_ARTICULOS_DETALLE WHERE IDGRUPO = @IDGRUPO AND CODARTICULO = @CODARTICULO)
-                INSERT INTO APP_GRUPOS_ARTICULOS_DETALLE (IDGRUPO, CODARTICULO) VALUES (@IDGRUPO, @CODARTICULO)
+                    INSERT INTO APP_GRUPOS_ARTICULOS_DETALLE (IDGRUPO, CODARTICULO) OUTPUT INSERTED.ID VALUES (@IDGRUPO, @CODARTICULO)
             `);
+        return { insertado: res.recordset.length > 0 };
     }
 
     static async importarArticulosExcel(idGrupo: number, buffer: Buffer): Promise<{ insertados: number; noEncontrados: string[]; yaEnGrupo: string[] }> {
