@@ -326,7 +326,7 @@ export class PedidosServices {
                              clienteId?: string, codVendedor?: string, riesgo?: string, codruta?: string,
                              fechaDesde?: string, fechaHasta?: string, esPsicotropico?: boolean,
                              nombreCliente?: string, soloFacturado?: boolean, usuario?: string,
-                             nroFactura?: string) {
+                             nroFactura?: string, editadoPor?: string) {
         try {
             const isAll = Number(limit) === -1;
             let validPage = isAll ? 1 : Math.max(1, Number(page) || 1);
@@ -381,13 +381,14 @@ export class PedidosServices {
                 .input('SOLO_FACTURADO', mssql.Bit,           soloFacturado  ? 1 : null)
                 .input('USD_CODE',       mssql.Int,           usdCode)
                 .input('VED_CODE',       mssql.Int,           vedCode)
-                .input('USUARIO',        mssql.VarChar(100),  usuario       ? `%${usuario.toLowerCase()}%`       : null);
+                .input('USUARIO',        mssql.VarChar(100),  usuario       ? `%${usuario.toLowerCase()}%`       : null)
+                .input('EDITADO_POR',    mssql.VarChar(100),  editadoPor    ? `%${editadoPor.toLowerCase()}%`    : null);
             preIds.forEach((id, i) => req.input(`PRE${i}`, mssql.VarChar(50), id));
 
             const result = await req.query(`
                 SELECT
                     CP.ORDERID, CP.CLIENTEID, CP.FECHA, CP.ESTATUS, CP.CODVENDEDOR, CP.TOTALPRECIO,
-                    CP.OBSERVACIONES, CP.PROMO_NOMBRE, LG.USUARIO AS CREADO_POR,
+                    CP.OBSERVACIONES, CP.PROMO_NOMBRE, LG.USUARIO AS CREADO_POR, LE.EDITADO_POR,
                     FAC.FACTURADO, FAC.SERIE_FAC, FAC.NROFAC,
                     CL.NOMBRECLIENTE, ISNULL(CL.NOMBRECOMERCIAL, '') AS NOMBRECOMERCIAL, CL.CIF, ISNULL(CL.NIF20, '') AS NIF20, CL.DIRECCION1, ISNULL(CE.DIRECCION1, CL.DIRECCION1) AS DIRECCION_ENVIO,
                     ISNULL(CLC.ZONA, '') AS ZONA, ISNULL(RUT.DESCRIPCION, '') AS RUTA,
@@ -402,6 +403,7 @@ export class PedidosServices {
                     OUTER APPLY (SELECT TOP 1 ZONA FROM CLIENTESCAMPOSLIBRES WITH (NOLOCK) WHERE CODCLIENTE = CP.CLIENTEID) CLC
                     LEFT JOIN RUTAS RUT WITH (NOLOCK) ON RUT.CODRUTA = TRY_CAST(CLC.ZONA AS INT)
                     OUTER APPLY (SELECT TOP 1 USUARIO FROM ${esquema}.APP_PEDIDO_LOG WITH (NOLOCK) WHERE ORDERID = CP.ORDERID AND USUARIO IS NOT NULL ORDER BY FECHA ASC) LG
+                    OUTER APPLY (SELECT TOP 1 USUARIO AS EDITADO_POR FROM ${esquema}.APP_PEDIDO_LOG WITH (NOLOCK) WHERE ORDERID = CP.ORDERID AND EST_NUEVO = 'EDITADO' AND USUARIO IS NOT NULL ORDER BY FECHA DESC) LE
                     OUTER APPLY (
                         SELECT TOP 1 AVC.FACTURADO, AVC.NUMSERIEFAC AS SERIE_FAC, AVC.NUMFAC AS NROFAC
                         FROM PEDVENTACAB PVC WITH(NOLOCK)
@@ -435,6 +437,7 @@ export class PedidosServices {
                     AND (@PSICO        IS NULL OR (@PSICO = 1 AND CP.ORDERID LIKE '%P'))
                     AND (@NOMBRE_CLIENTE IS NULL OR LOWER(CL.NOMBRECLIENTE) LIKE @NOMBRE_CLIENTE)
                     AND (@USUARIO       IS NULL OR LOWER(ISNULL(LG.USUARIO, '')) LIKE @USUARIO OR LOWER(ISNULL(V.NOMVENDEDOR, '')) LIKE @USUARIO)
+                    AND (@EDITADO_POR   IS NULL OR LOWER(ISNULL(LE.EDITADO_POR, '')) LIKE @EDITADO_POR)
                     AND (@SOLO_FACTURADO IS NULL OR FAC.FACTURADO IS NOT NULL)
                     ${orderIdClause}
                 ORDER BY
@@ -454,7 +457,8 @@ export class PedidosServices {
                 .input('PSICO2',           mssql.Bit,           esPsicotropico ? 1 : null)
                 .input('NOMBRE_CLIENTE2',  mssql.NVarChar(200), nombreCliente ? `%${nombreCliente.toLowerCase()}%` : null)
                 .input('SOLO_FACTURADO2',  mssql.Bit,           soloFacturado  ? 1 : null)
-                .input('USUARIO2',         mssql.VarChar(100),  usuario       ? `%${usuario.toLowerCase()}%`       : null);
+                .input('USUARIO2',         mssql.VarChar(100),  usuario       ? `%${usuario.toLowerCase()}%`       : null)
+                .input('EDITADO_POR2',     mssql.VarChar(100),  editadoPor    ? `%${editadoPor.toLowerCase()}%`    : null);
             preIds.forEach((id, i) => countReq.input(`CPRE${i}`, mssql.VarChar(50), id));
             const countOrderIdClause = preIds.length
                 ? `AND CP.ORDERID IN (${preIds.map((_, i) => `@CPRE${i}`).join(',')})`
@@ -466,6 +470,7 @@ export class PedidosServices {
                 LEFT JOIN CLIENTES CL2 WITH (NOLOCK) ON CL2.CODCLIENTE = CP.CLIENTEID
                 OUTER APPLY (SELECT TOP 1 ZONA FROM CLIENTESCAMPOSLIBRES WITH (NOLOCK) WHERE CODCLIENTE = CP.CLIENTEID) CLC
                 OUTER APPLY (SELECT TOP 1 USUARIO FROM ${esquema}.APP_PEDIDO_LOG WITH (NOLOCK) WHERE ORDERID = CP.ORDERID AND USUARIO IS NOT NULL ORDER BY FECHA ASC) LG2
+                OUTER APPLY (SELECT TOP 1 USUARIO AS EDITADO_POR FROM ${esquema}.APP_PEDIDO_LOG WITH (NOLOCK) WHERE ORDERID = CP.ORDERID AND EST_NUEVO = 'EDITADO' AND USUARIO IS NOT NULL ORDER BY FECHA DESC) LE2
                 LEFT JOIN VENDEDORES V2 WITH (NOLOCK) ON V2.CODVENDEDOR = CP.CODVENDEDOR
                 LEFT JOIN (
                     SELECT DISTINCT RTRIM(LTRIM(PVC.SUPEDIDO)) AS SUPEDIDO
@@ -499,6 +504,7 @@ export class PedidosServices {
                     AND (@PSICO2        IS NULL OR (@PSICO2 = 1 AND CP.ORDERID LIKE '%P'))
                     AND (@NOMBRE_CLIENTE2 IS NULL OR LOWER(CL2.NOMBRECLIENTE) LIKE @NOMBRE_CLIENTE2)
                     AND (@USUARIO2       IS NULL OR LOWER(ISNULL(LG2.USUARIO, '')) LIKE @USUARIO2 OR LOWER(ISNULL(V2.NOMVENDEDOR, '')) LIKE @USUARIO2)
+                    AND (@EDITADO_POR2   IS NULL OR LOWER(ISNULL(LE2.EDITADO_POR, '')) LIKE @EDITADO_POR2)
                     AND (@SOLO_FACTURADO2 IS NULL OR PF.SUPEDIDO IS NOT NULL)
                     ${countOrderIdClause}
             `);

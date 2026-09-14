@@ -89,8 +89,12 @@
           clearable hide-details prepend-inner-icon="mdi-account-search" @update:model-value="aplicarFiltros" />
       </v-col>
       <v-col cols="12" sm="6" md="2">
-        <v-text-field v-model="filtros.usuario" label="Usuario" density="compact" variant="outlined"
+        <v-text-field v-model="filtros.usuario" label="Montado por" density="compact" variant="outlined"
           clearable hide-details prepend-inner-icon="mdi-account-circle" @update:model-value="aplicarFiltros" />
+      </v-col>
+      <v-col cols="12" sm="6" md="2">
+        <v-text-field v-model="filtros.editadoPor" label="Editado por" density="compact" variant="outlined"
+          clearable hide-details prepend-inner-icon="mdi-account-edit" @update:model-value="aplicarFiltros" />
       </v-col>
       <v-col cols="12" sm="6" md="2">
         <v-text-field v-model="filtros.codVendedor" label="Código Vendedor" density="compact" variant="outlined"
@@ -247,6 +251,11 @@
               <v-chip v-if="item.CREADO_POR === 'FTP'" size="x-small" color="orange" variant="tonal" label>FTP</v-chip>
               <v-chip v-else-if="item.CREADO_POR && item.CREADO_POR.toLowerCase().includes('ecommerce') || item.CREADO_POR && item.CREADO_POR.toLowerCase().includes('icompras')" size="x-small" color="purple" variant="tonal" label>ICOMPRAS</v-chip>
               <span v-else-if="item.CREADO_POR" class="text-caption">{{ item.CREADO_POR }}</span>
+              <span v-else class="text-grey text-caption">—</span>
+            </template>
+
+            <template v-slot:item.editado_por_col="{ item }">
+              <span v-if="item.EDITADO_POR" class="text-caption">{{ item.EDITADO_POR }}</span>
               <span v-else class="text-grey text-caption">—</span>
             </template>
 
@@ -897,6 +906,7 @@ const headers = [
   { title: 'CLIENTE',     key: 'cliente_col',    align: 'start'  as const, sortable: false },
   { title: 'VENDEDOR',    key: 'vendedor_col',  align: 'start'  as const, sortable: false },
   { title: 'USUARIO APP', key: 'creado_por_col', align: 'start' as const, sortable: false },
+  { title: 'EDITADO POR', key: 'editado_por_col', align: 'start' as const, sortable: false },
   { title: 'RIESGO',      key: 'RIESGO',        align: 'center' as const, sortable: false },
   { title: 'ESTADO ACTUAL', key: 'ESTATUS',     align: 'center' as const, sortable: false },
   { title: 'UNIDADES',    key: 'TOTALUNIDADES', align: 'center' as const, sortable: false },
@@ -910,7 +920,7 @@ const estatusOpciones = [
 ];
 
 const zonas  = ref<{ zona: string; display: string }[]>([]);
-const filtros = ref({ buscarId: '', clienteId: '', codVendedor: '', estatus: [] as string[], riesgo: null as string | null, codruta: null as string | null, fechaDesde: null as string | null, fechaHasta: null as string | null, esPsicotropico: false, soloIcompras: false, soloFacturado: false, nombreCliente: '', usuario: '', nroFactura: '' });
+const filtros = ref({ buscarId: '', clienteId: '', codVendedor: '', estatus: [] as string[], riesgo: null as string | null, codruta: null as string | null, fechaDesde: null as string | null, fechaHasta: null as string | null, esPsicotropico: false, soloIcompras: false, soloFacturado: false, nombreCliente: '', usuario: '', nroFactura: '', editadoPor: '' });
 
 let filtroTimer: ReturnType<typeof setTimeout> | null = null;
 const aplicarFiltros = () => {
@@ -936,6 +946,7 @@ const obtenerPedidos = async (page = 1, limit = 10) => {
     if (filtros.value.nombreCliente)  params.nombreCliente  = filtros.value.nombreCliente;
     if (filtros.value.usuario)        params.usuario        = filtros.value.usuario;
     if (filtros.value.nroFactura)     params.nroFactura     = filtros.value.nroFactura;
+    if (filtros.value.editadoPor)     params.editadoPor     = filtros.value.editadoPor;
     const response = await axios.get(`${import.meta.env.VITE_API_URL}/pedidos`, { params });
     if (response.data.success) {
       pedidos.value = response.data.data;
