@@ -741,7 +741,8 @@ const MODULOS = [
   { bit: 65536,  codigo: 'RUTERO_ADMIN',   nombre: 'Rutero Admin',          icono: 'mdi-truck-check'       },
   { bit: 131072, codigo: 'FTP_USUARIOS',  nombre: 'Gestión Usuarios FTP',  icono: 'mdi-account-network'   },
   { bit: 262144, codigo: 'IMS_REPORTE',  nombre: 'Reporte IMS',           icono: 'mdi-file-excel'         },
-  { bit: 524288, codigo: 'RECHEQUEO',   nombre: 'Compras',  icono: 'mdi-clipboard-check'    },
+  { bit: 524288,  codigo: 'RECHEQUEO',   nombre: 'Compras',           icono: 'mdi-clipboard-check'    },
+  { bit: 1048576, codigo: 'DTO_ARTICULO', nombre: 'Desc. por Artículo', icono: 'mdi-label-percent-outline' },
 ];
 
 const headers = [

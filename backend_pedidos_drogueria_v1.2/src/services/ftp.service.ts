@@ -321,7 +321,8 @@ export class FtpService {
                         ISNULL(A.NODTOAPLICABLE,0) AS NODTO,
                         CASE WHEN A.SECCION = @dptoPsico THEN 1 ELSE 0 END AS ES_PSICO,
                         ISNULL(PCL.DIASPROTECCION,0) AS DIAS_PROT,
-                        ISNULL(ACL.CODPROVEEDORICG, 0) AS CODPROVEEDORICG
+                        ISNULL(ACL.CODPROVEEDORICG, 0) AS CODPROVEEDORICG,
+                        ISNULL(ACL.DTOARTICULO, 0) AS DTOARTICULO
                     FROM ARTICULOS A WITH(NOLOCK)
                     LEFT JOIN ARTICULOSCAMPOSLIBRES ACL WITH(NOLOCK) ON ACL.CODARTICULO = A.CODARTICULO
                     LEFT JOIN PROVEEDORESCAMPOSLIBRES PCL WITH(NOLOCK) ON PCL.CODPROVEEDOR = ACL.CODPROVEEDORICG
@@ -334,10 +335,10 @@ export class FtpService {
         const preciosSistema = new Map<number, number>(preciosRes.recordset.map((r: any) => [r.CODARTICULO, Number(r.PNETO)]));
         const d1Cliente  = Number(dtoCliRes.recordset[0]?.D1 ?? 0);
         const cclD3      = Number(dtoCliRes.recordset[0]?.D3 ?? 0);
-        const artInfoMap = new Map<number, { nodto: boolean; esPsico: boolean; diasProt: number; codproveedoricg: number }>(
+        const artInfoMap = new Map<number, { nodto: boolean; esPsico: boolean; diasProt: number; codproveedoricg: number; dtoArticulo: number }>(
             artInfoRes.recordset.map((r: any) => [
                 Number(r.CODARTICULO),
-                { nodto: !!r.NODTO, esPsico: !!r.ES_PSICO, diasProt: Number(r.DIAS_PROT), codproveedoricg: Number(r.CODPROVEEDORICG) }
+                { nodto: !!r.NODTO, esPsico: !!r.ES_PSICO, diasProt: Number(r.DIAS_PROT), codproveedoricg: Number(r.CODPROVEEDORICG), dtoArticulo: Number(r.DTOARTICULO) }
             ])
         );
         const artPEMap = new Map<number, { promoId: number; diasMontofactura: number }>();
@@ -401,9 +402,10 @@ export class FtpService {
             const pneto = preciosSistema.get(l.codarticulo) ?? 0;
             const nodto = artInfoMap.get(l.codarticulo)?.nodto ?? false;
             const promo = promoMap.get(l.codarticulo) ?? { d2: 0, d3: 0 };
+            const dtoArticulo = artInfoMap.get(l.codarticulo)?.dtoArticulo ?? 0;
             const d1 = nodto ? 0 : d1Cliente;
             const d2 = nodto ? 0 : promo.d2;
-            const d3 = nodto ? 0 : (cclD3 > 0 ? cclD3 : promo.d3);
+            const d3 = nodto ? 0 : (dtoArticulo > 0 ? dtoArticulo : cclD3 > 0 ? cclD3 : promo.d3);
             const precioFinal = pneto * (1 - d1/100) * (1 - d2/100) * (1 - d3/100);
             l.precioUnit  = pneto;
             l.precioTotal = precioFinal * l.cantidad;

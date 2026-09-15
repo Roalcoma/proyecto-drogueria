@@ -32,7 +32,8 @@ export const MODULOS_SISTEMA = [
     { bit: 32768,  codigo: 'METAS_VENDEDOR',   nombre: 'Metas de Vendedores', ruta: '/metas-vendedor', icono: 'mdi-target',            orden: 16 },
     { bit: 65536,  codigo: 'RUTERO_ADMIN',     nombre: 'Rutero Admin',        ruta: '',                icono: 'mdi-truck-check',       orden: 17 },
     { bit: 262144, codigo: 'IMS_REPORTE',      nombre: 'Reporte IMS',         ruta: '/ims-reporte',    icono: 'mdi-file-excel',        orden: 18 },
-    { bit: 524288, codigo: 'RECHEQUEO',        nombre: 'Compras',              ruta: '/rechequeo',     icono: 'mdi-clipboard-check',   orden: 19 },
+    { bit: 524288,  codigo: 'RECHEQUEO',          nombre: 'Compras',                    ruta: '/rechequeo',           icono: 'mdi-clipboard-check',       orden: 19 },
+    { bit: 1048576, codigo: 'DTO_ARTICULO',       nombre: 'Desc. por Artículo',         ruta: '/descuento-articulo',  icono: 'mdi-label-percent-outline', orden: 20 },
 ];
 
 export interface ModuloPermiso {

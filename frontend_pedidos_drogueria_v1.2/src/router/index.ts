@@ -17,6 +17,7 @@ import FtpServidorView       from '../pages/FtpServidorView.vue';
 import MetasVendedorView     from '../pages/MetasVendedorView.vue';
 import ImsReporteView        from '../pages/ImsReporteView.vue';
 import RechequeoView         from '../pages/RechequeoView.vue';
+import DescuentoArticuloView from '../pages/DescuentoArticuloView.vue';
 
 
 const router = createRouter({
@@ -39,6 +40,7 @@ const router = createRouter({
     { path: '/metas-vendedor',      name: 'metas-vendedor',      component: MetasVendedorView,     meta: { ruta: '/metas-vendedor' } },
     { path: '/ims-reporte',         name: 'ims-reporte',         component: ImsReporteView,        meta: { ruta: '/ims-reporte' } },
     { path: '/rechequeo',           name: 'rechequeo',           component: RechequeoView,         meta: { ruta: '/rechequeo' } },
+    { path: '/descuento-articulo',  name: 'descuento-articulo',  component: DescuentoArticuloView, meta: { ruta: '/descuento-articulo' } },
   ]
 });
 
