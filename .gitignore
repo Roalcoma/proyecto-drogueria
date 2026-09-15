@@ -40,3 +40,6 @@ __pycache__/
 impresion_facturas/settings.cfg
 impresion_facturas/build/
 impresion_facturas/dist/
+
+# Knowledge graph (local only)
+graphify-out/
