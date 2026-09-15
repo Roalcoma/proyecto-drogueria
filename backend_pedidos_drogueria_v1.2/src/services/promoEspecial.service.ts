@@ -1,5 +1,11 @@
 import { mssql, connectDb } from '../db/db.conection';
 
+// Devuelve YYYY-MM-DD en hora local sin depender de ICU/locale
+const localHoy = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+};
+
 const CAB  = 'APP_PROMO_ESPECIAL';
 const PROV = 'APP_PROMO_ESPECIAL_PROV';
 const PED  = 'APP_PROMO_ESPECIAL_PEDIDOS';
@@ -64,19 +70,22 @@ export class PromoEspecialService {
         provRes.recordset.forEach((r: any) => {
             (provPorPromo[r.IDPROMO] ??= []).push({ CODPROVEEDOR: r.CODPROVEEDOR, NOMPROVEEDOR: r.NOMPROVEEDOR });
         });
-        const hoy = new Date();
+        const hoy  = localHoy();
+        const toDS = (v: any) => (v instanceof Date ? v.toISOString() : String(v)).slice(0, 10);
         return cabRes.recordset.map((r: any) => ({
             ...r,
             proveedores: provPorPromo[r.ID] ?? [],
-            VIGENTE_HOY: r.ACTIVO && new Date(r.FECHAINICIO) <= hoy && new Date(r.FECHAFIN) >= hoy,
+            VIGENTE_HOY: r.ACTIVO
+                && toDS(r.FECHAINICIO) <= hoy
+                && toDS(r.FECHAFIN)   >= hoy,
         }));
     }
 
     static async getVigentes() {
         const pool = await connectDb();
-        const hoy = new Date().toISOString().slice(0, 10);
+        const hoy = localHoy();
         const cabRes = await pool.request()
-            .input('HOY', mssql.Date, hoy)
+            .input('HOY', mssql.VarChar(10), hoy)
             .query(`
                 SELECT * FROM ${CAB}
                 WHERE FECHAINICIO <= @HOY AND FECHAFIN >= @HOY
@@ -107,8 +116,8 @@ export class PromoEspecialService {
         const res = await pool.request()
             .input('NOMBRE', mssql.NVarChar(150), data.nombre)
             .input('DMF',    mssql.Int,           data.diasMontofactura)
-            .input('FI',     mssql.Date,           data.fechaInicio)
-            .input('FF',     mssql.Date,           data.fechaFin)
+            .input('FI',     mssql.VarChar(10),    data.fechaInicio)
+            .input('FF',     mssql.VarChar(10),    data.fechaFin)
             .query(`INSERT INTO ${CAB} (NOMBRE, DIASMONTOFACTURA, FECHAINICIO, FECHAFIN) OUTPUT INSERTED.ID VALUES (@NOMBRE, @DMF, @FI, @FF)`);
         const id = res.recordset[0].ID;
         for (const p of data.proveedores) {
@@ -134,8 +143,8 @@ export class PromoEspecialService {
             .input('ID',     mssql.Int,          id)
             .input('NOMBRE', mssql.NVarChar(150), data.nombre)
             .input('DMF',    mssql.Int,           data.diasMontofactura)
-            .input('FI',     mssql.Date,          data.fechaInicio)
-            .input('FF',     mssql.Date,          data.fechaFin)
+            .input('FI',     mssql.VarChar(10),    data.fechaInicio)
+            .input('FF',     mssql.VarChar(10),    data.fechaFin)
             .input('ACTIVO', mssql.Bit,           data.activo ? 1 : 0)
             .query(`UPDATE ${CAB} SET NOMBRE=@NOMBRE, DIASMONTOFACTURA=@DMF, FECHAINICIO=@FI, FECHAFIN=@FF, ACTIVO=@ACTIVO WHERE ID=@ID`);
         await pool.request().input('ID', mssql.Int, id).query(`DELETE FROM ${PROV} WHERE IDPROMO=@ID`);

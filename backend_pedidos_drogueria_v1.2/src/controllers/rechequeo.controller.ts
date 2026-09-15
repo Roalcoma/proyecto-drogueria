@@ -95,20 +95,24 @@ export class RechequeoController {
         const page  = Math.max(1, parseInt(req.query['page']  as string) || 1);
         const limit = Math.min(200, Math.max(1, parseInt(req.query['limit'] as string) || 50));
         const offset = (page - 1) * limit;
-        const { desde, hasta, proveedor } = req.query as Record<string, string>;
+        const { desde, hasta, proveedor, estatus, numalbaran } = req.query as Record<string, string>;
 
-        const conditions: string[] = [];
-        if (desde)    conditions.push("CONVERT(DATE, CAB.FECHAALBARAN) >= @DESDE");
-        if (hasta)    conditions.push("CONVERT(DATE, CAB.FECHAALBARAN) <= @HASTA");
-        if (proveedor) conditions.push("P.NOMPROVEEDOR LIKE @PROV");
-        const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+        const conditions: string[] = ["CAB.NUMSERIE = 'ZACA'"];
+        if (desde)      conditions.push("CONVERT(DATE, CAB.FECHAALBARAN) >= @DESDE");
+        if (hasta)      conditions.push("CONVERT(DATE, CAB.FECHAALBARAN) <= @HASTA");
+        if (proveedor)  conditions.push("P.NOMPROVEEDOR LIKE @PROV");
+        if (estatus)    conditions.push("CAST(CAB.IDESTADO AS VARCHAR(50)) = @ESTATUS");
+        if (numalbaran) conditions.push("CAB.NUMALBARAN = @NUMALBARAN");
+        const where = 'WHERE ' + conditions.join(' AND ');
 
         const buildReq = async () => {
             const pool = await connectDb();
             const r = pool.request();
-            if (desde)    r.input('DESDE', mssql.VarChar(10),   desde);
-            if (hasta)    r.input('HASTA', mssql.VarChar(10),   hasta);
-            if (proveedor) r.input('PROV', mssql.NVarChar(100), `%${proveedor}%`);
+            if (desde)      r.input('DESDE',     mssql.VarChar(10),   desde);
+            if (hasta)      r.input('HASTA',     mssql.VarChar(10),   hasta);
+            if (proveedor)  r.input('PROV',      mssql.NVarChar(100), `%${proveedor}%`);
+            if (estatus)    r.input('ESTATUS',   mssql.NVarChar(50),  estatus);
+            if (numalbaran) r.input('NUMALBARAN', mssql.Int,           parseInt(numalbaran));
             return r;
         };
 

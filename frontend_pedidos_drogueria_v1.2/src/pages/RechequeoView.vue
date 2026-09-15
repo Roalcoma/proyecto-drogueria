@@ -22,15 +22,22 @@
             <!-- Panel izquierdo: filtros + lista -->
             <v-col cols="12" md="4" lg="3" style="height:100%;display:flex;flex-direction:column">
               <v-card rounded="xl" elevation="2" style="flex:1;display:flex;flex-direction:column;overflow:hidden">
-                <div class="pa-4 pb-2">
-                  <span class="text-subtitle-2 font-weight-bold">Filtros</span>
+                <div class="pa-4 pb-2 d-flex align-center gap-2">
+                  <v-icon color="primary" size="18">mdi-filter-outline</v-icon>
+                  <span class="text-subtitle-2 font-weight-bold">Albaranes ZACA</span>
+                  <v-chip size="x-small" color="primary" variant="tonal" class="ml-auto">{{ albTotal }}</v-chip>
                 </div>
-                <div class="px-4 pb-2">
-                  <v-text-field v-model="albFiltros.desde" type="date" label="Desde" variant="outlined" density="compact" hide-details class="mb-2" />
-                  <v-text-field v-model="albFiltros.hasta" type="date" label="Hasta" variant="outlined" density="compact" hide-details class="mb-2" />
-                  <v-text-field v-model="albFiltros.proveedor" label="Proveedor" variant="outlined" density="compact" hide-details clearable class="mb-2" @keyup.enter="buscarAlbaranes" />
-                  <v-select v-model="albFiltros.estatus" :items="estatusOpts" label="Estatus" variant="outlined" density="compact" hide-details clearable class="mb-2" />
-                  <v-btn block color="primary" variant="elevated" :loading="cargandoAlb" @click="buscarAlbaranes">Buscar</v-btn>
+                <v-divider />
+                <div class="px-3 pt-3 pb-2">
+                  <v-text-field v-model="albFiltros.numalbaran" label="N° Albarán" variant="outlined" density="compact"
+                    hide-details clearable prepend-inner-icon="mdi-magnify" class="mb-2"
+                    @keyup.enter="buscarAlbaranes" type="number" />
+                  <v-row dense class="mb-2">
+                    <v-col><v-text-field v-model="albFiltros.desde" type="date" label="Desde" variant="outlined" density="compact" hide-details /></v-col>
+                    <v-col><v-text-field v-model="albFiltros.hasta" type="date" label="Hasta" variant="outlined" density="compact" hide-details /></v-col>
+                  </v-row>
+                  <v-text-field v-model="albFiltros.proveedor" label="Proveedor" variant="outlined" density="compact" hide-details clearable prepend-inner-icon="mdi-domain" class="mb-2" @keyup.enter="buscarAlbaranes" />
+                  <v-btn block color="primary" variant="elevated" :loading="cargandoAlb" @click="buscarAlbaranes" prepend-icon="mdi-magnify">Buscar</v-btn>
                 </div>
 
                 <v-divider />
@@ -50,21 +57,14 @@
                     @click="seleccionarAlbaran(alb)"
                     class="mb-1"
                   >
-                    <v-list-item-title class="text-body-2 font-weight-medium">
-                      {{ alb.NUMSERIE }}-{{ String(alb.NUMALBARAN).padStart(8,'0') }}
+                    <v-list-item-title class="text-body-2 font-weight-bold">
+                      ZACA-{{ Number(alb.NUMALBARAN) }}
                     </v-list-item-title>
-                    <v-list-item-subtitle class="text-caption text-truncate">
+                    <v-list-item-subtitle class="text-caption text-truncate" style="max-width:140px">
                       {{ alb.NOMPROVEEDOR || alb.CODPROVEEDOR }}
                     </v-list-item-subtitle>
                     <template #append>
-                      <div class="d-flex flex-column align-end gap-1">
-                        <v-chip
-                          size="x-small"
-                          :color="alb.ESTATUS === 'CONFIRMADA' ? 'success' : alb.ESTATUS === 'ANULADA' ? 'error' : 'warning'"
-                          variant="tonal"
-                        >{{ alb.ESTATUS }}</v-chip>
-                        <span class="text-caption text-medium-emphasis">{{ alb.FECHA }}</span>
-                      </div>
+                      <span class="text-caption text-medium-emphasis">{{ alb.FECHA }}</span>
                     </template>
                   </v-list-item>
 
@@ -232,7 +232,7 @@
               <v-card rounded="xl" elevation="2" style="flex:1;display:flex;flex-direction:column;overflow:hidden">
                 <v-card-title class="d-flex align-center gap-2 pa-4 pb-2">
                   <v-icon color="primary">mdi-clipboard-list-outline</v-icon>
-                  <span class="text-subtitle-1 font-weight-bold">Rechequeo de Compras</span>
+                  <span class="text-subtitle-1 font-weight-bold">Compras</span>
                 </v-card-title>
                 <v-divider />
 
@@ -626,7 +626,7 @@ onMounted(async () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const estatusOpts  = ['CONFIRMADA', 'PENDIENTE', 'ANULADA', 'EN PROCESO'];
-const albFiltros   = ref({ desde: '', hasta: '', proveedor: '', estatus: '' });
+const albFiltros   = ref({ desde: '', hasta: '', proveedor: '', estatus: '', numalbaran: '' });
 const albaranes    = ref<any[]>([]);
 const albTotal     = ref(0);
 const albPage      = ref(1);
@@ -672,10 +672,11 @@ async function buscarAlbaranes() {
   cargandoAlb.value = true;
   try {
     const params: Record<string, string> = { page: String(albPage.value), limit: '50' };
-    if (albFiltros.value.desde)    params['desde']    = albFiltros.value.desde;
-    if (albFiltros.value.hasta)    params['hasta']    = albFiltros.value.hasta;
-    if (albFiltros.value.proveedor) params['proveedor'] = albFiltros.value.proveedor;
-    if (albFiltros.value.estatus)  params['estatus']  = albFiltros.value.estatus;
+    if (albFiltros.value.desde)      params['desde']      = albFiltros.value.desde;
+    if (albFiltros.value.hasta)      params['hasta']      = albFiltros.value.hasta;
+    if (albFiltros.value.proveedor)  params['proveedor']  = albFiltros.value.proveedor;
+    if (albFiltros.value.estatus)    params['estatus']    = albFiltros.value.estatus;
+    if (albFiltros.value.numalbaran) params['numalbaran'] = albFiltros.value.numalbaran;
     const r = await axios.get(`${API}/rechequeo/albaranes`, { params });
     albaranes.value = r.data.data;
     albTotal.value  = r.data.total;

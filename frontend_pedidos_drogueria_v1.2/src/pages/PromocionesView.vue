@@ -40,7 +40,7 @@
               <v-chip v-if="item.VIGENTE_HOY" color="success" size="x-small" variant="flat" prepend-icon="mdi-check-circle">
                 Vigente hoy
               </v-chip>
-              <v-chip v-else-if="new Date(item.FECHAINICIO) > new Date()" color="blue" size="x-small" variant="flat" prepend-icon="mdi-clock-outline">
+              <v-chip v-else-if="(item.FECHAINICIO || '').slice(0,10) > new Date().toLocaleDateString('en-CA')" color="blue" size="x-small" variant="flat" prepend-icon="mdi-clock-outline">
                 Próxima
               </v-chip>
               <v-chip v-else color="warning" size="x-small" variant="flat" prepend-icon="mdi-calendar-remove">
@@ -70,7 +70,7 @@
             </template>
             <template v-slot:item.ACTIVO="{ item }">
               <v-chip v-if="item.VIGENTE_HOY" color="success" size="x-small" variant="flat" prepend-icon="mdi-check-circle">Vigente hoy</v-chip>
-              <v-chip v-else-if="item.ACTIVO && new Date(item.FECHAINICIO) > new Date()" color="blue" size="x-small" variant="flat" prepend-icon="mdi-clock-outline">Próxima</v-chip>
+              <v-chip v-else-if="item.ACTIVO && (item.FECHAINICIO || '').slice(0,10) > new Date().toLocaleDateString('en-CA')" color="blue" size="x-small" variant="flat" prepend-icon="mdi-clock-outline">Próxima</v-chip>
               <v-chip v-else-if="!item.ACTIVO" color="grey" size="x-small" variant="flat">Inactiva</v-chip>
               <v-chip v-else color="warning" size="x-small" variant="flat" prepend-icon="mdi-calendar-remove">Expirada</v-chip>
             </template>
