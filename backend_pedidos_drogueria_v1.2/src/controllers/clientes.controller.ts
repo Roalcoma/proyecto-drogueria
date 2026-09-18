@@ -137,4 +137,17 @@ export class ClientesController {
             })
         }
     }
+
+    static async getEstadoCuenta(req: Request, res: Response): Promise<void> {
+        try {
+            const codcliente  = Number(req.query['codcliente']  ?? 0);
+            const codvendedor = Number(req.query['codvendedor'] ?? 0);
+            const zona  = String(req.query['zona']  || '%');
+            const serie = String(req.query['serie'] || '%');
+            const data = await ClientesServices.getEstadoCuenta(codcliente, codvendedor, zona, serie);
+            res.json({ success: true, data });
+        } catch (error) {
+            res.status(500).json({ success: false, message: String(error) });
+        }
+    }
 }

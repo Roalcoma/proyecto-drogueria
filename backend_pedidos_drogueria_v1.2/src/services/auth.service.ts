@@ -30,10 +30,13 @@ export const MODULOS_SISTEMA = [
     { bit: 8192,  codigo: 'FTP_PEDIDOS',  nombre: 'Pedidos FTP',   ruta: '/ftp-pedidos',   icono: 'mdi-folder-network',  orden: 14 },
     { bit: 16384, codigo: 'FTP_SERVIDOR',     nombre: 'Servidor FTP',      ruta: '/ftp-servidor',     icono: 'mdi-server-network',    orden: 15 },
     { bit: 32768,  codigo: 'METAS_VENDEDOR',   nombre: 'Metas de Vendedores', ruta: '/metas-vendedor', icono: 'mdi-target',            orden: 16 },
-    { bit: 65536,  codigo: 'RUTERO_ADMIN',     nombre: 'Rutero Admin',        ruta: '',                icono: 'mdi-truck-check',       orden: 17 },
-    { bit: 262144, codigo: 'IMS_REPORTE',      nombre: 'Reporte IMS',         ruta: '/ims-reporte',    icono: 'mdi-file-excel',        orden: 18 },
-    { bit: 524288,  codigo: 'RECHEQUEO',          nombre: 'Compras',                    ruta: '/rechequeo',           icono: 'mdi-clipboard-check',       orden: 19 },
-    { bit: 1048576, codigo: 'DTO_ARTICULO',       nombre: 'Desc. por Artículo',         ruta: '/descuento-articulo',  icono: 'mdi-label-percent-outline', orden: 20 },
+    { bit: 65536,  codigo: 'RUTERO_ADMIN',     nombre: 'Rutero Admin',           ruta: '',                icono: 'mdi-truck-check',          orden: 17 },
+    { bit: 131072, codigo: 'FTP_USUARIOS',    nombre: 'Gestión Usuarios FTP',   ruta: '',                icono: 'mdi-account-network',      orden: 18 },
+    { bit: 262144, codigo: 'IMS_REPORTE',     nombre: 'Reporte IMS',            ruta: '/ims-reporte',    icono: 'mdi-file-excel',           orden: 19 },
+    { bit: 524288,  codigo: 'RECHEQUEO',          nombre: 'Compras',                    ruta: '/rechequeo',           icono: 'mdi-clipboard-check',       orden: 20 },
+    { bit: 1048576, codigo: 'DTO_ARTICULO',       nombre: 'Desc. por Artículo',         ruta: '/descuento-articulo',  icono: 'mdi-label-percent-outline', orden: 21 },
+    { bit: 2097152, codigo: 'CANCELAR_SANIDAD',   nombre: 'Cancelar desde Sanidad',     ruta: '',                     icono: 'mdi-hospital-box-outline',  orden: 22 },
+    { bit: 4194304, codigo: 'REPORTERIA',         nombre: 'Reportería',                 ruta: '/reporteria',          icono: 'mdi-chart-bar',             orden: 23 },
 ];
 
 export interface ModuloPermiso {

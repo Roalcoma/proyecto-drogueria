@@ -22,6 +22,7 @@ import rechequeoRouter      from "./routers/rechequeo.router";
 import promoEspecialRouter      from "./routers/promoEspecial.router";
 import descuentoArticuloRouter  from "./routers/descuentoArticulo.router";
 import auditRouter          from "./routers/audit.router";
+import reportesRouter       from "./routers/reportes.router";
 import { ExchangeService }    from "./services/exchange.service";
 import { AuthService }        from "./services/auth.service";
 import { PromocionesService } from "./services/promociones.service";
@@ -126,6 +127,7 @@ app.use('/api/promo-especial',      promoEspecialRouter);
 app.use('/api/descuento-articulo',  descuentoArticuloRouter);
 app.use('/api/audit',         auditRouter);
 app.use('/seped',         sepedRouter);
+app.use('/api/reportes',  reportesRouter);
 
 // ── Frontend estático (SPA) ───────────────────────────────────────────────
 const frontendDist = process.env.FRONTEND_DIST

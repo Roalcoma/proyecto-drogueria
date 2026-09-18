@@ -462,6 +462,10 @@
         </v-card-text>
 
         <v-card-actions class="pa-4">
+          <v-btn color="teal-darken-1" variant="tonal" prepend-icon="mdi-file-document-outline" class="px-4"
+            @click="router.push({ path: '/gestion-clientes', query: { codcliente: modalRiesgo.data.CODCLIENTE, nombre: modalRiesgo.data.NOMBRECLIENTE, tab: 'cxc' } }); modalRiesgo.show = false">
+            Estado de Cuenta
+          </v-btn>
           <v-spacer></v-spacer>
           <v-btn variant="text" color="grey-darken-1" @click="modalRiesgo.show = false" class="px-6">Cerrar</v-btn>
           <v-btn color="primary" variant="elevated" rounded="pill" class="px-6" @click="modalRiesgo.show = false">Entendido</v-btn>

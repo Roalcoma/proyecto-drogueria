@@ -11,6 +11,7 @@
     <v-tabs v-model="tab" color="primary" class="mb-4">
       <v-tab value="clientes">Clientes</v-tab>
       <v-tab value="grupos">Grupos de Clientes</v-tab>
+      <v-tab value="cxc">Estado de Cuenta</v-tab>
     </v-tabs>
 
     <v-window v-model="tab">
@@ -18,7 +19,7 @@
       <v-window-item value="clientes">
         <v-card rounded="xl" elevation="2">
           <v-card-title class="pa-4 d-flex align-center gap-3 flex-wrap">
-            <v-text-field v-model="busquedaCliente" label="Buscar por nombre o CIF" prepend-inner-icon="mdi-magnify"
+            <v-text-field v-model="busquedaCliente" label="Buscar por nombre, CIF o código" prepend-inner-icon="mdi-magnify"
               variant="outlined" density="compact" hide-details clearable @keyup.enter="cargarClientes" style="max-width: 320px;" />
             <v-select v-model="filtroRuta" :items="rutas" item-title="label" item-value="codruta"
               label="Filtrar por ruta" variant="outlined" density="compact" hide-details clearable
@@ -80,6 +81,12 @@
                 Agregar
               </v-btn>
             </template>
+            <template v-slot:item.cxc="{ item }">
+              <v-btn size="x-small" variant="tonal" color="teal-darken-1" prepend-icon="mdi-file-document-outline"
+                @click="verEstadoCuenta(item)">
+                CXC
+              </v-btn>
+            </template>
           </v-data-table-server>
         </v-card>
       </v-window-item>
@@ -125,6 +132,96 @@
               <v-btn icon="mdi-delete" variant="text" size="small" color="error" @click="confirmarEliminarGrupo(item)" />
             </template>
           </v-data-table-server>
+        </v-card>
+      </v-window-item>
+      <!-- ===================== ESTADO DE CUENTA ===================== -->
+      <v-window-item value="cxc">
+        <v-card rounded="xl" elevation="2">
+          <v-card-title class="pa-4 d-flex align-center gap-3 flex-wrap">
+            <v-icon color="teal-darken-1" class="mr-1">mdi-file-document-outline</v-icon>
+            <span v-if="cxc.clienteNombre" class="font-weight-bold">{{ cxc.clienteNombre }}</span>
+            <span v-else class="text-medium-emphasis text-body-2">Todos los clientes</span>
+            <v-spacer />
+            <v-text-field v-model="cxc.filtroZona" label="Zona" variant="outlined" density="compact"
+              hide-details clearable placeholder="%" style="max-width:120px" />
+            <v-text-field v-model="cxc.filtroSerie" label="Serie" variant="outlined" density="compact"
+              hide-details clearable placeholder="%" style="max-width:120px" />
+            <v-btn color="teal-darken-1" variant="tonal" prepend-icon="mdi-refresh" :loading="cxc.cargando"
+              @click="cargarCxc()">Actualizar</v-btn>
+            <v-btn color="blue-grey" variant="text" prepend-icon="mdi-close"
+              @click="tab='clientes'; cxc.clienteId=0; cxc.clienteNombre=''">Limpiar</v-btn>
+          </v-card-title>
+          <v-divider />
+
+          <div v-if="cxc.cargando" class="pa-8 text-center">
+            <v-progress-circular indeterminate color="teal" />
+          </div>
+          <div v-else-if="!cxc.filas.length && !cxc.cargando && cxc.consultado" class="pa-6 text-center text-medium-emphasis">
+            <v-icon size="40" class="mb-2">mdi-check-circle-outline</v-icon>
+            Sin saldo pendiente.
+          </div>
+          <v-table v-else-if="cxc.filas.length" density="compact" fixed-header height="560px">
+            <thead>
+              <tr>
+                <th>Tipo</th>
+                <th>N° Doc</th>
+                <th>Emisión</th>
+                <th>Entregado</th>
+                <th>Vence</th>
+                <th class="text-right">DV</th>
+                <th>Indexado</th>
+                <th class="text-right">Días Prot.</th>
+                <th class="text-right">Prot. Rest.</th>
+                <th class="text-right">Monto Neto USD</th>
+                <th class="text-right">Saldo USD</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(f, i) in cxc.filas" :key="i"
+                :class="f.TIPO === 'ANTICIPO' ? 'bg-green-lighten-5' : (f.DV > 0 ? 'bg-red-lighten-5' : '')">
+                <td>
+                  <v-chip size="x-small" variant="flat"
+                    :color="f.TIPO==='ANTICIPO' ? 'success' : f.TIPO==='NC' ? 'orange' : f.TIPO==='ND' ? 'deep-orange' : 'blue-darken-2'">
+                    {{ f.TIPO }}
+                  </v-chip>
+                </td>
+                <td class="font-weight-medium">{{ f.NUMFACTURA }}</td>
+                <td class="text-caption">{{ f.FECHA_EMISION ? new Date(f.FECHA_EMISION).toLocaleDateString('es-PY') : '—' }}</td>
+                <td class="text-caption">{{ f.FECHA_ENTREGADO ? new Date(f.FECHA_ENTREGADO).toLocaleDateString('es-PY') : '—' }}</td>
+                <td class="text-caption">{{ f.VENCE ? new Date(f.VENCE).toLocaleDateString('es-PY') : '—' }}</td>
+                <td class="text-right font-weight-bold" :class="f.DV > 0 ? 'text-red-darken-2' : ''">
+                  {{ f.DV ?? '—' }}
+                </td>
+                <td>
+                  <v-chip v-if="f.INDEXADO" size="x-small" variant="tonal"
+                    :color="f.INDEXADO?.trim() === 'SI' ? 'blue-darken-1' : 'grey'">
+                    {{ f.INDEXADO?.trim() }}
+                  </v-chip>
+                  <span v-else class="text-grey text-caption">—</span>
+                </td>
+                <td class="text-right text-caption">{{ f.DIAS_PROTECCION ?? '—' }}</td>
+                <td class="text-right text-caption"
+                  :class="f.DIAS_PROTECCION_RESTANTES > 0 ? 'text-orange-darken-2 font-weight-bold' : ''">
+                  {{ f.DIAS_PROTECCION_RESTANTES ?? '—' }}
+                </td>
+                <td class="text-right text-caption">{{ f.MONTO_NETO_USD != null ? Number(f.MONTO_NETO_USD).toFixed(2) : '—' }}</td>
+                <td class="text-right font-weight-medium"
+                  :class="f.SALDO_USD < 0 ? 'text-success' : ''">
+                  {{ Number(f.SALDO_USD).toFixed(2) }}
+                </td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr class="bg-blue-grey-lighten-5">
+                <td colspan="9" class="font-weight-bold pa-2 text-right text-caption">TOTAL SALDO USD</td>
+                <td></td>
+                <td class="text-right font-weight-bold pa-2"
+                  :class="cxc.totalSaldo < 0 ? 'text-success' : 'text-blue-darken-3'">
+                  {{ cxc.totalSaldo.toFixed(2) }}
+                </td>
+              </tr>
+            </tfoot>
+          </v-table>
         </v-card>
       </v-window-item>
     </v-window>
@@ -467,10 +564,12 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
+import { useRoute } from 'vue-router';
 import axios from 'axios';
 import { usePageSize } from '../utils/usePageSize';
 
 const API = import.meta.env.VITE_API_URL;
+const route = useRoute();
 const tab = ref('clientes');
 const aviso = ref({ mostrar: false, texto: '', color: 'success' });
 const lanzarAviso = (texto: string, color = 'success') => aviso.value = { mostrar: true, texto, color };
@@ -491,9 +590,14 @@ const headersClientes = [
   { title: 'CIF', key: 'CIF' },
   { title: 'Teléfono', key: 'TELF' },
   { title: 'Ruta', key: 'ruta_display', sortable: false },
+  { title: 'Tipo', key: 'TIPO', sortable: false },
+  { title: 'SICM', key: 'SICM', sortable: false },
+  { title: 'Días Protec.', key: 'DIASPROTECCION', sortable: false },
+  { title: 'Cód. Vendedor', key: 'CODVENDEDOR', sortable: false },
   { title: 'Descuento D1', key: 'DESCUENTO', sortable: false },
   { title: 'Descuento D3 fijo', key: 'DESCUENTO_D3', sortable: false },
   { title: 'FTP', key: 'ftp', sortable: false },
+  { title: 'CXC', key: 'cxc', sortable: false },
 ];
 
 const cargarClientes = async () => {
@@ -868,9 +972,56 @@ const cargarRutas = async () => {
   } catch {}
 };
 
+// ---------- ESTADO DE CUENTA (CXC) ----------
+const cxc = ref({
+  cargando: false, consultado: false,
+  clienteId: 0, clienteNombre: '',
+  filtroZona: '', filtroSerie: '',
+  filas: [] as any[],
+  totalSaldo: 0,
+});
+
+const cargarCxc = async () => {
+  cxc.value.cargando = true;
+  cxc.value.consultado = false;
+  try {
+    const params: any = {
+      codcliente:  cxc.value.clienteId  || 0,
+      codvendedor: 0,
+      zona:  cxc.value.filtroZona  || '%',
+      serie: cxc.value.filtroSerie || '%',
+    };
+    const res = await axios.get(`${API}/clientes/estado-cuenta`, { params });
+    if (res.data.success) {
+      cxc.value.filas = res.data.data;
+      cxc.value.totalSaldo = res.data.data.reduce((s: number, f: any) => s + Number(f.SALDO_USD ?? 0), 0);
+    }
+  } catch (e: any) {
+    lanzarAviso(e?.response?.data?.message ?? 'Error al cargar estado de cuenta', 'error');
+  } finally {
+    cxc.value.cargando = false;
+    cxc.value.consultado = true;
+  }
+};
+
+const verEstadoCuenta = (item: any) => {
+  cxc.value.clienteId = item.CODCLIENTE;
+  cxc.value.clienteNombre = `${item.CODCLIENTE} — ${item.NOMBRECLIENTE}`;
+  cxc.value.filtroZona = '';
+  cxc.value.filtroSerie = '';
+  tab.value = 'cxc';
+  cargarCxc();
+};
+
 onMounted(() => {
   cargarCamposDisponibles();
   cargarFtpUsuarios();
   cargarRutas();
+  if (route.query.tab === 'cxc' && route.query.codcliente) {
+    verEstadoCuenta({
+      CODCLIENTE: Number(route.query.codcliente),
+      NOMBRECLIENTE: String(route.query.nombre ?? ''),
+    });
+  }
 });
 </script>

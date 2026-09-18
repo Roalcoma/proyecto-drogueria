@@ -3,7 +3,8 @@ import { ClientesController } from "../controllers/clientes.controller";
 
 const clientesRouter = Router()
 
-clientesRouter.get('/paginado', ClientesController.getClientesPaginado)
+clientesRouter.get('/paginado',       ClientesController.getClientesPaginado)
+clientesRouter.get('/estado-cuenta',  ClientesController.getEstadoCuenta)
 clientesRouter.patch('/:codCliente/descuento', ClientesController.actualizarDescuentoGlobal)
 clientesRouter.patch('/:codCliente/d3',        ClientesController.actualizarD3)
 clientesRouter.get('/', ClientesController.getClientes)

@@ -26,11 +26,15 @@ export class ClientesServices {
                     ISNULL(TRY_CAST(CCL.D1 AS FLOAT), 0) DESCUENTO,
                     ISNULL(TRY_CAST(CCL.D3 AS FLOAT), 0) DESCUENTO_D3,
                     ISNULL(CCL.ZONA, '') AS ZONA,
-                    ISNULL(RUT.DESCRIPCION, '') AS RUTA_NOMBRE
+                    ISNULL(RUT.DESCRIPCION, '') AS RUTA_NOMBRE,
+                    ISNULL(CCL.SICM, '') AS SICM,
+                    ISNULL(CCL.DIASPROTECCION, 0) AS DIASPROTECCION,
+                    ISNULL(CCL.CODVENDEDOR, '') AS CODVENDEDOR,
+                    ISNULL(CCL.TIPO, '') AS TIPO
                 FROM CLIENTES CL WITH (NOLOCK)
                 LEFT JOIN CLIENTESCAMPOSLIBRES CCL WITH (NOLOCK) ON CCL.CODCLIENTE = CL.CODCLIENTE
                 LEFT JOIN RUTAS RUT WITH (NOLOCK) ON RUT.CODRUTA = TRY_CAST(CCL.ZONA AS INT)
-                WHERE (UPPER(ISNULL(CL.NOMBRECLIENTE,'')) LIKE @FILTRO OR UPPER(ISNULL(CL.NOMBRECOMERCIAL,'')) LIKE @FILTRO OR UPPER(ISNULL(CL.CIF,'')) LIKE @FILTRO)
+                WHERE (UPPER(ISNULL(CL.NOMBRECLIENTE,'')) LIKE @FILTRO OR UPPER(ISNULL(CL.NOMBRECOMERCIAL,'')) LIKE @FILTRO OR UPPER(ISNULL(CL.CIF,'')) LIKE @FILTRO OR CAST(CL.CODCLIENTE AS NVARCHAR) LIKE @FILTRO)
                 ${rutaWhere}
                 ORDER BY CL.NOMBRECLIENTE
                 OFFSET @OFFSET ROWS FETCH NEXT @LIMIT ROWS ONLY
@@ -43,7 +47,7 @@ export class ClientesServices {
                 SELECT COUNT(*) AS TOTAL
                 FROM CLIENTES CL WITH (NOLOCK)
                 LEFT JOIN CLIENTESCAMPOSLIBRES CCL WITH (NOLOCK) ON CCL.CODCLIENTE = CL.CODCLIENTE
-                WHERE (UPPER(ISNULL(CL.NOMBRECLIENTE,'')) LIKE @FILTRO OR UPPER(ISNULL(CL.NOMBRECOMERCIAL,'')) LIKE @FILTRO OR UPPER(ISNULL(CL.CIF,'')) LIKE @FILTRO)
+                WHERE (UPPER(ISNULL(CL.NOMBRECLIENTE,'')) LIKE @FILTRO OR UPPER(ISNULL(CL.NOMBRECOMERCIAL,'')) LIKE @FILTRO OR UPPER(ISNULL(CL.CIF,'')) LIKE @FILTRO OR CAST(CL.CODCLIENTE AS NVARCHAR) LIKE @FILTRO)
                 ${rutaWhere}
             `)
 
@@ -264,5 +268,16 @@ export class ClientesServices {
                 error: error instanceof Error ? error.message : 'Error desconocido'
             }
         }
+    }
+
+    static async getEstadoCuenta(codcliente: number, codvendedor: number, zona: string, serie: string): Promise<any[]> {
+        const pool = await connectDb();
+        const res = await pool.request()
+            .input('CODCLIENTE',  mssql.Int,          codcliente)
+            .input('CODVENDEDOR', mssql.Int,          codvendedor)
+            .input('ZONA',        mssql.NVarChar(10),  zona)
+            .input('SERIE',       mssql.NVarChar(10),  serie)
+            .execute('[RIP].[CXC_INDEXADAS]');
+        return res.recordset;
     }
 }
