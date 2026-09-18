@@ -389,6 +389,16 @@
                   :loading="formatoCargando === item.ORDERID"
                   @click="imprimirFormato(item)"
                 ></v-btn>
+                <v-btn
+                  v-if="esOrigenExterno(item.ORDERID)"
+                  icon="mdi-swap-horizontal"
+                  variant="text"
+                  size="small"
+                  color="orange-darken-2"
+                  title="Ver diferencias pedido/montaje"
+                  :loading="modalDiferencias.loadingId === item.ORDERID"
+                  @click="verDiferencias(item)"
+                ></v-btn>
               </div>
             </template>
 
@@ -715,6 +725,64 @@
       </v-card>
     </v-dialog>
 
+    <!-- Modal diferencias pedido vs montaje -->
+    <v-dialog v-model="modalDiferencias.mostrar" max-width="700">
+      <v-card rounded="xl">
+        <v-card-title class="d-flex align-center gap-2 pa-4">
+          <v-icon color="orange-darken-2" size="24">mdi-swap-horizontal</v-icon>
+          <span class="text-h6 font-weight-bold">Diferencias: pedido vs montaje</span>
+          <v-spacer />
+          <span class="text-caption text-medium-emphasis">#{{ modalDiferencias.orderid }}</span>
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-0">
+          <div v-if="!modalDiferencias.diferencias.length" class="pa-6 text-center text-medium-emphasis text-body-2">
+            <v-icon size="40" class="mb-2">mdi-check-circle-outline</v-icon>
+            <div>Sin diferencias — todo lo solicitado fue montado.</div>
+          </div>
+          <v-table v-else density="compact">
+            <thead>
+              <tr>
+                <th>Artículo</th>
+                <th class="text-right">Pedido</th>
+                <th class="text-right">Montado</th>
+                <th class="text-right">Diferencia</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="d in modalDiferencias.diferencias" :key="d.codarticulo"
+                :class="d.diferencia > 0 ? 'bg-orange-lighten-5' : ''">
+                <td>
+                  <div class="text-body-2">{{ d.descripcion }}</div>
+                  <div class="text-caption text-medium-emphasis">cod {{ d.codarticulo }}</div>
+                </td>
+                <td class="text-right">{{ d.cantPedida }}</td>
+                <td class="text-right">{{ d.cantMontada }}</td>
+                <td class="text-right font-weight-bold" :class="d.diferencia > 0 ? 'text-orange-darken-3' : 'text-success'">
+                  {{ d.diferencia > 0 ? '-' + d.diferencia : d.diferencia === 0 ? '✓' : '+' + Math.abs(d.diferencia) }}
+                </td>
+              </tr>
+            </tbody>
+          </v-table>
+        </v-card-text>
+        <v-divider />
+        <v-card-text v-if="modalDiferencias.advertencia" class="pa-4 pt-3 text-body-2 text-medium-emphasis">
+          <v-icon color="warning" size="18" class="me-1">mdi-alert</v-icon>
+          Hay artículos con diferencias entre lo solicitado y lo montado. Podés autorizar igual — quedará registrado.
+        </v-card-text>
+        <v-card-actions class="pa-4 gap-2">
+          <v-btn variant="text" @click="modalDiferencias.mostrar = false">
+            {{ modalDiferencias.advertencia ? 'Cancelar' : 'Cerrar' }}
+          </v-btn>
+          <v-spacer />
+          <v-btn v-if="modalDiferencias.advertencia" color="warning" variant="elevated" @click="confirmarConDiferencias">
+            <v-icon start>mdi-check-circle</v-icon>
+            Autorizar de todas formas
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- Diálogo: precio al copiar pedido -->
     <v-dialog v-model="dialogCopiaPrecios.mostrar" max-width="380" persistent>
       <v-card class="rounded-xl">
@@ -999,6 +1067,36 @@ const cargarPagina = ({ page, itemsPerPage }: any) => {
   obtenerPedidos(page, itemsPerPage);
 };
 
+// ── Diferencias pedido vs montaje ─────────────────────────────────────────
+type Diferencia = { codarticulo: number; descripcion: string; cantPedida: number; cantMontada: number; diferencia: number };
+
+const esOrigenExterno = (orderid: string) =>
+  orderid?.startsWith('EC-') || orderid?.startsWith('PE-EC-') ||
+  orderid?.startsWith('FC') || orderid?.startsWith('PE-FC') ||
+  /^F\d/.test(orderid ?? '') || orderid?.startsWith('PE-F');
+
+const modalDiferencias = ref<{
+  mostrar: boolean; loadingId: string | null; orderid: string;
+  diferencias: Diferencia[]; advertencia: boolean; item: any; nuevoStatus: string;
+}>({ mostrar: false, loadingId: null, orderid: '', diferencias: [], advertencia: false, item: null, nuevoStatus: '' });
+
+const confirmarConDiferencias = async () => {
+  const { item, nuevoStatus } = modalDiferencias.value;
+  modalDiferencias.value.mostrar = false;
+  await ejecutarCambioEstatus(item, nuevoStatus);
+};
+
+const verDiferencias = async (item: any) => {
+  modalDiferencias.value.loadingId = item.ORDERID;
+  try {
+    const res = await axios.get(`${import.meta.env.VITE_API_URL}/pedidos/${item.ORDERID}/diferencias`);
+    modalDiferencias.value = { ...modalDiferencias.value, mostrar: true, orderid: item.ORDERID, diferencias: res.data.diferencias ?? [], advertencia: false, item, nuevoStatus: '', loadingId: null };
+  } catch {
+    lanzarNotificacion('No se pudo cargar las diferencias', 'error');
+    modalDiferencias.value.loadingId = null;
+  }
+};
+
 // ── Validación de anomalías al autorizar ──────────────────────────────────
 type Anomalia = { tipo: string; descripcion: string; codarticulo?: number };
 const ESTADOS_CON_VALIDACION = new Set(['AUTORIZADO', 'EMPACADO']);
@@ -1052,6 +1150,17 @@ const actualizarEstatusBD = async (item: any, nuevoStatus: string) => {
         return;
       }
     } catch { /* si falla la verificación, continuar de todas formas */ }
+  }
+
+  if (nuevoStatus === 'AUTORIZADO' && esOrigenExterno(item.ORDERID)) {
+    try {
+      const resDif = await axios.get(`${import.meta.env.VITE_API_URL}/pedidos/${item.ORDERID}/diferencias`);
+      const difs: Diferencia[] = (resDif.data.diferencias ?? []).filter((d: Diferencia) => d.diferencia > 0);
+      if (difs.length > 0) {
+        modalDiferencias.value = { mostrar: true, loadingId: null, orderid: item.ORDERID, diferencias: resDif.data.diferencias, advertencia: true, item, nuevoStatus };
+        return;
+      }
+    } catch { /* si falla, continuar */ }
   }
 
   await ejecutarCambioEstatus(item, nuevoStatus);

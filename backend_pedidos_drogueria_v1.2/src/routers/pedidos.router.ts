@@ -27,6 +27,7 @@ pedidosRouter.get('/auditoria', authMiddleware, PedidosControllers.getAuditoria)
 
 pedidosRouter.post('/fusionar', authMiddleware, PedidosControllers.fusionarPedidos)
 
-pedidosRouter.get('/:orderId/anomalias', authMiddleware, PedidosControllers.getAnomaliasPedido)
+pedidosRouter.get('/:orderId/anomalias',    authMiddleware, PedidosControllers.getAnomaliasPedido)
+pedidosRouter.get('/:orderId/diferencias', authMiddleware, PedidosControllers.getDiferenciasPedido)
 
 export default pedidosRouter

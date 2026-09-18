@@ -93,6 +93,16 @@ export class FarcomprasService {
                     );
                 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_FARCOMP_FECHA' AND object_id = OBJECT_ID('APP_FARCOMPRAS_PEDIDOS'))
                     CREATE INDEX IX_FARCOMP_FECHA ON ${ESQ}.APP_FARCOMPRAS_PEDIDOS (FECHA DESC);
+
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'APP_FARCOMPRAS_LINEAS')
+                    CREATE TABLE ${ESQ}.APP_FARCOMPRAS_LINEAS (
+                        ID          INT IDENTITY PRIMARY KEY,
+                        ORDERID     NVARCHAR(50) NOT NULL,
+                        CODARTICULO INT NOT NULL,
+                        CANTIDAD    INT NOT NULL
+                    );
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_FARLIN_OID' AND object_id=OBJECT_ID('APP_FARCOMPRAS_LINEAS'))
+                    CREATE INDEX IX_FARLIN_OID ON ${ESQ}.APP_FARCOMPRAS_LINEAS (ORDERID);
             `);
             console.log('[Farcompras] Tablas verificadas/creadas');
         } catch (e: any) {
@@ -503,6 +513,13 @@ export class FarcomprasService {
                             l.precioUnit, 0, 0);
                     }
                     await new mssql.Request(transaction).bulk(tabla);
+                    const tablaOrig = new mssql.Table(`${ESQ}.APP_FARCOMPRAS_LINEAS`);
+                    tablaOrig.create = false;
+                    tablaOrig.columns.add('ORDERID',     mssql.NVarChar(50), { nullable: false });
+                    tablaOrig.columns.add('CODARTICULO', mssql.Int,           { nullable: false });
+                    tablaOrig.columns.add('CANTIDAD',    mssql.Int,           { nullable: false });
+                    for (const l of chunk) tablaOrig.rows.add(chunkId, l.codarticulo, Math.round(l.cantidad));
+                    await new mssql.Request(transaction).bulk(tablaOrig);
 
                     await new mssql.Request(transaction)
                         .input('OID', mssql.NVarChar(15), chunkId)
@@ -564,6 +581,13 @@ export class FarcomprasService {
                                 0, 0, 0, 0, l.precioUnit, 0, 0);
                         }
                         await new mssql.Request(transaction!).bulk(tabla);
+                        const tablaOrigPE = new mssql.Table(`${ESQ}.APP_FARCOMPRAS_LINEAS`);
+                        tablaOrigPE.create = false;
+                        tablaOrigPE.columns.add('ORDERID',     mssql.NVarChar(50), { nullable: false });
+                        tablaOrigPE.columns.add('CODARTICULO', mssql.Int,           { nullable: false });
+                        tablaOrigPE.columns.add('CANTIDAD',    mssql.Int,           { nullable: false });
+                        for (const l of chunk) tablaOrigPE.rows.add(chunkId, l.codarticulo, Math.round(l.cantidad));
+                        await new mssql.Request(transaction!).bulk(tablaOrigPE);
                         await new mssql.Request(transaction!)
                             .input('OID', mssql.NVarChar(50), chunkId)
                             .input('EST', mssql.NVarChar(50), estatusInicial)

@@ -90,7 +90,7 @@
               v-model="busquedaProducto"
               @keyup.enter="buscarDesdeBoton"
               prepend-inner-icon="mdi-pill"
-              label="Buscar medicamento..."
+              label="Buscar por nombre, código o cód. barras..."
               variant="outlined"
               color="primary"
               density="comfortable"

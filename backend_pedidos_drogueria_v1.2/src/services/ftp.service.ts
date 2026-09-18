@@ -89,6 +89,16 @@ export class FtpService {
                         FECHA_ENVIO DATETIME NOT NULL DEFAULT GETDATE(),
                         CONSTRAINT UQ_FTP_FACTURA UNIQUE (NUMSERIE, NUMFACTURA)
                     );
+
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'APP_FTP_LINEAS')
+                    CREATE TABLE APP_FTP_LINEAS (
+                        ID          INT IDENTITY PRIMARY KEY,
+                        ORDERID     NVARCHAR(50) NOT NULL,
+                        CODARTICULO INT NOT NULL,
+                        CANTIDAD    INT NOT NULL
+                    );
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_FTPLIN_OID' AND object_id=OBJECT_ID('APP_FTP_LINEAS'))
+                    CREATE INDEX IX_FTPLIN_OID ON APP_FTP_LINEAS (ORDERID);
             `);
             console.log('[FTP] Tablas verificadas/creadas');
         } catch (err) {
@@ -499,6 +509,13 @@ export class FtpService {
                                 l.precioUnit, 0, 0);
                         }
                         await pool.request().bulk(tabla);
+                        const tablaOrigPE = new mssql.Table('APP_FTP_LINEAS');
+                        tablaOrigPE.create = false;
+                        tablaOrigPE.columns.add('ORDERID',     mssql.NVarChar(50), { nullable: false });
+                        tablaOrigPE.columns.add('CODARTICULO', mssql.Int,           { nullable: false });
+                        tablaOrigPE.columns.add('CANTIDAD',    mssql.Int,           { nullable: false });
+                        for (const l of chunk) tablaOrigPE.rows.add(chunkId, l.codarticulo, Math.round(l.cantidad));
+                        await pool.request().bulk(tablaOrigPE);
                         await pool.request()
                             .input('OID', mssql.NVarChar(50), chunkId)
                             .input('EST', mssql.NVarChar(50), estatusInicial)
@@ -561,6 +578,13 @@ export class FtpService {
                             l.precioUnit, 0, 0);
                     }
                     await pool.request().bulk(tabla);
+                    const tablaOrig = new mssql.Table('APP_FTP_LINEAS');
+                    tablaOrig.create = false;
+                    tablaOrig.columns.add('ORDERID',     mssql.NVarChar(50), { nullable: false });
+                    tablaOrig.columns.add('CODARTICULO', mssql.Int,           { nullable: false });
+                    tablaOrig.columns.add('CANTIDAD',    mssql.Int,           { nullable: false });
+                    for (const l of chunk) tablaOrig.rows.add(chunkId, l.codarticulo, Math.round(l.cantidad));
+                    await pool.request().bulk(tablaOrig);
 
                     await pool.request()
                         .input('OID', mssql.NVarChar(15), chunkId)

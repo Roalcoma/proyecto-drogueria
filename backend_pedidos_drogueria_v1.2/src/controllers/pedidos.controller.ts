@@ -173,6 +173,16 @@ export class PedidosControllers {
         }
     }
 
+    static async getDiferenciasPedido(req: Request, res: Response): Promise<void> {
+        const orderId = req.params['orderId'] as string;
+        try {
+            const diferencias = await PedidosServices.getDiferenciasPedido(orderId);
+            res.json({ success: true, diferencias });
+        } catch (error) {
+            res.status(500).json({ success: false, message: String(error) });
+        }
+    }
+
     static async updatePedidoStatus(req: Request, res: Response) {
         try {
             // Extraemos los datos del body

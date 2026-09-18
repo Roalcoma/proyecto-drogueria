@@ -1348,6 +1348,70 @@ export class PedidosServices {
         }
     }
 
+    static async getDiferenciasPedido(orderId: string): Promise<{ codarticulo: number; descripcion: string; cantPedida: number; cantMontada: number; diferencia: number }[]> {
+        const pool = await connectDb();
+
+        if (orderId.startsWith('EC-') || orderId.startsWith('PE-EC-')) {
+            const numPedido = orderId.startsWith('PE-EC-') ? orderId.substring(6) : orderId.substring(3);
+            const res = await pool.request()
+                .input('NUM', mssql.NVarChar(50), numPedido)
+                .input('OID', mssql.VarChar(50), orderId)
+                .query(`
+                    SELECT TRY_CAST(el.COD_ARTICULO AS INT) AS CODARTICULO,
+                           el.DESCRIPCION,
+                           el.CANTIDAD AS CANT_PEDIDA,
+                           ISNULL(lp.PRODUCTCOUNT, 0) AS CANT_MONTADA,
+                           el.CANTIDAD - ISNULL(lp.PRODUCTCOUNT, 0) AS DIFERENCIA
+                    FROM APP_ECOMMERCE_LINEAS el WITH (NOLOCK)
+                    JOIN APP_ECOMMERCE_PEDIDOS ep WITH (NOLOCK) ON el.ID_PEDIDO = ep.ID
+                    LEFT JOIN (
+                        SELECT CODARTICULO, SUM(PRODUCTCOUNT) AS PRODUCTCOUNT
+                        FROM ${esquema}.LINEA_PED WITH (NOLOCK)
+                        WHERE ORDERID = @OID
+                        GROUP BY CODARTICULO
+                    ) lp ON TRY_CAST(el.COD_ARTICULO AS INT) = lp.CODARTICULO
+                    WHERE ep.NUMERO_PEDIDO = @NUM
+                `);
+            return res.recordset.map((r: any) => ({
+                codarticulo: r.CODARTICULO,
+                descripcion: r.DESCRIPCION ?? String(r.CODARTICULO),
+                cantPedida: Number(r.CANT_PEDIDA),
+                cantMontada: Number(r.CANT_MONTADA),
+                diferencia: Number(r.DIFERENCIA),
+            }));
+        }
+
+        const tableName = (orderId.startsWith('FC') || orderId.startsWith('PE-FC'))
+            ? 'APP_FARCOMPRAS_LINEAS'
+            : 'APP_FTP_LINEAS';
+
+        const res = await pool.request()
+            .input('OID', mssql.VarChar(50), orderId)
+            .query(`
+                SELECT fl.CODARTICULO,
+                       ISNULL(A.DESCRIPCION, CAST(fl.CODARTICULO AS NVARCHAR)) AS DESCRIPCION,
+                       fl.CANTIDAD AS CANT_PEDIDA,
+                       ISNULL(lp.PRODUCTCOUNT, 0) AS CANT_MONTADA,
+                       fl.CANTIDAD - ISNULL(lp.PRODUCTCOUNT, 0) AS DIFERENCIA
+                FROM ${tableName} fl WITH (NOLOCK)
+                LEFT JOIN ARTICULOS A WITH (NOLOCK) ON A.CODARTICULO = fl.CODARTICULO
+                LEFT JOIN (
+                    SELECT CODARTICULO, SUM(PRODUCTCOUNT) AS PRODUCTCOUNT
+                    FROM ${esquema}.LINEA_PED WITH (NOLOCK)
+                    WHERE ORDERID = @OID
+                    GROUP BY CODARTICULO
+                ) lp ON fl.CODARTICULO = lp.CODARTICULO
+                WHERE fl.ORDERID = @OID
+            `);
+        return res.recordset.map((r: any) => ({
+            codarticulo: r.CODARTICULO,
+            descripcion: r.DESCRIPCION ?? String(r.CODARTICULO),
+            cantPedida: Number(r.CANT_PEDIDA),
+            cantMontada: Number(r.CANT_MONTADA),
+            diferencia: Number(r.DIFERENCIA),
+        }));
+    }
+
     static async marcarSanidad(orderId: string, codusuario?: number, usuario?: string) {
         try {
             const pool = await connectDb();
