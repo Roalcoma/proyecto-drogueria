@@ -532,7 +532,7 @@ export class EcommerceService {
                 else    consolidated.set(art.codarticulo, { linea: { ...l }, art });
             }
 
-            // Verificar stock disponible por artículo antes de insertar
+            // Verificar stock DISPONIBLE neto (físico − reservas de pedidos activos) por artículo
             const codArticulos = [...consolidated.keys()];
             const stockReq = new mssql.Request(tx);
             const stockPlaceholders = codArticulos.map((c, i) => { stockReq.input(`sc${i}`, mssql.Int, c); return `@sc${i}`; }).join(',');
@@ -540,9 +540,19 @@ export class EcommerceService {
             const stockMap = new Map<number, number>();
             if (codArticulos.length > 0) {
                 const stockRes = await stockReq.query(`
-                    SELECT CODARTICULO, ISNULL(SUM(STOCK), 0) AS STOCK
-                    FROM STOCKS WITH (NOLOCK) WHERE CODARTICULO IN (${stockPlaceholders}) AND CODALMACEN = @ALMACEN_ST
-                    GROUP BY CODARTICULO
+                    SELECT A.CODARTICULO,
+                        ISNULL((SELECT SUM(STOCK) FROM ${esquema}.STOCKS WITH (NOLOCK)
+                                WHERE CODARTICULO = A.CODARTICULO AND CODALMACEN = @ALMACEN_ST), 0)
+                        - ISNULL((
+                            SELECT SUM(LP.PRODUCTCOUNT)
+                            FROM ${esquema}.CABECERA_PED CP WITH (NOLOCK)
+                            INNER JOIN ${esquema}.LINEA_PED LP WITH (NOLOCK) ON LP.ORDERID = CP.ORDERID
+                            WHERE LP.CODARTICULO = A.CODARTICULO
+                              AND CP.ESTATUS IN ('PENDIENTE POR AUTORIZACION','APROBACION PSICOTROPICOS',
+                                                 'SANIDAD','AUTORIZADO','EMPACADO','OK')
+                        ), 0) AS STOCK
+                    FROM ${esquema}.ARTICULOS A WITH (NOLOCK)
+                    WHERE A.CODARTICULO IN (${stockPlaceholders})
                 `);
                 for (const r of stockRes.recordset) stockMap.set(r.CODARTICULO, Number(r.STOCK));
             }

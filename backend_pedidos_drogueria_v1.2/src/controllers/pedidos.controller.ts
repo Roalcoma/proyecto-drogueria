@@ -243,6 +243,17 @@ export class PedidosControllers {
         }
     }
 
+    static async checkStockLineas(req: Request, res: Response) {
+        try {
+            const lineas = req.body.lineas;
+            if (!Array.isArray(lineas)) return res.status(400).json({ success: false, message: 'Se esperaba un array de líneas' });
+            const result = await PedidosServices.checkStockLineas(lineas);
+            return res.json({ success: true, ...result });
+        } catch (error) {
+            return res.status(500).json({ success: false, message: String(error) });
+        }
+    }
+
     static async actualizarCodigoAprobacion(req: RequestConUsuario, res: Response) {
         try {
             const { orderId, codigo } = req.body;

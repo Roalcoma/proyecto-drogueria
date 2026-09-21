@@ -1,6 +1,11 @@
 import { Request, Response } from 'express';
 import { mssql, connectDb } from '../db/db.conection';
 import { getDbConfig } from '../services/dbconfig.service';
+import { AuditService } from '../services/audit.service';
+import { RequestConUsuario } from '../middleware/auth.middleware';
+
+const uid = (req: RequestConUsuario) => (req as any).usuario?.id     ?? null;
+const usr = (req: RequestConUsuario) => (req as any).usuario?.usuario ?? null;
 
 const ESQ = 'dbo';
 
@@ -99,7 +104,7 @@ export class DescuentoArticuloController {
         }
     }
 
-    static async updateDescuento(req: Request, res: Response): Promise<void> {
+    static async updateDescuento(req: RequestConUsuario, res: Response): Promise<void> {
         const codarticulo = parseInt(req.params['codarticulo'] as string);
         const dto = Number(req.body.dtoArticulo ?? 0);
 
@@ -112,6 +117,17 @@ export class DescuentoArticuloController {
 
         try {
             const pool = await connectDb();
+
+            // Leer valor anterior para auditoría
+            const anterior = await pool.request()
+                .input('COD', mssql.Int, codarticulo)
+                .query(`SELECT ISNULL(ACL.DTOARTICULO, 0) AS DTO_ANTES, A.DESCRIPCION
+                        FROM ${ESQ}.ARTICULOS A WITH(NOLOCK)
+                        LEFT JOIN ${ESQ}.ARTICULOSCAMPOSLIBRES ACL WITH(NOLOCK) ON ACL.CODARTICULO = A.CODARTICULO
+                        WHERE A.CODARTICULO = @COD`);
+            const dtaAntes = anterior.recordset[0]?.DTO_ANTES ?? 0;
+            const descripcion: string = anterior.recordset[0]?.DESCRIPCION ?? String(codarticulo);
+
             // M2: MERGE atómico con HOLDLOCK — previene race condition en INSERT concurrente
             await pool.request()
                 .input('COD', mssql.Int, codarticulo)
@@ -125,6 +141,14 @@ export class DescuentoArticuloController {
                     WHEN NOT MATCHED THEN
                       INSERT (CODARTICULO, DTOARTICULO) VALUES (src.CODARTICULO, src.DTOARTICULO);
                 `);
+
+            await AuditService.log(
+                'DESCUENTO_ARTICULO', 'ACTUALIZAR',
+                codarticulo, descripcion,
+                uid(req), usr(req),
+                { dto_antes: dtaAntes, dto_despues: dto }
+            );
+
             res.json({ success: true });
         } catch (e: any) {
             console.error('[descuento-articulo] updateDescuento:', e);

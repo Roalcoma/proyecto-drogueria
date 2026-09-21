@@ -439,7 +439,7 @@ const procesarVenta = async () => {
   const crearPedido = (sufijo: string, items: any[], diasMontofactura?: number) => {
     const total = items.reduce((acc, art) => acc + (calcularPrecioConDescuento(art) * art.cantidad), 0);
     return axios.post(`${import.meta.env.VITE_API_URL}/pedidos`, {
-      pedidos: { orderId: `${num}${sufijo}`, clienteId, codVendedor, totalPed: total, lineas: mapearLineas(items), promocionesAplicadas, diasMontofactura }
+      pedidos: { orderId: `${num}${sufijo}`, clienteId, codVendedor, totalPed: total, lineas: mapearLineas(items), promocionesAplicadas, diasMontofactura, sourceOrderId: carritoStore.sourceOrderId ?? undefined }
     });
   };
 

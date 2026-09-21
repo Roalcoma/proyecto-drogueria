@@ -810,6 +810,44 @@
       </v-card>
     </v-dialog>
 
+    <!-- Diálogo: advertencia de stock al copiar pedido -->
+    <v-dialog v-model="modalStockCopia.mostrar" max-width="520" persistent>
+      <v-card class="rounded-xl">
+        <v-card-title class="pt-4 px-5 d-flex align-center gap-2">
+          <v-icon color="warning">mdi-alert</v-icon>
+          Stock insuficiente en la copia
+        </v-card-title>
+        <v-card-text class="px-5 pb-2">
+          <p class="text-body-2 text-medium-emphasis mb-3">
+            Los siguientes artículos no tienen suficiente stock disponible. Puedes continuar, pero no podrás autorizar el pedido hasta que haya stock.
+          </p>
+          <v-table density="compact" class="rounded-lg">
+            <thead>
+              <tr>
+                <th>Artículo</th>
+                <th class="text-right">Pedido</th>
+                <th class="text-right">Disponible</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in modalStockCopia.insuficiente" :key="item.codarticulo">
+                <td class="text-caption text-wrap" style="max-width:240px">{{ item.descripcion }}</td>
+                <td class="text-right text-caption">{{ item.cantidad_pedida }}</td>
+                <td class="text-right text-caption" :class="item.disponible <= 0 ? 'text-red-darken-2 font-weight-bold' : 'text-warning'">{{ item.disponible }}</td>
+              </tr>
+            </tbody>
+          </v-table>
+        </v-card-text>
+        <v-card-actions class="px-5 pb-4">
+          <v-btn variant="text" @click="modalStockCopia.mostrar = false">Cancelar</v-btn>
+          <v-spacer />
+          <v-btn color="warning" variant="elevated" rounded="pill" @click="() => { modalStockCopia.mostrar = false; modalStockCopia.continuar?.() }">
+            <v-icon start>mdi-cart-arrow-right</v-icon>Continuar de todas formas
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-snackbar v-model="snackbar.show" :color="snackbar.color" rounded="pill">
       {{ snackbar.text }}
     </v-snackbar>
@@ -1174,6 +1212,7 @@ const getColores = (status: string) => {
   if (!status) return { color: 'grey', icon: 'mdi-circle-outline' };
   const s = status.toUpperCase().trim();
   if (s === 'APROBACION PSICOTROPICOS') return { color: 'purple-darken-3', icon: 'mdi-shield-alert' };
+  if (s === 'SANIDAD')                  return { color: 'teal-darken-2',   icon: 'mdi-clipboard-pulse' };
   if (s === 'ICG')                      return { color: 'green-darken-3',  icon: 'mdi-check-decagram' };
   if (s.includes('AUTORIZACION'))       return { color: 'orange-darken-3', icon: 'mdi-clock-alert' };
   if (s === 'PENDIENTE')                return { color: 'amber-darken-3',  icon: 'mdi-clock-outline' };
@@ -1349,7 +1388,8 @@ const imprimirPDFMultiple = async () => {
 
 const replicarCargando = ref<string | null>(null);
 const cargandoPreciosCatalogo = ref(false);
-const dialogCopiaPrecios = ref({ mostrar: false, pedido: null as any, cliente: null as any });
+const dialogCopiaPrecios = ref({ mostrar: false, pedido: null as any, cliente: null as any, sourceOrderId: '' });
+const modalStockCopia = ref<{ mostrar: boolean; insuficiente: { codarticulo: number; descripcion: string; cantidad_pedida: number; disponible: number }[]; continuar: (() => void) | null }>({ mostrar: false, insuficiente: [], continuar: null });
 
 const replicarPedido = async (item: any) => {
   replicarCargando.value = item.ORDERID;
@@ -1362,7 +1402,7 @@ const replicarPedido = async (item: any) => {
       NOMBRECLIENTE: item.NOMBRECLIENTE || `Cliente ${item.CLIENTEID}`,
       ID: String(item.CLIENTEID),
     };
-    dialogCopiaPrecios.value = { mostrar: true, pedido, cliente };
+    dialogCopiaPrecios.value = { mostrar: true, pedido, cliente, sourceOrderId: item.ORDERID };
   } catch {
     lanzarNotificacion('Error al replicar el pedido', 'error');
   } finally {
@@ -1394,8 +1434,24 @@ const confirmarCopiaPrecios = async (usarCatalogo: boolean) => {
   }
 
   dialogCopiaPrecios.value.mostrar = false;
-  carritoStore.cargarDesdeOrden(cliente, lineas);
-  router.push('/carrito');
+
+  const ejecutarCarga = () => {
+    carritoStore.cargarDesdeOrden(cliente, lineas, dialogCopiaPrecios.value.sourceOrderId || undefined);
+    router.push('/carrito');
+  };
+
+  // Verificar stock antes de cargar en carrito
+  try {
+    const lineasCheck = lineas.map((l: any) => ({ codarticulo: Number(l.CODARTICULO), cantidad: Number(l.PRODUCTCOUNT) }));
+    const res = await axios.post(`${import.meta.env.VITE_API_URL}/pedidos/check-stock-lineas`, { lineas: lineasCheck });
+    const insuficiente = res.data?.insuficiente ?? [];
+    if (insuficiente.length > 0) {
+      modalStockCopia.value = { mostrar: true, insuficiente, continuar: ejecutarCarga };
+      return;
+    }
+  } catch { /* si falla el check, continuar igualmente */ }
+
+  ejecutarCarga();
 };
 
 const verPreview = async (item: any) => {

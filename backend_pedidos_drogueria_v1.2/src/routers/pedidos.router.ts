@@ -21,6 +21,8 @@ pedidosRouter.put('/marcar-sanidad',        authMiddleware, PedidosControllers.m
 
 pedidosRouter.put('/codigo-aprobacion', authMiddleware, PedidosControllers.actualizarCodigoAprobacion)
 
+pedidosRouter.post('/check-stock-lineas', authMiddleware, PedidosControllers.checkStockLineas)
+
 pedidosRouter.get('/conteo', PedidosControllers.getConteo)
 
 pedidosRouter.get('/auditoria', authMiddleware, PedidosControllers.getAuditoria)

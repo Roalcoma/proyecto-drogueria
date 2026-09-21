@@ -178,7 +178,7 @@ export class PedidosServices {
     static async postPedidosCabecera(pedido: any, codusuario?: number, usuario?: string) {
         try {
             console.log('Datos recibidos para el pedido:', pedido);
-            const { clienteId, codVendedor, totalPed, lineas, sufijo, promocionesAplicadas, diasMontofactura } = pedido;
+            const { clienteId, codVendedor, totalPed, lineas, sufijo, promocionesAplicadas, diasMontofactura, sourceOrderId } = pedido;
             // Si el frontend pre-asignó un número, úsalo; si no, reserva uno nuevo
             let orderId: string;
             if (pedido.orderId) {
@@ -190,6 +190,16 @@ export class PedidosServices {
 
             const requierePsicotropicos = await this.tieneArticulosPsicotropicos(lineas.map((l: any) => l.codarticulo));
             const estatusInicial = requierePsicotropicos ? ESTATUS_APROBACION_PSICOTROPICOS : 'PENDIENTE';
+
+            if (estatusInicial === ESTATUS_APROBACION_PSICOTROPICOS) {
+                const lineasCheck = lineas.map((l: any) => ({ codarticulo: Number(l.codarticulo), cantidad: Number(l.cantidad) }));
+                const { insuficiente } = await PedidosServices.checkStockLineas(lineasCheck);
+                if (insuficiente.length > 0) {
+                    const detalle = insuficiente.map(i => `${i.descripcion} (pedido: ${i.cantidad_pedida}, disponible: ${i.disponible})`).join('; ');
+                    return { success: false, message: `Stock insuficiente para: ${detalle}` };
+                }
+            }
+
             const promoNombre = (promocionesAplicadas || []).map((p: any) => p.nombre).filter(Boolean).join(', ');
 
             const maxLineas = getDbConfig().maxLineasPorPedido ?? 0;
@@ -242,7 +252,10 @@ export class PedidosServices {
 
             await PromocionesService.registrarAplicadas(orderId, promocionesAplicadas);
             if (diasMontofactura) await PromoEspecialService.registrarPedido(orderId, diasMontofactura);
-            await PedidosServices.registrarLog(orderId, null, estatusInicial, codusuario, usuario, `Pedido creado. Cliente: ${clienteId}. Total: ${totalPed}`);
+            const detallesCreacion = sourceOrderId
+                ? `Pedido copiado de ${sourceOrderId}. Cliente: ${clienteId}. Total: ${totalPed}`
+                : `Pedido creado. Cliente: ${clienteId}. Total: ${totalPed}`;
+            await PedidosServices.registrarLog(orderId, sourceOrderId ? `COPIA:${sourceOrderId}` : null, estatusInicial, codusuario, usuario, detallesCreacion);
 
             return { success: true, message: 'El pedido fue insertado de forma satisfactoria', orderId };
 
@@ -705,6 +718,16 @@ export class PedidosServices {
                 return { success: false, message: 'Solo se pueden editar pedidos en estatus PENDIENTE o APROBACION PSICOTROPICOS' };
             }
 
+            if (estatusActual === ESTATUS_APROBACION_PSICOTROPICOS) {
+                const lineasCheck = lineas.map((l: any) => ({ codarticulo: Number(l.codarticulo), cantidad: Number(l.cantidad) }));
+                const { insuficiente } = await PedidosServices.checkStockLineas(lineasCheck, orderId);
+                if (insuficiente.length > 0) {
+                    await transaction.rollback();
+                    const detalle = insuficiente.map(i => `${i.descripcion} (pedido: ${i.cantidad_pedida}, disponible: ${i.disponible})`).join('; ');
+                    return { success: false, message: `Stock insuficiente para: ${detalle}` };
+                }
+            }
+
             // 1b. Snapshot de las líneas ANTES de cualquier modificación
             const snapReq = new mssql.Request(transaction);
             const snapRes = await snapReq
@@ -909,6 +932,30 @@ export class PedidosServices {
         const hayPsico = orders.some((o: any) => o.ESTATUS === 'PENDIENTE POR AUTORIZACION');
         const estadoFinal = hayPsico ? 'PENDIENTE POR AUTORIZACION' : 'PENDIENTE';
 
+        // Si el resultado será PENDIENTE POR AUTORIZACION, verificar stock para las líneas
+        // de pedidos en PENDIENTE (las que pasarán a reservar por primera vez tras la fusión)
+        if (estadoFinal === 'PENDIENTE POR AUTORIZACION') {
+            const pendienteIds = orders.filter((o: any) => o.ESTATUS === 'PENDIENTE').map((o: any) => o.ORDERID as string);
+            if (pendienteIds.length > 0) {
+                const linReq = pool.request();
+                const linPH = pendienteIds.map((id, i) => { linReq.input(`LF${i}`, mssql.VarChar(50), id); return `@LF${i}`; }).join(',');
+                const linRes = await linReq.query(`
+                    SELECT CODARTICULO, SUM(PRODUCTCOUNT) AS CANTIDAD
+                    FROM ${esquema}.LINEA_PED WITH (NOLOCK)
+                    WHERE ORDERID IN (${linPH})
+                    GROUP BY CODARTICULO
+                `);
+                const lineasPendientes = linRes.recordset.map((r: any) => ({ codarticulo: Number(r.CODARTICULO), cantidad: Number(r.CANTIDAD) }));
+                if (lineasPendientes.length > 0) {
+                    const { insuficiente } = await PedidosServices.checkStockLineas(lineasPendientes);
+                    if (insuficiente.length > 0) {
+                        const detalle = insuficiente.map(i => `${i.descripcion} (pedido: ${i.cantidad_pedida}, disponible: ${i.disponible})`).join('; ');
+                        return { success: false, message: `No se puede fusionar: stock insuficiente para ${detalle}` };
+                    }
+                }
+            }
+        }
+
         let transaction: mssql.Transaction | null = null;
         try {
             transaction = new mssql.Transaction(pool);
@@ -1090,6 +1137,52 @@ export class PedidosServices {
         return anomalias;
     }
 
+    static async checkStockLineas(lineas: { codarticulo: number; cantidad: number }[], excludeOrderId?: string) {
+        if (!lineas.length) return { insuficiente: [] };
+        const pool = await connectDb();
+        const { codAlmacen } = getDbConfig();
+        // Validate all codes are integers before interpolating
+        const codigos = lineas.map(l => Math.trunc(Number(l.codarticulo))).filter(n => n > 0);
+        if (!codigos.length) return { insuficiente: [] };
+
+        const excludeClause = excludeOrderId ? `AND CP.ORDERID <> @EXCL_OID` : '';
+        const req = pool.request().input('ALMACEN', mssql.VarChar(10), codAlmacen);
+        if (excludeOrderId) req.input('EXCL_OID', mssql.VarChar(50), excludeOrderId);
+
+        const stockRes = await req.query(`
+                SELECT A.CODARTICULO, A.DESCRIPCION,
+                    ISNULL((SELECT SUM(STOCK) FROM ${esquema}.STOCKS WITH (NOLOCK)
+                            WHERE CODARTICULO = A.CODARTICULO AND CODALMACEN = @ALMACEN), 0)
+                    - ISNULL((
+                        SELECT SUM(LP.PRODUCTCOUNT)
+                        FROM ${esquema}.CABECERA_PED CP WITH (NOLOCK)
+                        INNER JOIN ${esquema}.LINEA_PED LP WITH (NOLOCK) ON LP.ORDERID = CP.ORDERID
+                        WHERE LP.CODARTICULO = A.CODARTICULO
+                          ${excludeClause}
+                          AND CP.ESTATUS IN ('PENDIENTE POR AUTORIZACION','APROBACION PSICOTROPICOS',
+                                             'SANIDAD','AUTORIZADO','EMPACADO','OK')
+                    ), 0) AS DISPONIBLE
+                FROM ${esquema}.ARTICULOS A WITH (NOLOCK)
+                WHERE A.CODARTICULO IN (${codigos.join(',')})
+            `);
+
+        const stockMap = new Map<number, { disponible: number; descripcion: string }>(
+            stockRes.recordset.map((r: any) => [Number(r.CODARTICULO), { disponible: Number(r.DISPONIBLE), descripcion: r.DESCRIPCION ?? '' }])
+        );
+
+        const insuficiente = lineas
+            .filter(l => {
+                const s = stockMap.get(Number(l.codarticulo));
+                return !s || s.disponible < l.cantidad;
+            })
+            .map(l => {
+                const s = stockMap.get(Number(l.codarticulo));
+                return { codarticulo: l.codarticulo, descripcion: s?.descripcion ?? String(l.codarticulo), cantidad_pedida: l.cantidad, disponible: s?.disponible ?? 0 };
+            });
+
+        return { insuficiente };
+    }
+
     static async updateEstatusPedido(orderId: string, nuevoEstatus: string, codusuario?: number, usuario?: string, visibilidadUsuario?: number, anomaliasConfirmadas?: string) {
         try {
             const estatusLimpio = nuevoEstatus.trim().toUpperCase();
@@ -1154,9 +1247,9 @@ export class PedidosServices {
                 }
             }
 
-            // Al pasar a PENDIENTE POR AUTORIZACION, verificar stock disponible por línea
+            // Al pasar a un estatus que reserva stock, verificar disponibilidad por línea
             // (mientras estuvo en PENDIENTE no reservaba stock, otro pedido pudo haberlo agotado)
-            if (estatusLimpio === 'PENDIENTE POR AUTORIZACION') {
+            if (estatusLimpio === 'PENDIENTE POR AUTORIZACION' || estatusLimpio === 'AUTORIZADO') {
                 const lineasRes = await pool.request()
                     .input('ORDERID_LINEAS', mssql.VarChar(50), orderId)
                     .query(`SELECT LP.CODARTICULO, LP.PRODUCTCOUNT AS CANTIDAD
@@ -1326,6 +1419,16 @@ export class PedidosServices {
             }
             const estatusOrigen = checkRes.recordset[0].ESTATUS as string;
 
+            const lineasPsico = await pool.request()
+                .input('OID_PSI', mssql.VarChar(50), orderId)
+                .query(`SELECT CODARTICULO, PRODUCTCOUNT AS CANTIDAD FROM ${esquema}.LINEA_PED WITH (NOLOCK) WHERE ORDERID = @OID_PSI`);
+            const lineasCheck = lineasPsico.recordset.map((r: any) => ({ codarticulo: Number(r.CODARTICULO), cantidad: Number(r.CANTIDAD) }));
+            const { insuficiente } = await PedidosServices.checkStockLineas(lineasCheck, orderId);
+            if (insuficiente.length > 0) {
+                const detalle = insuficiente.map(i => `${i.descripcion} (pedido: ${i.cantidad_pedida}, disponible: ${i.disponible})`).join('; ');
+                return { success: false, message: `Stock insuficiente para: ${detalle}` };
+            }
+
             await pool.request()
                 .input('ORDERID', mssql.VarChar(50), orderId)
                 .input('OBSERVACIONES', mssql.NVarChar(255), codigoAprobacion.trim())
@@ -1422,6 +1525,16 @@ export class PedidosServices {
             if (!checkRes.recordset.length) return { success: false, message: 'Pedido no encontrado' };
             if (checkRes.recordset[0].ESTATUS !== 'APROBACION PSICOTROPICOS') {
                 return { success: false, message: 'El pedido debe estar en APROBACION PSICOTROPICOS para marcarlo en SANIDAD' };
+            }
+
+            const lineasSan = await pool.request()
+                .input('OID_SAN', mssql.VarChar(50), orderId)
+                .query(`SELECT CODARTICULO, PRODUCTCOUNT AS CANTIDAD FROM ${esquema}.LINEA_PED WITH (NOLOCK) WHERE ORDERID = @OID_SAN`);
+            const lineasCheckSan = lineasSan.recordset.map((r: any) => ({ codarticulo: Number(r.CODARTICULO), cantidad: Number(r.CANTIDAD) }));
+            const { insuficiente: insufSan } = await PedidosServices.checkStockLineas(lineasCheckSan, orderId);
+            if (insufSan.length > 0) {
+                const detalle = insufSan.map(i => `${i.descripcion} (pedido: ${i.cantidad_pedida}, disponible: ${i.disponible})`).join('; ');
+                return { success: false, message: `Stock insuficiente para: ${detalle}` };
             }
 
             await pool.request()

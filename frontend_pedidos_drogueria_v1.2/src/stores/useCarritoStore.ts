@@ -38,6 +38,7 @@ export const useCarritoStore = defineStore('carrito', () => {
     const articulos = ref<ArticuloCarrito[]>(inicial?.articulos ?? []);
     const tasa = ref(inicial?.tasa ?? 0);
     const promocionesAplicadas = ref<PromocionAplicada[]>([]);
+    const sourceOrderId = ref<string | null>(null);
 
     watch([clienteSeleccionado, articulos, tasa], () => {
         sessionStorage.setItem(SESSION_KEY, JSON.stringify({
@@ -102,15 +103,17 @@ export const useCarritoStore = defineStore('carrito', () => {
     const limpiarCarrito = () => {
         clienteSeleccionado.value = null;
         articulos.value = [];
+        sourceOrderId.value = null;
         promocionesAplicadas.value = [];
         sessionStorage.removeItem(SESSION_KEY);
     };
 
     // Carga un pedido existente en el carrito conservando los descuentos originales
     // (no llama recalcularPromociones para no pisar D1-D4 guardados)
-    const cargarDesdeOrden = (cliente: Cliente, lineas: any[]) => {
+    const cargarDesdeOrden = (cliente: Cliente, lineas: any[], sourceId?: string) => {
         limpiarCarrito();
         clienteSeleccionado.value = cliente;
+        sourceOrderId.value = sourceId ?? null;
         articulos.value = lineas.map(l => {
             const d = [
                 Number(l.DESCUENTO1 ?? 0),
@@ -144,6 +147,7 @@ export const useCarritoStore = defineStore('carrito', () => {
         articulos,
         tasa,
         promocionesAplicadas,
+        sourceOrderId,
         agregarArticulo,
         actualizarDescuentosPorCliente,
         recalcularPromociones,
