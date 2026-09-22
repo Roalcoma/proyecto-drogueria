@@ -1382,8 +1382,8 @@ export class PromocionesService {
         if (idsManualArt.length > 0) {
             (await pool.request().query(`
                 SELECT D.IDGRUPO, D.CODARTICULO
-                FROM APP_GRUPOS_ARTICULOS_DETALLE D
-                JOIN ARTICULOS A ON A.CODARTICULO = D.CODARTICULO
+                FROM APP_GRUPOS_ARTICULOS_DETALLE D WITH (NOLOCK)
+                JOIN ARTICULOS A WITH (NOLOCK) ON A.CODARTICULO = D.CODARTICULO
                 WHERE D.IDGRUPO IN (${idsManualArt.join(',')})
                   AND ISNULL(A.NODTOAPLICABLE, 0) <> 1
             `)).recordset.forEach((r: any) => { (articulosPorGrupo[r.IDGRUPO] ??= []).push(r.CODARTICULO); });
