@@ -409,7 +409,20 @@
             El valor sobreescribirá el descuento existente en cada artículo seleccionado.
           </p>
           <v-row dense>
-            <v-col cols="6">
+            <v-col cols="4">
+              <v-text-field
+                v-model.number="bulkD2"
+                label="D2 (%)"
+                type="number"
+                variant="outlined"
+                prefix="D2"
+                hide-details="auto"
+                min="0" max="99"
+                hint="Descuento promoción"
+                persistent-hint
+              />
+            </v-col>
+            <v-col cols="4">
               <v-text-field
                 v-model.number="bulkD3"
                 label="D3 (%)"
@@ -422,7 +435,7 @@
                 persistent-hint
               />
             </v-col>
-            <v-col cols="6">
+            <v-col cols="4">
               <v-text-field
                 v-model.number="bulkD4"
                 label="D4 (%)"
@@ -437,10 +450,12 @@
             </v-col>
           </v-row>
 
-          <v-alert v-if="bulkD3 > 0 || bulkD4 > 0" type="info" variant="tonal" density="compact" class="mt-5 text-body-2">
+          <v-alert v-if="bulkD2 > 0 || bulkD3 > 0 || bulkD4 > 0" type="info" variant="tonal" density="compact" class="mt-5 text-body-2">
             Se aplicará
+            <strong v-if="bulkD2 > 0">D2: {{ bulkD2 }}%</strong>
+            <span v-if="bulkD2 > 0 && (bulkD3 > 0 || bulkD4 > 0)"> · </span>
             <strong v-if="bulkD3 > 0">D3: {{ bulkD3 }}%</strong>
-            <span v-if="bulkD3 > 0 && bulkD4 > 0"> y </span>
+            <span v-if="bulkD3 > 0 && bulkD4 > 0"> · </span>
             <strong v-if="bulkD4 > 0">D4: {{ bulkD4 }}%</strong>
             a los {{ seleccionados.size }} artículos seleccionados.
           </v-alert>
@@ -549,6 +564,7 @@ const confirmarEliminar = ref({ mostrar: false, index: -1, descripcion: '' });
 const modalCantidad     = ref({ mostrar: false, nuevaCantidad: 1, linea: null as any });
 
 const seleccionados      = ref(new Set<number>());
+const bulkD2             = ref<number>(0);
 const bulkD3             = ref<number>(0);
 const bulkD4             = ref<number>(0);
 const modalBulk          = ref(false);
@@ -563,11 +579,12 @@ const toggleTodos = (val: boolean | null) => {
 };
 
 const aplicarBulkDescuentos = () => {
-  if (!bulkD3.value && !bulkD4.value) { lanzarNotificacion('Ingresá al menos un valor de descuento', 'warning'); return; }
+  if (!bulkD2.value && !bulkD3.value && !bulkD4.value) { lanzarNotificacion('Ingresá al menos un valor de descuento', 'warning'); return; }
   let count = 0;
   for (const linea of lineasEditadas.value) {
     if (!seleccionados.value.has(linea.CODARTICULO)) continue;
     if (!linea.PRECIOBRUTO) linea.PRECIOBRUTO = linea.PRECIOUNITARIO;
+    if (bulkD2.value > 0 && bulkD2.value < 100) linea.DESCUENTO2 = bulkD2.value;
     if (bulkD3.value > 0 && bulkD3.value < 100) linea.DESCUENTO3 = bulkD3.value;
     if (bulkD4.value > 0 && bulkD4.value < 100) linea.DESCUENTO4 = bulkD4.value;
     linea.PRECIOUNITARIO = calcularPrecioConDescuentos(linea);
@@ -575,6 +592,7 @@ const aplicarBulkDescuentos = () => {
   }
   lanzarNotificacion(`Descuentos aplicados a ${count} artículos`, 'success');
   seleccionados.value.clear();
+  bulkD2.value = 0;
   bulkD3.value = 0;
   bulkD4.value = 0;
   modalBulk.value = false;
@@ -698,7 +716,12 @@ const guardarCantidad = () => {
 
 const abrirDescuento = (linea: any) => {
   if (!linea.PRECIOBRUTO) linea.PRECIOBRUTO = linea.PRECIOUNITARIO;
-  modalDescuento.value = { mostrar: true, nuevoValor: 0, linea };
+  seleccionados.value.clear();
+  seleccionados.value.add(linea.CODARTICULO);
+  bulkD2.value = 0;
+  bulkD3.value = 0;
+  bulkD4.value = 0;
+  modalBulk.value = true;
 };
 
 const agregarDescuento = () => {
