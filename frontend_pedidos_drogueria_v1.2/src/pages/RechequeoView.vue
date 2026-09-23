@@ -755,6 +755,7 @@ async function generarPdfAlbaran() {
     const rowH  = 5.5;
     doc.setFontSize(8);
 
+    const cotizacion = Number(cab.COTIZACION) || 0;
     const infoRows: [string, string, string, string][] = [
       ['Almacén:',   cab.CODALMACEN || '—',
        'Actualizado:', cab.FECHAACTUALIZADO || '—'],
@@ -764,6 +765,10 @@ async function generarPdfAlbaran() {
        'Unidades:', String(Number(cab.UNIDADES) || 0)],
       ['Peso Neto:', `${Number(cab.PESONETO) || 0} bultos`,
        'Tasa / Uds:', tasa > 0 ? `${fmt(tasa)} / ${cab.TASAUNIDADES}` : '—'],
+      ['Cotización:', cotizacion > 0 ? `${cotizacion.toFixed(4)} Bs/USD` : '—',
+       'Factura Compra:', cab.NUMFACTURA || '—'],
+      ['Responsable:', cab.RESPONSABLE || '—',
+       '', ''],
     ];
 
     for (const [lblL, valL, lblR, valR] of infoRows) {

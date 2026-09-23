@@ -421,6 +421,15 @@
                 hint="Descuento promoción"
                 persistent-hint
               />
+              <v-btn
+                variant="text"
+                color="error"
+                size="x-small"
+                density="compact"
+                class="mt-1 px-1"
+                prepend-icon="mdi-close-circle-outline"
+                @click="quitarD2Seleccionados"
+              >Quitar D2</v-btn>
             </v-col>
             <v-col cols="4">
               <v-text-field
@@ -576,6 +585,22 @@ const algunosMarcados    = computed(() => seleccionados.value.size > 0);
 const toggleTodos = (val: boolean | null) => {
   if (val) lineasEditadas.value.forEach(l => seleccionados.value.add(l.CODARTICULO));
   else seleccionados.value.clear();
+};
+
+const quitarD2Seleccionados = () => {
+  let count = 0;
+  for (const linea of lineasEditadas.value) {
+    if (!seleccionados.value.has(linea.CODARTICULO)) continue;
+    linea.DESCUENTO2 = 0;
+    linea.PRECIOUNITARIO = calcularPrecioConDescuentos(linea);
+    count++;
+  }
+  lanzarNotificacion(`D2 eliminado en ${count} artículo${count !== 1 ? 's' : ''}`, 'success');
+  seleccionados.value.clear();
+  bulkD2.value = 0;
+  bulkD3.value = 0;
+  bulkD4.value = 0;
+  modalBulk.value = false;
 };
 
 const aplicarBulkDescuentos = () => {

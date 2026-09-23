@@ -186,9 +186,14 @@ export class RechequeoController {
                             0  AS RETIVA,
                             0  AS ISLR,
                             ISNULL(CAB.TOTALNETO,    0) AS NETOCXP,
-                            ISNULL(CAB.DTOCOMERCIAL, 0) AS DTOCOMERCIAL
+                            ISNULL(CAB.DTOCOMERCIAL, 0) AS DTOCOMERCIAL,
+                            CAST(DBO.F_GET_COTIZACION(GETDATE(), 1) AS DECIMAL(18,4)) AS COTIZACION,
+                            ISNULL(CAST(CAB.NUMFACTURA AS VARCHAR(30)), '') AS NUMFACTURA,
+                            ISNULL(CAB.CODVENDEDOR, 0) AS CODVENDEDOR,
+                            ISNULL(V.NOMVENDEDOR, '') AS RESPONSABLE
                         FROM ${ESQ}.ALBCOMPRACAB CAB WITH(NOLOCK)
                         LEFT JOIN ${ESQ}.PROVEEDORES P WITH(NOLOCK) ON P.CODPROVEEDOR = CAB.CODPROVEEDOR
+                        LEFT JOIN ${ESQ}.VENDEDORES  V WITH(NOLOCK) ON V.CODVENDEDOR  = CAB.CODVENDEDOR
                         WHERE CAB.NUMSERIE = @NUMSERIE AND CAB.NUMALBARAN = @NUMALBARAN
                     `),
                 pool.request()
