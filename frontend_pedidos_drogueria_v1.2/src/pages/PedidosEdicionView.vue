@@ -443,6 +443,15 @@
                 hint="Primer descuento comercial"
                 persistent-hint
               />
+              <v-btn
+                variant="text"
+                color="error"
+                size="x-small"
+                density="compact"
+                class="mt-1 px-1"
+                prepend-icon="mdi-close-circle-outline"
+                @click="quitarD3Seleccionados"
+              >Quitar D3</v-btn>
             </v-col>
             <v-col cols="4">
               <v-text-field
@@ -456,6 +465,15 @@
                 hint="Segundo descuento comercial"
                 persistent-hint
               />
+              <v-btn
+                variant="text"
+                color="error"
+                size="x-small"
+                density="compact"
+                class="mt-1 px-1"
+                prepend-icon="mdi-close-circle-outline"
+                @click="quitarD4Seleccionados"
+              >Quitar D4</v-btn>
             </v-col>
           </v-row>
 
@@ -599,6 +617,34 @@ const quitarD2Seleccionados = () => {
   seleccionados.value.clear();
   bulkD2.value = 0;
   bulkD3.value = 0;
+  bulkD4.value = 0;
+  modalBulk.value = false;
+};
+
+const quitarD3Seleccionados = () => {
+  let count = 0;
+  for (const linea of lineasEditadas.value) {
+    if (!seleccionados.value.has(linea.CODARTICULO)) continue;
+    linea.DESCUENTO3 = 0;
+    linea.PRECIOUNITARIO = calcularPrecioConDescuentos(linea);
+    count++;
+  }
+  lanzarNotificacion(`D3 eliminado en ${count} artículo${count !== 1 ? 's' : ''}`, 'success');
+  seleccionados.value.clear();
+  bulkD3.value = 0;
+  modalBulk.value = false;
+};
+
+const quitarD4Seleccionados = () => {
+  let count = 0;
+  for (const linea of lineasEditadas.value) {
+    if (!seleccionados.value.has(linea.CODARTICULO)) continue;
+    linea.DESCUENTO4 = 0;
+    linea.PRECIOUNITARIO = calcularPrecioConDescuentos(linea);
+    count++;
+  }
+  lanzarNotificacion(`D4 eliminado en ${count} artículo${count !== 1 ? 's' : ''}`, 'success');
+  seleccionados.value.clear();
   bulkD4.value = 0;
   modalBulk.value = false;
 };

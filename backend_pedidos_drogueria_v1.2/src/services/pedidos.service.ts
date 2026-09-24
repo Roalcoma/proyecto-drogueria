@@ -137,6 +137,22 @@ export class PedidosServices {
                         FECHA_ELIMINADO  DATETIME       NOT NULL DEFAULT GETDATE()
                     )
             `);
+            await pool.request().query(`
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='APP_PEDIDO_FALLAS')
+                    CREATE TABLE ${esquema}.APP_PEDIDO_FALLAS (
+                        ID               INT IDENTITY(1,1) PRIMARY KEY,
+                        ORDERID          NVARCHAR(50)  NOT NULL,
+                        CODARTICULO      INT           NOT NULL,
+                        DESCRIPCION      NVARCHAR(255) NULL,
+                        CANT_PEDIDA      INT           NOT NULL,
+                        STOCK_DISPONIBLE INT           NOT NULL,
+                        FECHA            DATETIME      NOT NULL DEFAULT GETDATE()
+                    )
+            `);
+            await pool.request().query(`
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_PFALLAS_OID' AND object_id=OBJECT_ID('${esquema}.APP_PEDIDO_FALLAS'))
+                    CREATE INDEX IX_PFALLAS_OID ON ${esquema}.APP_PEDIDO_FALLAS (ORDERID)
+            `);
             console.log('Tablas de pedidos verificadas.');
         } catch (err) {
             console.error('Advertencia en PedidosServices.initTablas:', err);
@@ -407,7 +423,8 @@ export class PedidosServices {
                     ISNULL(CLC.ZONA, '') AS ZONA, ISNULL(RUT.DESCRIPCION, '') AS RUTA,
                     V.NOMVENDEDOR,
                     CR.ESTATUS AS RIESGO_ESTATUS,
-                    (SELECT SUM(LP.PRODUCTCOUNT) FROM ${esquema}.LINEA_PED LP WITH (NOLOCK) WHERE LP.ORDERID = CP.ORDERID) AS TOTALUNIDADES
+                    (SELECT SUM(LP.PRODUCTCOUNT) FROM ${esquema}.LINEA_PED LP WITH (NOLOCK) WHERE LP.ORDERID = CP.ORDERID) AS TOTALUNIDADES,
+                    CASE WHEN EXISTS (SELECT 1 FROM ${esquema}.APP_PEDIDO_FALLAS WITH(NOLOCK) WHERE ORDERID = CP.ORDERID) THEN 1 ELSE 0 END AS TIENE_FALLAS
                 FROM
                     ${esquema}.CABECERA_PED CP WITH (NOLOCK)
                     LEFT JOIN CLIENTES CL WITH (NOLOCK) ON CL.CODCLIENTE = CP.CLIENTEID
@@ -1451,68 +1468,112 @@ export class PedidosServices {
         }
     }
 
-    static async getDiferenciasPedido(orderId: string): Promise<{ codarticulo: number; descripcion: string; cantPedida: number; cantMontada: number; diferencia: number }[]> {
+    static async getDiferenciasPedido(orderId: string): Promise<{
+        codarticulo: number; descripcion: string; cantPedida: number;
+        stockDisponible: number; cantFaltante: number; fecha: Date | null;
+    }[]> {
         const pool = await connectDb();
+        const { codAlmacen } = getDbConfig();
 
-        if (orderId.startsWith('EC-') || orderId.startsWith('PE-EC-')) {
-            const numPedido = orderId.startsWith('PE-EC-') ? orderId.substring(6) : orderId.substring(3);
-            const res = await pool.request()
-                .input('NUM', mssql.NVarChar(50), numPedido)
-                .input('OID', mssql.VarChar(50), orderId)
-                .query(`
-                    SELECT TRY_CAST(el.COD_ARTICULO AS INT) AS CODARTICULO,
-                           el.DESCRIPCION,
-                           el.CANTIDAD AS CANT_PEDIDA,
-                           ISNULL(lp.PRODUCTCOUNT, 0) AS CANT_MONTADA,
-                           el.CANTIDAD - ISNULL(lp.PRODUCTCOUNT, 0) AS DIFERENCIA
-                    FROM APP_ECOMMERCE_LINEAS el WITH (NOLOCK)
-                    JOIN APP_ECOMMERCE_PEDIDOS ep WITH (NOLOCK) ON el.ID_PEDIDO = ep.ID
-                    LEFT JOIN (
-                        SELECT CODARTICULO, SUM(PRODUCTCOUNT) AS PRODUCTCOUNT
-                        FROM ${esquema}.LINEA_PED WITH (NOLOCK)
-                        WHERE ORDERID = @OID
-                        GROUP BY CODARTICULO
-                    ) lp ON TRY_CAST(el.COD_ARTICULO AS INT) = lp.CODARTICULO
-                    WHERE ep.NUMERO_PEDIDO = @NUM
-                `);
-            return res.recordset.map((r: any) => ({
-                codarticulo: r.CODARTICULO,
+        // Return persisted historical fallas if they exist
+        const fallasRes = await pool.request()
+            .input('OID_F', mssql.VarChar(50), orderId)
+            .query(`
+                SELECT CODARTICULO, DESCRIPCION, CANT_PEDIDA, STOCK_DISPONIBLE, FECHA
+                FROM ${esquema}.APP_PEDIDO_FALLAS WITH(NOLOCK)
+                WHERE ORDERID = @OID_F
+                ORDER BY CODARTICULO
+            `);
+        if (fallasRes.recordset.length) {
+            return fallasRes.recordset.map((r: any) => ({
+                codarticulo: Number(r.CODARTICULO),
                 descripcion: r.DESCRIPCION ?? String(r.CODARTICULO),
                 cantPedida: Number(r.CANT_PEDIDA),
-                cantMontada: Number(r.CANT_MONTADA),
-                diferencia: Number(r.DIFERENCIA),
+                stockDisponible: Number(r.STOCK_DISPONIBLE),
+                cantFaltante: Math.max(0, Number(r.CANT_PEDIDA) - Number(r.STOCK_DISPONIBLE)),
+                fecha: r.FECHA,
             }));
         }
 
-        const tableName = (orderId.startsWith('FC') || orderId.startsWith('PE-FC'))
-            ? 'APP_FARCOMPRAS_LINEAS'
-            : 'APP_FTP_LINEAS';
-
-        const res = await pool.request()
+        // Live check: get current order lines
+        const linRes = await pool.request()
             .input('OID', mssql.VarChar(50), orderId)
             .query(`
-                SELECT fl.CODARTICULO,
-                       ISNULL(A.DESCRIPCION, CAST(fl.CODARTICULO AS NVARCHAR)) AS DESCRIPCION,
-                       fl.CANTIDAD AS CANT_PEDIDA,
-                       ISNULL(lp.PRODUCTCOUNT, 0) AS CANT_MONTADA,
-                       fl.CANTIDAD - ISNULL(lp.PRODUCTCOUNT, 0) AS DIFERENCIA
-                FROM ${tableName} fl WITH (NOLOCK)
-                LEFT JOIN ARTICULOS A WITH (NOLOCK) ON A.CODARTICULO = fl.CODARTICULO
-                LEFT JOIN (
-                    SELECT CODARTICULO, SUM(PRODUCTCOUNT) AS PRODUCTCOUNT
-                    FROM ${esquema}.LINEA_PED WITH (NOLOCK)
-                    WHERE ORDERID = @OID
-                    GROUP BY CODARTICULO
-                ) lp ON fl.CODARTICULO = lp.CODARTICULO
-                WHERE fl.ORDERID = @OID
+                SELECT CODARTICULO, SUM(PRODUCTCOUNT) AS CANTIDAD
+                FROM ${esquema}.LINEA_PED WITH(NOLOCK)
+                WHERE ORDERID = @OID
+                GROUP BY CODARTICULO
             `);
-        return res.recordset.map((r: any) => ({
-            codarticulo: r.CODARTICULO,
-            descripcion: r.DESCRIPCION ?? String(r.CODARTICULO),
-            cantPedida: Number(r.CANT_PEDIDA),
-            cantMontada: Number(r.CANT_MONTADA),
-            diferencia: Number(r.DIFERENCIA),
-        }));
+        if (!linRes.recordset.length) return [];
+
+        const codigos = linRes.recordset
+            .map((r: any) => Math.trunc(Number(r.CODARTICULO)))
+            .filter((n: number) => n > 0);
+        if (!codigos.length) return [];
+
+        // Check available stock (excludes this order's own reservations)
+        const stockRes = await pool.request()
+            .input('ALMACEN', mssql.VarChar(10), codAlmacen)
+            .input('EXCL_OID', mssql.VarChar(50), orderId)
+            .query(`
+                SELECT A.CODARTICULO, A.DESCRIPCION,
+                    ISNULL((SELECT SUM(STOCK) FROM ${esquema}.STOCKS WITH(NOLOCK)
+                            WHERE CODARTICULO = A.CODARTICULO AND CODALMACEN = @ALMACEN), 0)
+                    - ISNULL((
+                        SELECT SUM(LP.PRODUCTCOUNT)
+                        FROM ${esquema}.CABECERA_PED CP WITH(NOLOCK)
+                        INNER JOIN ${esquema}.LINEA_PED LP WITH(NOLOCK) ON LP.ORDERID = CP.ORDERID
+                        WHERE LP.CODARTICULO = A.CODARTICULO
+                          AND CP.ORDERID <> @EXCL_OID
+                          AND CP.ESTATUS IN ('PENDIENTE POR AUTORIZACION','APROBACION PSICOTROPICOS',
+                                             'SANIDAD','AUTORIZADO','EMPACADO','OK')
+                    ), 0) AS DISPONIBLE
+                FROM ${esquema}.ARTICULOS A WITH(NOLOCK)
+                WHERE A.CODARTICULO IN (${codigos.join(',')})
+            `);
+
+        const stockMap = new Map<number, { disponible: number; descripcion: string }>(
+            stockRes.recordset.map((r: any) => [Number(r.CODARTICULO), { disponible: Number(r.DISPONIBLE), descripcion: r.DESCRIPCION ?? '' }])
+        );
+        const linMap = new Map<number, number>(
+            linRes.recordset.map((r: any) => [Number(r.CODARTICULO), Number(r.CANTIDAD)])
+        );
+
+        const fallas: { codarticulo: number; descripcion: string; cantPedida: number; stockDisponible: number; cantFaltante: number; fecha: Date | null }[] = [];
+        for (const [cod, cantPedida] of linMap.entries()) {
+            const stock = stockMap.get(cod);
+            const disponible = Math.max(0, stock?.disponible ?? 0);
+            if (disponible < cantPedida) {
+                fallas.push({
+                    codarticulo: cod,
+                    descripcion: stock?.descripcion ?? String(cod),
+                    cantPedida,
+                    stockDisponible: disponible,
+                    cantFaltante: cantPedida - disponible,
+                    fecha: null,
+                });
+            }
+        }
+        return fallas;
+    }
+
+    static async registrarFallas(orderId: string, fallas: { codarticulo: number; descripcion: string; cantPedida: number; stockDisponible: number }[]): Promise<void> {
+        if (!fallas.length) return;
+        const pool = await connectDb();
+        await pool.request()
+            .input('OID_DEL', mssql.VarChar(50), orderId)
+            .query(`DELETE FROM ${esquema}.APP_PEDIDO_FALLAS WHERE ORDERID = @OID_DEL`);
+        const tabla = new mssql.Table(`${esquema}.APP_PEDIDO_FALLAS`);
+        tabla.create = false;
+        tabla.columns.add('ORDERID',          mssql.NVarChar(50),  { nullable: false });
+        tabla.columns.add('CODARTICULO',      mssql.Int,            { nullable: false });
+        tabla.columns.add('DESCRIPCION',      mssql.NVarChar(255),  { nullable: true  });
+        tabla.columns.add('CANT_PEDIDA',      mssql.Int,            { nullable: false });
+        tabla.columns.add('STOCK_DISPONIBLE', mssql.Int,            { nullable: false });
+        for (const f of fallas) {
+            tabla.rows.add(orderId, f.codarticulo, f.descripcion ?? null, f.cantPedida, f.stockDisponible);
+        }
+        await pool.request().bulk(tabla);
     }
 
     static async marcarSanidad(orderId: string, codusuario?: number, usuario?: string) {

@@ -183,6 +183,21 @@ export class PedidosControllers {
         }
     }
 
+    static async guardarFallas(req: Request, res: Response): Promise<void> {
+        const orderId = req.params['orderId'] as string;
+        const { fallas } = req.body;
+        if (!Array.isArray(fallas)) {
+            res.status(400).json({ success: false, message: 'fallas debe ser un array' });
+            return;
+        }
+        try {
+            await PedidosServices.registrarFallas(orderId, fallas);
+            res.json({ success: true });
+        } catch (error) {
+            res.status(500).json({ success: false, message: String(error) });
+        }
+    }
+
     static async updatePedidoStatus(req: Request, res: Response) {
         try {
             // Extraemos los datos del body

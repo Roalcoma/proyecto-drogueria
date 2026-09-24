@@ -185,6 +185,7 @@
             class="custom-table"
             @update:options="cargarPagina"
             :items-per-page-options="[10, 25, 50, 100, 200]"
+            :row-props="({ item }) => item.TIENE_FALLAS ? { class: 'bg-yellow-lighten-4' } : {}"
           >
             <template v-slot:item.ORDERID="{ item }">
               <div class="d-flex align-center" style="gap:4px">
@@ -729,12 +730,12 @@
       </v-card>
     </v-dialog>
 
-    <!-- Modal diferencias pedido vs montaje -->
-    <v-dialog v-model="modalDiferencias.mostrar" max-width="700">
+    <!-- Modal fallas de inventario -->
+    <v-dialog v-model="modalDiferencias.mostrar" max-width="750">
       <v-card rounded="xl">
         <v-card-title class="d-flex align-center gap-2 pa-4">
-          <v-icon color="orange-darken-2" size="24">mdi-swap-horizontal</v-icon>
-          <span class="text-h6 font-weight-bold">Diferencias: pedido vs montaje</span>
+          <v-icon color="orange-darken-2" size="24">mdi-package-variant-remove</v-icon>
+          <span class="text-h6 font-weight-bold">Fallas de inventario</span>
           <v-spacer />
           <span class="text-caption text-medium-emphasis">#{{ modalDiferencias.orderid }}</span>
         </v-card-title>
@@ -742,28 +743,29 @@
         <v-card-text class="pa-0">
           <div v-if="!modalDiferencias.diferencias.length" class="pa-6 text-center text-medium-emphasis text-body-2">
             <v-icon size="40" class="mb-2">mdi-check-circle-outline</v-icon>
-            <div>Sin diferencias — todo lo solicitado fue montado.</div>
+            <div>Sin fallas de inventario — stock suficiente para todos los artículos.</div>
           </div>
           <v-table v-else density="compact">
             <thead>
               <tr>
                 <th>Artículo</th>
-                <th class="text-right">Pedido</th>
-                <th class="text-right">Montado</th>
-                <th class="text-right">Diferencia</th>
+                <th class="text-right">Solicitado</th>
+                <th class="text-right">Stock disp.</th>
+                <th class="text-right">Faltante</th>
+                <th class="text-right">Registrado</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="d in modalDiferencias.diferencias" :key="d.codarticulo"
-                :class="d.diferencia > 0 ? 'bg-orange-lighten-5' : ''">
+              <tr v-for="d in modalDiferencias.diferencias" :key="d.codarticulo" class="bg-orange-lighten-5">
                 <td>
                   <div class="text-body-2">{{ d.descripcion }}</div>
                   <div class="text-caption text-medium-emphasis">cod {{ d.codarticulo }}</div>
                 </td>
                 <td class="text-right">{{ d.cantPedida }}</td>
-                <td class="text-right">{{ d.cantMontada }}</td>
-                <td class="text-right font-weight-bold" :class="d.diferencia > 0 ? 'text-orange-darken-3' : 'text-success'">
-                  {{ d.diferencia > 0 ? '-' + d.diferencia : d.diferencia === 0 ? '✓' : '+' + Math.abs(d.diferencia) }}
+                <td class="text-right text-blue-darken-2 font-weight-medium">{{ d.stockDisponible }}</td>
+                <td class="text-right font-weight-bold text-orange-darken-3">-{{ d.cantFaltante }}</td>
+                <td class="text-right text-caption text-medium-emphasis">
+                  {{ d.fecha ? new Date(d.fecha).toLocaleString('es-PY', { dateStyle: 'short', timeStyle: 'short' }) : 'Ahora' }}
                 </td>
               </tr>
             </tbody>
@@ -772,7 +774,7 @@
         <v-divider />
         <v-card-text v-if="modalDiferencias.advertencia" class="pa-4 pt-3 text-body-2 text-medium-emphasis">
           <v-icon color="warning" size="18" class="me-1">mdi-alert</v-icon>
-          Hay artículos con diferencias entre lo solicitado y lo montado. Podés autorizar igual — quedará registrado.
+          Hay artículos con stock insuficiente. Podés autorizar igual — la falla quedará registrada.
         </v-card-text>
         <v-card-actions class="pa-4 gap-2">
           <v-btn variant="text" @click="modalDiferencias.mostrar = false">
@@ -1109,8 +1111,8 @@ const cargarPagina = ({ page, itemsPerPage }: any) => {
   obtenerPedidos(page, itemsPerPage);
 };
 
-// ── Diferencias pedido vs montaje ─────────────────────────────────────────
-type Diferencia = { codarticulo: number; descripcion: string; cantPedida: number; cantMontada: number; diferencia: number };
+// ── Fallas de inventario ───────────────────────────────────────────────────
+type Diferencia = { codarticulo: number; descripcion: string; cantPedida: number; stockDisponible: number; cantFaltante: number; fecha: string | null };
 
 const esOrigenExterno = (orderid: string) =>
   orderid?.startsWith('EC-') || orderid?.startsWith('PE-EC-') ||
@@ -1123,8 +1125,20 @@ const modalDiferencias = ref<{
 }>({ mostrar: false, loadingId: null, orderid: '', diferencias: [], advertencia: false, item: null, nuevoStatus: '' });
 
 const confirmarConDiferencias = async () => {
-  const { item, nuevoStatus } = modalDiferencias.value;
+  const { item, nuevoStatus, diferencias } = modalDiferencias.value;
   modalDiferencias.value.mostrar = false;
+  if (diferencias.length) {
+    try {
+      await axios.post(`${import.meta.env.VITE_API_URL}/pedidos/${item.ORDERID}/fallas`, {
+        fallas: diferencias.map(d => ({
+          codarticulo: d.codarticulo,
+          descripcion: d.descripcion,
+          cantPedida: d.cantPedida,
+          stockDisponible: d.stockDisponible,
+        }))
+      });
+    } catch { /* non-blocking */ }
+  }
   await ejecutarCambioEstatus(item, nuevoStatus);
 };
 
@@ -1134,7 +1148,7 @@ const verDiferencias = async (item: any) => {
     const res = await axios.get(`${import.meta.env.VITE_API_URL}/pedidos/${item.ORDERID}/diferencias`);
     modalDiferencias.value = { ...modalDiferencias.value, mostrar: true, orderid: item.ORDERID, diferencias: res.data.diferencias ?? [], advertencia: false, item, nuevoStatus: '', loadingId: null };
   } catch {
-    lanzarNotificacion('No se pudo cargar las diferencias', 'error');
+    lanzarNotificacion('No se pudo cargar las fallas de inventario', 'error');
     modalDiferencias.value.loadingId = null;
   }
 };
