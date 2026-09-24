@@ -151,10 +151,12 @@ export class RechequeoController {
         const { numserie, numalbaran } = req.params as Record<string, string>;
         try {
             const pool = await connectDb();
+            const usdCode = Number(process.env.MONEDA_COTIZACION) || 1;
             const [cabRes, linRes] = await Promise.all([
                 pool.request()
                     .input('NUMSERIE',   mssql.NVarChar(10), numserie)
                     .input('NUMALBARAN', mssql.Int, parseInt(numalbaran))
+                    .input('USD_CODE',   mssql.Int, usdCode)
                     .query(`
                         SELECT CAB.NUMSERIE, CAB.NUMALBARAN,
                             CAST(CAB.IDESTADO AS VARCHAR(10)) AS ESTATUS,
@@ -177,8 +179,6 @@ export class RechequeoController {
                                  WHERE L.NUMSERIE=CAB.NUMSERIE AND L.NUMALBARAN=CAB.NUMALBARAN
                                    AND L.UNID1 > 0), 0
                             ) AS UNIDADES,
-                            ISNULL(CAB.FACTORMONEDA, 0) AS TASA,
-                            ISNULL(CAB.NBULTOS, 0) AS TASAUNIDADES,
                             ISNULL(CAB.TOTALBRUTO,     0) AS BASEIMPONIBLE,
                             ISNULL(CAB.TOTALIMPUESTOS, 0) AS TOTALIVA,
                             ISNULL(CAB.TOTALNETO,      0) AS TOTAL,
@@ -187,7 +187,9 @@ export class RechequeoController {
                             0  AS ISLR,
                             ISNULL(CAB.TOTALNETO,    0) AS NETOCXP,
                             ISNULL(CAB.DTOCOMERCIAL, 0) AS DTOCOMERCIAL,
-                            CAST(DBO.F_GET_COTIZACION(GETDATE(), 1) AS DECIMAL(18,4)) AS COTIZACION
+                            ISNULL(CAB.NUMSERIEFAC, '') AS NUMSERIEFAC,
+                            ISNULL(CAB.NUMFAC, 0) AS NUMFAC,
+                            CAST(DBO.F_GET_COTIZACION(GETDATE(), @USD_CODE) AS DECIMAL(18,4)) AS COTIZACION
                         FROM ${ESQ}.ALBCOMPRACAB CAB WITH(NOLOCK)
                         LEFT JOIN ${ESQ}.PROVEEDORES P WITH(NOLOCK) ON P.CODPROVEEDOR = CAB.CODPROVEEDOR
                         WHERE CAB.NUMSERIE = @NUMSERIE AND CAB.NUMALBARAN = @NUMALBARAN

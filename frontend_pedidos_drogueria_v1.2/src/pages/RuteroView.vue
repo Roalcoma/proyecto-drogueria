@@ -102,7 +102,7 @@
               :prepend-icon="todasSeleccionadas ? 'mdi-checkbox-multiple-blank-outline' : 'mdi-checkbox-multiple-marked'"
               @click="toggleTodas"
             >{{ todasSeleccionadas ? 'Deseleccionar todas' : 'Seleccionar todas' }}</v-btn>
-            <span class="text-caption text-grey-darken-1">{{ seleccionadas.size }} de {{ facturas.length }} seleccionadas</span>
+            <span class="text-caption text-grey-darken-1">{{ seleccionadas.size }} seleccionadas</span>
             <v-spacer />
             <v-btn
               color="success" variant="elevated"
@@ -114,9 +114,30 @@
               Crear Rutero y PDF ({{ seleccionadas.size }})
             </v-btn>
           </div>
+          <div v-if="facturas.length" class="px-3 pb-2 d-flex align-center gap-2 flex-wrap">
+            <v-btn-toggle v-model="filtroTipoDoc" mandatory density="compact" rounded="xl" variant="outlined" style="height:28px">
+              <v-btn value="facturas" size="x-small">
+                Facturas
+                <v-badge v-if="cuentaTipoDoc.facturas" :content="cuentaTipoDoc.facturas" inline class="ml-1" color="primary" />
+              </v-btn>
+              <v-btn value="nc" size="x-small" color="orange">
+                NC
+                <v-badge v-if="cuentaTipoDoc.nc" :content="cuentaTipoDoc.nc" inline class="ml-1" color="orange" />
+              </v-btn>
+              <v-btn value="nd" size="x-small" color="deep-purple">
+                ND
+                <v-badge v-if="cuentaTipoDoc.nd" :content="cuentaTipoDoc.nd" inline class="ml-1" color="deep-purple" />
+              </v-btn>
+              <v-btn value="todos" size="x-small">
+                Todos
+                <v-badge v-if="facturas.length" :content="facturas.length" inline class="ml-1" color="grey" />
+              </v-btn>
+            </v-btn-toggle>
+            <span class="text-caption text-grey-darken-1 ml-2">{{ facturasFiltradas.length }} documentos</span>
+          </div>
           <v-data-table
             :headers="headersOficina"
-            :items="facturas"
+            :items="facturasFiltradas"
             density="compact"
             :loading="cargando"
             no-data-text="Busca una zona para ver las facturas pendientes"
@@ -1341,8 +1362,25 @@ const escanearCaja = async () => {
   }
 };
 
+const filtroTipoDoc = ref<'facturas' | 'nc' | 'nd' | 'todos'>('facturas');
+
+const cuentaTipoDoc = computed(() => ({
+  facturas: facturas.value.filter((f: any) => (f.NUMSERIE ?? '').toUpperCase().endsWith('F')).length,
+  nc:       facturas.value.filter((f: any) => (f.NUMSERIE ?? '').toUpperCase().endsWith('N')).length,
+  nd:       facturas.value.filter((f: any) => (f.NUMSERIE ?? '').toUpperCase().endsWith('Q')).length,
+}));
+
+const facturasFiltradas = computed(() => {
+  switch (filtroTipoDoc.value) {
+    case 'facturas': return facturas.value.filter((f: any) => (f.NUMSERIE ?? '').toUpperCase().endsWith('F'));
+    case 'nc':       return facturas.value.filter((f: any) => (f.NUMSERIE ?? '').toUpperCase().endsWith('N'));
+    case 'nd':       return facturas.value.filter((f: any) => (f.NUMSERIE ?? '').toUpperCase().endsWith('Q'));
+    default:         return facturas.value;
+  }
+});
+
 const todasSeleccionadas = computed(() =>
-  facturas.value.length > 0 && facturas.value.every(f => seleccionadas.value.has(clave(f)))
+  facturasFiltradas.value.length > 0 && facturasFiltradas.value.every(f => seleccionadas.value.has(clave(f)))
 );
 
 const headersOficina = [
@@ -1384,11 +1422,13 @@ const toggleSel = (item: any) => {
 };
 
 const toggleTodas = () => {
+  const s = new Set(seleccionadas.value);
   if (todasSeleccionadas.value) {
-    seleccionadas.value = new Set();
+    facturasFiltradas.value.forEach(f => s.delete(clave(f)));
   } else {
-    seleccionadas.value = new Set(facturas.value.map(clave));
+    facturasFiltradas.value.forEach(f => s.add(clave(f)));
   }
+  seleccionadas.value = s;
 };
 
 onMounted(async () => {
@@ -1470,11 +1510,14 @@ const buscar = async () => {
   if (!zona) { notify('Ingresa una zona', 'warning'); return; }
   cargando.value = true;
   seleccionadas.value = new Set();
+  filtroTipoDoc.value = 'facturas';
   try {
     const res = await axios.get(`${API}/rutero/facturas`, { params: { zona } });
     facturas.value = res.data.data ?? [];
-    seleccionadas.value = new Set(facturas.value.map(clave));
-    if (!facturas.value.length) notify('No hay facturas pendientes para esa zona', 'info');
+    // Auto-seleccionar solo facturas (serie %F)
+    const soloFacturas = facturas.value.filter((f: any) => (f.NUMSERIE ?? '').toUpperCase().endsWith('F'));
+    seleccionadas.value = new Set(soloFacturas.map(clave));
+    if (!facturas.value.length) notify('No hay documentos pendientes para esa zona', 'info');
   } catch (e: any) {
     notify(e.response?.data?.error || e.message || 'Error desconocido', 'error');
   } finally {
@@ -1562,7 +1605,7 @@ const cargarFacturasRutero = async (idrutero: number) => {
   if (facturasRutero[idrutero]) return; // ya cargado
   try {
     const res = await axios.get(`${API}/rutero/ruteros/${idrutero}/facturas`);
-    facturasRutero[idrutero] = res.data.data ?? [];
+    facturasRutero[idrutero] = (res.data.data ?? []).sort((a: any, b: any) => Number(a.NUMFACTURA) - Number(b.NUMFACTURA));
   } catch (e: any) {
     notify(e.response?.data?.error || e.message || 'Error al cargar facturas', 'error');
   }
@@ -1794,29 +1837,29 @@ const generarPDF = async (numero: string, zonaDisplay: string, lista: any[]) => 
       if (logoData) try { doc.addImage(logoData, 'JPEG', 10, 6, 28, 13); } catch { }
 
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(14);
+      doc.setFontSize(18);
       doc.setTextColor(31, 78, 121);
-      doc.text('DROGUERIA INTERCONTINENTAL, C.A.', 105, 12, { align: 'center' });
+      doc.text('DROGUERIA INTERCONTINENTAL, C.A.', 105, 13, { align: 'center' });
 
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
+      doc.setFontSize(10);
       doc.setTextColor(60, 60, 60);
-      doc.text('RIF: J-501590192', 105, 17, { align: 'center' });
+      doc.text('RIF: J-501590192', 105, 19, { align: 'center' });
 
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(11);
+      doc.setFontSize(13);
       doc.setTextColor(31, 78, 121);
-      doc.text('REPARTO A CLIENTE', 105, 22, { align: 'center' });
+      doc.text('REPARTO A CLIENTE', 105, 25, { align: 'center' });
 
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
+      doc.setFontSize(14);
       doc.setTextColor(50, 50, 50);
       const infoLine = `Nro: ${numero}    Ruta: ${zonaDisplay}    Fecha: ${fecha}    Pág. ${pageNum} de ${totalPages}`;
-      doc.text(infoLine, 105, 27, { align: 'center' });
+      doc.text(infoLine, 105, 33, { align: 'center' });
 
       doc.setDrawColor(31, 78, 121);
       doc.setLineWidth(0.5);
-      doc.line(10, 30, 205, 30);
+      doc.line(10, 37, 205, 37);
     };
 
     // ── Agrupa por cliente ──────────────────────────────────────────────────
@@ -1839,7 +1882,7 @@ const generarPDF = async (numero: string, zonaDisplay: string, lista: any[]) => 
 
       // Fila cabecera de cliente
       body.push([
-        { content: `(${cod}) ${nombre}`, colSpan: 4, styles: { fontStyle: 'bold', fontSize: 9.5, fillColor: [208, 228, 248] } },
+        { content: `(${cod}) ${nombre}`, colSpan: 4, styles: { fontStyle: 'bold', fontSize: 11, fillColor: [208, 228, 248] } },
         { content: `BULTOS: ${subtotalBultos}`, styles: { fontStyle: 'bold', fontSize: 12, halign: 'right', fillColor: [208, 228, 248] } },
       ]);
 
@@ -1848,7 +1891,7 @@ const generarPDF = async (numero: string, zonaDisplay: string, lista: any[]) => 
         const facturaText = f.FACTURA_VISUAL ?? `${f.NUMSERIE}-${f.NUMFACTURA}`;
         const pedidoText  = f.PEDIDO ? `Ped: ${f.PEDIDO}` : '';
         body.push([
-          { content: pedidoText ? `${facturaText}\n${pedidoText}` : facturaText, styles: { fontSize: 7 } },
+          { content: pedidoText ? `${facturaText}\n${pedidoText}` : facturaText, styles: { fontSize: 10 } },
           { content: String(f.TOTAL_CAJAS ?? f.BULTOS ?? 0), styles: { halign: 'center' } },
           { content: '1', styles: { halign: 'center' } },
           { content: '0', styles: { halign: 'center' } },
@@ -1867,19 +1910,19 @@ const generarPDF = async (numero: string, zonaDisplay: string, lista: any[]) => 
     ]);
 
     autoTable(doc, {
-      startY: 32,
-      margin: { top: 32, left: 10, right: 10 },
+      startY: 39,
+      margin: { top: 39, left: 10, right: 10 },
       head: [['FACTURA', 'B/C', 'DOCS.', 'CESTAS', 'FIRMA / RECIBIDO']],
       body,
       theme: 'grid',
-      styles: { fontSize: 8.5, cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 }, valign: 'middle' },
-      headStyles: { fillColor: [31, 78, 121], textColor: 255, fontStyle: 'bold', fontSize: 8.5, halign: 'center' },
+      styles: { fontSize: 10, cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 }, valign: 'middle' },
+      headStyles: { fillColor: [31, 78, 121], textColor: 255, fontStyle: 'bold', fontSize: 10, halign: 'center' },
       columnStyles: {
         0: { cellWidth: 48 },
         1: { cellWidth: 16, halign: 'center' },
         2: { cellWidth: 16, halign: 'center' },
         3: { cellWidth: 16, halign: 'center' },
-        4: { cellWidth: 99.9, minCellHeight: 8 },
+        4: { cellWidth: 99.9, minCellHeight: 14 },
       },
       rowPageBreak: 'avoid',
     });

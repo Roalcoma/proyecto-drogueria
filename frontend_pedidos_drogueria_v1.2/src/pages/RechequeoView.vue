@@ -118,12 +118,12 @@
                         <div class="text-body-2">{{ albDetalle.FECHAVENCIMIENTO || '—' }}</div>
                       </v-col>
                       <v-col cols="6" md="3">
-                        <div class="text-caption text-medium-emphasis">Tasa / Uds Tasa</div>
-                        <div class="text-body-2">{{ albDetalle.TASA }} / {{ albDetalle.TASAUNIDADES }}</div>
-                      </v-col>
-                      <v-col cols="6" md="3">
                         <div class="text-caption text-medium-emphasis">Peso Neto / Unidades</div>
                         <div class="text-body-2">{{ albDetalle.PESONETO }} kg / {{ albDetalle.UNIDADES }}</div>
+                      </v-col>
+                      <v-col v-if="albDetalle.NUMSERIEFAC || albDetalle.NUMFAC" cols="6" md="3">
+                        <div class="text-caption text-medium-emphasis">Factura Compra</div>
+                        <div class="text-body-2">{{ albDetalle.NUMSERIEFAC }}-{{ albDetalle.NUMFAC }}</div>
                       </v-col>
                       <v-col v-if="albDetalle.OBSERVACION" cols="12">
                         <div class="text-caption text-medium-emphasis">Observación</div>
@@ -153,55 +153,46 @@
                 <!-- Totales -->
                 <v-card rounded="xl" elevation="2">
                   <v-card-text>
-                    <v-row dense class="mb-1">
-                      <v-col cols="12">
-                        <div class="d-flex align-center gap-2">
-                          <v-chip size="x-small" color="teal-darken-2" variant="tonal" prepend-icon="mdi-currency-usd">
-                            Tasa: {{ fmt(Number(albDetalle.TASA)) }} Bs/USD
-                          </v-chip>
-                        </div>
-                      </v-col>
-                    </v-row>
                     <v-row dense>
                       <v-col cols="6" md="3">
                         <div class="text-caption text-medium-emphasis">Exento</div>
                         <div class="text-body-2 font-weight-medium">{{ fmt(albDetalle.EXENTO) }} Bs</div>
-                        <div class="text-caption text-teal-darken-2">$ {{ fmtUSD(albDetalle.EXENTO, albDetalle.TASA) }}</div>
+                        <div class="text-caption text-teal-darken-2">$ {{ fmtUSD(albDetalle.EXENTO) }}</div>
                       </v-col>
                       <v-col cols="6" md="3">
                         <div class="text-caption text-medium-emphasis">Base Imponible</div>
                         <div class="text-body-2 font-weight-medium">{{ fmt(albDetalle.BASEIMPONIBLE) }} Bs</div>
-                        <div class="text-caption text-teal-darken-2">$ {{ fmtUSD(albDetalle.BASEIMPONIBLE, albDetalle.TASA) }}</div>
+                        <div class="text-caption text-teal-darken-2">$ {{ fmtUSD(albDetalle.BASEIMPONIBLE) }}</div>
                       </v-col>
                       <v-col cols="6" md="3">
                         <div class="text-caption text-medium-emphasis">Total IVA</div>
                         <div class="text-body-2 font-weight-medium">{{ fmt(albDetalle.TOTALIVA) }} Bs</div>
-                        <div class="text-caption text-teal-darken-2">$ {{ fmtUSD(albDetalle.TOTALIVA, albDetalle.TASA) }}</div>
+                        <div class="text-caption text-teal-darken-2">$ {{ fmtUSD(albDetalle.TOTALIVA) }}</div>
                       </v-col>
                       <v-col cols="6" md="3">
                         <div class="text-caption text-medium-emphasis">Total</div>
                         <div class="text-body-2 font-weight-bold text-primary">{{ fmt(albDetalle.TOTAL) }} Bs</div>
-                        <div class="text-caption font-weight-bold text-teal-darken-2">$ {{ fmtUSD(albDetalle.TOTAL, albDetalle.TASA) }}</div>
+                        <div class="text-caption font-weight-bold text-teal-darken-2">$ {{ fmtUSD(albDetalle.TOTAL) }}</div>
                       </v-col>
                       <v-col cols="6" md="3">
                         <div class="text-caption text-medium-emphasis">Ret. IVA</div>
                         <div class="text-body-2 font-weight-medium">{{ fmt(albDetalle.RETIVA) }} Bs</div>
-                        <div class="text-caption text-teal-darken-2">$ {{ fmtUSD(albDetalle.RETIVA, albDetalle.TASA) }}</div>
+                        <div class="text-caption text-teal-darken-2">$ {{ fmtUSD(albDetalle.RETIVA) }}</div>
                       </v-col>
                       <v-col cols="6" md="3">
                         <div class="text-caption text-medium-emphasis">ISLR</div>
                         <div class="text-body-2 font-weight-medium">{{ fmt(albDetalle.ISLR) }} Bs</div>
-                        <div class="text-caption text-teal-darken-2">$ {{ fmtUSD(albDetalle.ISLR, albDetalle.TASA) }}</div>
+                        <div class="text-caption text-teal-darken-2">$ {{ fmtUSD(albDetalle.ISLR) }}</div>
                       </v-col>
                       <v-col cols="6" md="3">
                         <div class="text-caption text-medium-emphasis">Neto CxP</div>
                         <div class="text-body-2 font-weight-medium">{{ fmt(albDetalle.NETOCXP) }} Bs</div>
-                        <div class="text-caption text-teal-darken-2">$ {{ fmtUSD(albDetalle.NETOCXP, albDetalle.TASA) }}</div>
+                        <div class="text-caption text-teal-darken-2">$ {{ fmtUSD(albDetalle.NETOCXP) }}</div>
                       </v-col>
                       <v-col cols="6" md="3">
                         <div class="text-caption text-medium-emphasis">Dto. Comercial</div>
                         <div class="text-body-2 font-weight-medium">{{ fmt(albDetalle.DTOCOMERCIAL) }} Bs</div>
-                        <div class="text-caption text-teal-darken-2">$ {{ fmtUSD(albDetalle.DTOCOMERCIAL, albDetalle.TASA) }}</div>
+                        <div class="text-caption text-teal-darken-2">$ {{ fmtUSD(albDetalle.DTOCOMERCIAL) }}</div>
                       </v-col>
                     </v-row>
                   </v-card-text>
@@ -655,17 +646,9 @@ function fmt(v: any) {
   return n.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-// Ratio Bs→USD derivado de las líneas (IMPORTE ya convertido por RIP)
-// FACTORMONEDA = 1 para compras locales, no usar como tasa de cambio
-const albRatioUSD = computed(() => {
-  const totBs  = Number(albDetalle.value?.TOTAL) || 0;
-  const totUSD = albLineas.value.reduce((s: number, l: any) => s + (Number(l.IMPORTE) || 0), 0);
-  return totBs > 0 && totUSD > 0 ? totUSD / totBs : 0;
-});
-
-function fmtUSD(bs: any, _tasa?: any) {
-  const n = (Number(bs) || 0) * albRatioUSD.value;
-  return n.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function fmtUSD(bs: any) {
+  const cot = Number(albDetalle.value?.COTIZACION) || 1;
+  return ((Number(bs) || 0) / cot).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 async function buscarAlbaranes() {
@@ -709,7 +692,6 @@ async function generarPdfAlbaran() {
   try {
     const cab    = albDetalle.value;
     const lineas = albLineas.value;
-    const tasa   = Number(cab.TASA) || 0;
 
     const TEAL  = [22, 78, 99]  as [number,number,number];
     const LTEAL = [232, 246, 250] as [number,number,number];
@@ -764,9 +746,9 @@ async function generarPdfAlbaran() {
       ['Proveedor:', `${cab.CODPROVEEDOR} - ${cab.NOMPROVEEDOR}`,
        'Unidades:', String(Number(cab.UNIDADES) || 0)],
       ['Peso Neto:', `${Number(cab.PESONETO) || 0} bultos`,
-       'Tasa / Uds:', tasa > 0 ? `${fmt(tasa)} / ${cab.TASAUNIDADES}` : '—'],
-      ['Cotización:', cotizacion > 0 ? `${cotizacion.toFixed(4)} Bs/USD` : '—',
-       'Factura Compra:', cab.NUMFACTURA || '—'],
+       'Cotización:', cotizacion > 0 ? `${cotizacion.toFixed(4)} Bs/USD` : '—'],
+      ['Factura Compra:', (cab.NUMSERIEFAC && cab.NUMFAC) ? `${cab.NUMSERIEFAC}-${Number(cab.NUMFAC)}` : '—',
+       '', ''],
       ['Responsable:', cab.RESPONSABLE || '—',
        '', ''],
     ];
@@ -854,18 +836,13 @@ async function generarPdfAlbaran() {
     let y2 = (doc as any).lastAutoTable.finalY + 5;
 
     // ── FOOTER: FIRMAS + TOTALES ──────────────────────────────────────────────
-    // USD total: suma de IMPORTE de líneas (ya convertido por RIP.F_GET_COTIZACION_RIP)
-    // Bs totals: directamente del ALBCOMPRACAB (moneda local ICG)
-    // FACTORMONEDA = 1 para compras en Bs, no sirve como tasa de cambio
+    // ALBCOMPRACAB almacena montos en Bs; USD = Bs ÷ cotizacion
     const subBs  = Number(cab.BASEIMPONIBLE) || 0;
     const ivaBs  = Number(cab.TOTALIVA)      || 0;
     const totBs  = Number(cab.TOTAL)         || 0;
-    const totUSD = lineas.reduce((s, l) => s + (Number(l.IMPORTE) || 0), 0);
-    // Distribuir USD proporcionalmente a los componentes Bs
-    const ratio  = totBs > 0 ? totUSD / totBs : 0;
-    const subUSD = subBs * ratio;
-    const ivaUSD = ivaBs * ratio;
-    const toUSD  = (bs: number) => bs * ratio;
+    const subUSD = cotizacion > 0 ? subBs / cotizacion : 0;
+    const ivaUSD = cotizacion > 0 ? ivaBs / cotizacion : 0;
+    const totUSD = cotizacion > 0 ? totBs / cotizacion : 0;
 
     // Firmas
     doc.setFontSize(8);
