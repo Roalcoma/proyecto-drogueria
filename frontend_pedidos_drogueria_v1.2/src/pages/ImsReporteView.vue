@@ -110,6 +110,11 @@
             label="Día de envío" variant="outlined" density="compact" hide-details="auto" />
         </v-col>
         <v-col v-if="emailCfg.frecuencia === 'semanal'" cols="12" sm="3">
+          <v-select v-model.number="emailCfg.diaInicioRango" :items="diasSemana" item-title="label" item-value="value"
+            label="Reporte desde el día" variant="outlined" density="compact" hide-details="auto"
+            hint="Primer día del período" persistent-hint />
+        </v-col>
+        <v-col v-if="emailCfg.frecuencia === 'semanal'" cols="12" sm="3">
           <v-select v-model.number="emailCfg.diaFinRango" :items="diasSemana" item-title="label" item-value="value"
             label="Reporte hasta el día" variant="outlined" density="compact" hide-details="auto"
             hint="Último día del período" persistent-hint />
@@ -184,7 +189,7 @@ async function descargar() {
 const emailCfg = ref({
   habilitado: false, smtpHost: '', smtpPort: 587, smtpUser: '', smtpPass: '',
   smtpTls: true, fromName: 'Sistema Droguería', destinatarios: '',
-  frecuencia: 'semanal', diaSemana: 1, diaFinRango: 6, diaMes: 1, hora: 8, minuto: 0,
+  frecuencia: 'semanal', diaSemana: 1, diaInicioRango: 1, diaFinRango: 6, diaMes: 1, hora: 8, minuto: 0,
   schedulerActivo: false,
 });
 const guardando  = ref(false);
