@@ -101,13 +101,18 @@
             variant="outlined" density="compact" placeholder="correo1@empresa.com, correo2@empresa.com"
             prepend-inner-icon="mdi-email-multiple-outline" hide-details="auto" />
         </v-col>
-        <v-col cols="12" sm="4">
+        <v-col cols="12" sm="3">
           <v-select v-model="emailCfg.frecuencia" :items="frecuencias" label="Frecuencia"
             variant="outlined" density="compact" hide-details="auto" />
         </v-col>
-        <v-col v-if="emailCfg.frecuencia === 'semanal'" cols="12" sm="4">
+        <v-col v-if="emailCfg.frecuencia === 'semanal'" cols="12" sm="3">
           <v-select v-model.number="emailCfg.diaSemana" :items="diasSemana" item-title="label" item-value="value"
             label="Día de envío" variant="outlined" density="compact" hide-details="auto" />
+        </v-col>
+        <v-col v-if="emailCfg.frecuencia === 'semanal'" cols="12" sm="3">
+          <v-select v-model.number="emailCfg.diaFinRango" :items="diasSemana" item-title="label" item-value="value"
+            label="Reporte hasta el día" variant="outlined" density="compact" hide-details="auto"
+            hint="Último día del período" persistent-hint />
         </v-col>
         <v-col v-if="emailCfg.frecuencia === 'mensual'" cols="12" sm="4">
           <v-text-field v-model.number="emailCfg.diaMes" label="Día del mes" type="number" min="1" max="28"
@@ -179,7 +184,7 @@ async function descargar() {
 const emailCfg = ref({
   habilitado: false, smtpHost: '', smtpPort: 587, smtpUser: '', smtpPass: '',
   smtpTls: true, fromName: 'Sistema Droguería', destinatarios: '',
-  frecuencia: 'semanal', diaSemana: 1, diaMes: 1, hora: 8, minuto: 0,
+  frecuencia: 'semanal', diaSemana: 1, diaFinRango: 6, diaMes: 1, hora: 8, minuto: 0,
   schedulerActivo: false,
 });
 const guardando  = ref(false);

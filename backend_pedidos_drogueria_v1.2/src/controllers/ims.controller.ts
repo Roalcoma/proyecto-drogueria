@@ -166,6 +166,7 @@ export class ImsController {
                 destinatarios: String(b.destinatarios ?? ''),
                 frecuencia:    (b.frecuencia === 'mensual' ? 'mensual' : 'semanal'),
                 diaSemana:     Number(b.diaSemana  ?? 1),
+                diaFinRango:   Number(b.diaFinRango ?? 6),
                 diaMes:        Number(b.diaMes     ?? 1),
                 hora:          Number(b.hora        ?? 8),
                 minuto:        Number(b.minuto      ?? 0),

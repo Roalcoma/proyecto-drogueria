@@ -17,6 +17,8 @@ export interface ImsEmailConfig {
     destinatarios:  string;
     frecuencia:     'semanal' | 'mensual';
     diaSemana:      number;
+    /** Último día del rango semanal: 0=Dom, 1=Lun, …, 6=Sáb. Default 6 (sábado). */
+    diaFinRango:    number;
     diaMes:         number;
     hora:           number;
     minuto:         number;
@@ -33,19 +35,28 @@ const DEFAULT: ImsEmailConfig = {
     destinatarios: '',
     frecuencia:    'semanal',
     diaSemana:     1,
+    diaFinRango:   6,
     diaMes:        1,
     hora:          8,
     minuto:        0,
 };
 
-function rangoAnterior(frecuencia: 'semanal' | 'mensual'): { desde: string; hasta: string } {
+function rangoAnterior(frecuencia: 'semanal' | 'mensual', diaFinRango = 6): { desde: string; hasta: string } {
     const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
     const fmt = (d: Date) => d.toISOString().slice(0, 10).replace(/-/g, '');
+
     if (frecuencia === 'semanal') {
+        // Retroceder hasta el último diaFinRango que ya pasó (sin incluir hoy si hoy coincide)
         const hasta = new Date(hoy);
-        hasta.setDate(hoy.getDate() - 1);
+        const retroceder = ((hoy.getDay() - diaFinRango + 7) % 7) || 7;
+        hasta.setDate(hoy.getDate() - retroceder);
+
+        // El inicio es el lunes de esa misma semana
+        const diasDesdeL = diaFinRango === 0 ? 6 : diaFinRango - 1;
         const desde = new Date(hasta);
-        desde.setDate(hasta.getDate() - 6);
+        desde.setDate(hasta.getDate() - diasDesdeL);
+
         return { desde: fmt(desde), hasta: fmt(hasta) };
     }
     // mensual: mes anterior completo
@@ -80,7 +91,10 @@ export class ImsEmailService {
                     HORA          INT          NOT NULL DEFAULT 8,
                     MINUTO        INT          NOT NULL DEFAULT 0,
                     CONSTRAINT CK_IMS_EMAIL_ID CHECK (ID=1)
-                )
+                );
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                               WHERE TABLE_NAME='APP_IMS_EMAIL_CONFIG' AND COLUMN_NAME='DIA_FIN_RANGO')
+                    ALTER TABLE ${ESQ}.APP_IMS_EMAIL_CONFIG ADD DIA_FIN_RANGO INT NOT NULL DEFAULT 6
             `);
             console.log('[IMS-EMAIL] Tabla verificada/creada');
         } catch (e: any) { console.error('[IMS-EMAIL] initTablas:', e.message); }
@@ -103,6 +117,7 @@ export class ImsEmailService {
             destinatarios: r.DESTINATARIOS,
             frecuencia:    r.FRECUENCIA as 'semanal' | 'mensual',
             diaSemana:     r.DIA_SEMANA,
+            diaFinRango:   r.DIA_FIN_RANGO ?? 6,
             diaMes:        r.DIA_MES,
             hora:          r.HORA,
             minuto:        r.MINUTO,
@@ -122,6 +137,7 @@ export class ImsEmailService {
             .input('DE',  mssql.NVarChar(1000),  cfg.destinatarios)
             .input('FR',  mssql.NVarChar(20),    cfg.frecuencia)
             .input('DS',  mssql.Int,              cfg.diaSemana)
+            .input('DF',  mssql.Int,              cfg.diaFinRango ?? 6)
             .input('DM',  mssql.Int,              cfg.diaMes)
             .input('HR',  mssql.Int,              cfg.hora)
             .input('MN',  mssql.Int,              cfg.minuto)
@@ -130,13 +146,14 @@ export class ImsEmailService {
                     UPDATE ${ESQ}.APP_IMS_EMAIL_CONFIG SET
                         HABILITADO=@H, SMTP_HOST=@SH, SMTP_PORT=@SP, SMTP_USER=@SU,
                         SMTP_PASS=@SW, SMTP_TLS=@ST, FROM_NAME=@FN, DESTINATARIOS=@DE,
-                        FRECUENCIA=@FR, DIA_SEMANA=@DS, DIA_MES=@DM, HORA=@HR, MINUTO=@MN
+                        FRECUENCIA=@FR, DIA_SEMANA=@DS, DIA_FIN_RANGO=@DF, DIA_MES=@DM,
+                        HORA=@HR, MINUTO=@MN
                     WHERE ID=1
                 ELSE
                     INSERT INTO ${ESQ}.APP_IMS_EMAIL_CONFIG
                         (ID,HABILITADO,SMTP_HOST,SMTP_PORT,SMTP_USER,SMTP_PASS,SMTP_TLS,
-                         FROM_NAME,DESTINATARIOS,FRECUENCIA,DIA_SEMANA,DIA_MES,HORA,MINUTO)
-                    VALUES (1,@H,@SH,@SP,@SU,@SW,@ST,@FN,@DE,@FR,@DS,@DM,@HR,@MN)
+                         FROM_NAME,DESTINATARIOS,FRECUENCIA,DIA_SEMANA,DIA_FIN_RANGO,DIA_MES,HORA,MINUTO)
+                    VALUES (1,@H,@SH,@SP,@SU,@SW,@ST,@FN,@DE,@FR,@DS,@DF,@DM,@HR,@MN)
             `);
 
         ImsEmailService.detener();
@@ -169,7 +186,7 @@ export class ImsEmailService {
     static schedulerActivo() { return !!ImsEmailService.scheduler; }
 
     static async enviar(cfg: ImsEmailConfig): Promise<void> {
-        const { desde, hasta } = rangoAnterior(cfg.frecuencia);
+        const { desde, hasta } = rangoAnterior(cfg.frecuencia, cfg.diaFinRango ?? 6);
         const pool = await connectDb();
         const buffer = await generarImsExcel(pool, desde, hasta);
 

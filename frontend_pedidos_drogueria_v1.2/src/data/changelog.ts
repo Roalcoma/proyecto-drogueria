@@ -11,9 +11,10 @@ export interface CommitEntry {
   texto: string;
 }
 
-export const APP_VERSION = '1.2.22';
+export const APP_VERSION = '1.2.23';
 
 export const VERSIONES: VersionEntry[] = [
+  { version: '1.2.23', fecha: '2026-09-28', desde: '2026-09-28' },
   { version: '1.2.22', fecha: '2026-08-31', desde: '2026-08-31' },
   { version: '1.2.21', fecha: '2026-08-31', desde: '2026-08-31' },
   { version: '1.2.20', fecha: '2026-08-31', desde: '2026-08-31' },
@@ -40,6 +41,9 @@ export const VERSIONES: VersionEntry[] = [
 ];
 
 export const COMMITS: CommitEntry[] = [
+  { hash: 'pending', date: '2026-09-28', tipo: 'fix',  texto: 'SEPED: cambiar waitUntil networkidle → load en navegación a /seped/alcabala para evitar timeout cuando la página tiene polling continuo' },
+  { hash: 'pending', date: '2026-09-28', tipo: 'feat', texto: 'IMS email: rango semanal configurable hasta el día elegido (diaFinRango); selector "Reporte hasta el día" en UI; columna DIA_FIN_RANGO en DB; default sábado' },
+  { hash: 'pending', date: '2026-09-28', tipo: 'feat', texto: 'rutero: filtro de tipo de documento (Facturas/NC/ND/Todos) en pestaña Oficina; muestra facturas por defecto al buscar' },
   { hash: 'pending', date: '2026-08-31', tipo: 'feat', texto: 'ICompras: servicio de descarga automática de pedidos remotos — ciclo configurable (GET RECIBIDO → marcar PROCESADO → escribir TXT), scheduler por intervalo, auditoría en DB, reprocesar por ID; pestaña ICOMPRAS en Servidor FTP' },
   { hash: 'pending', date: '2026-08-31', tipo: 'feat', texto: 'rechequeo: lote y fecha de vencimiento por artículo — se guarda en RECHEQUEO_DET y al cerrar upserta ARTICULOSLIN (COLOR correlativo, busca lote existente)' },
   { hash: 'pending', date: '2026-08-31', tipo: 'fix',  texto: 'rechequeo: CERRADO_LIN agrega columnas TALLA (@), COLOR (correlativo ARTICULOSLIN) y DTOCOMERCIAL (PEDCOMPRACAB)' },

@@ -391,9 +391,10 @@ export class SepedService {
             }
             emit('INFO', `Login OK (url: ${page.url()})`);
 
-            // Listado — waitUntil networkidle para que cargue el JS/AJAX de la tabla
+            // Listado — 'load' es suficiente para tablas server-rendered (Laravel).
+            // 'networkidle' falla cuando la página tiene polling o requests continuas.
             const listingUrl = cfg.baseUrl.replace(/\/$/, '') + cfg.listingPath;
-            await page.goto(listingUrl, { waitUntil: 'networkidle' });
+            await page.goto(listingUrl, { waitUntil: 'load', timeout: 30000 });
             const listingHtml = await page.content();
             emit('INFO', `Listado recibido: ${listingHtml.length} bytes`);
 
