@@ -145,6 +145,7 @@
                     class="alb-tabla"
                   >
                     <template #item.PVENTA="{ item }">{{ fmt(item.PVENTA) }}</template>
+                    <template #item.DTO="{ item }">{{ Number(item.DTO) ? `${Number(item.DTO).toFixed(2)}%` : '—' }}</template>
                     <template #item.COSTO="{ item }">{{ fmt(item.COSTO) }}</template>
                     <template #item.IMPORTE="{ item }">{{ fmt(item.IMPORTE) }}</template>
                   </v-data-table>
@@ -636,6 +637,7 @@ const headersAlb = [
   { title: 'Lote',        key: 'LOTE',         width: 90,  sortable: false },
   { title: 'Vence',       key: 'FECHAVENCE',   width: 90,  sortable: false },
   { title: 'Cant.',       key: 'CANTIDAD',      width: 65,  align: 'end' as const },
+  { title: 'Dto%',        key: 'DTO',           width: 65,  align: 'end' as const },
   { title: 'Margen',      key: 'MARGEN',        width: 75,  align: 'end' as const },
   { title: 'Costo',       key: 'COSTO',         width: 80,  align: 'end' as const },
   { title: 'Importe',     key: 'IMPORTE',       width: 90,  align: 'end' as const },
@@ -808,6 +810,7 @@ async function generarPdfAlbaran() {
         { header: 'Lote',        dataKey: 'LOTE' },
         { header: 'Vence',       dataKey: 'FECHAVENCE' },
         { header: 'Cant.',       dataKey: 'CANTIDAD' },
+        { header: 'Dto%',        dataKey: 'DTO' },
         { header: 'Margen',      dataKey: 'MARGEN' },
         { header: 'Costo',       dataKey: 'COSTO' },
         { header: 'Importe',     dataKey: 'IMPORTE' },
@@ -815,6 +818,7 @@ async function generarPdfAlbaran() {
       body: lineas.map(l => ({
         ...l,
         PVENTA:  fmt(l.PVENTA),
+        DTO:     Number(l.DTO) !== 0 ? `${Number(l.DTO).toFixed(2)}%` : '—',
         COSTO:   fmt(l.COSTO),
         IMPORTE: fmt(l.IMPORTE),
         MARGEN:  `${Number(l.MARGEN).toFixed(2)}%`,
@@ -826,9 +830,10 @@ async function generarPdfAlbaran() {
         3: { cellWidth: 18 },
         4: { cellWidth: 18 },
         5: { cellWidth: 12, halign: 'right' },
-        6: { cellWidth: 16, halign: 'right' },
-        7: { cellWidth: 18, halign: 'right' },
-        8: { cellWidth: 20, halign: 'right' },
+        6: { cellWidth: 13, halign: 'right' },
+        7: { cellWidth: 16, halign: 'right' },
+        8: { cellWidth: 18, halign: 'right' },
+        9: { cellWidth: 20, halign: 'right' },
       },
     });
 

@@ -208,6 +208,7 @@ export class RechequeoController {
                             ISNULL(ROUND(
                                 ((PV.PNETO - RIP.F_GET_COTIZACION_RIP(ACL.PRECIO, ACC.FECHAALBARAN, ACC.FACTORMONEDA, ACC.CODMONEDA, 2)) / CASE WHEN ISNULL(PV.PNETO, 0) = 0 THEN 1 ELSE ISNULL(PV.PNETO, 1) END) * 100
                             , 2), 0) AS MARGEN,
+                            ISNULL(ACL.DTO, 0) AS DTO,
                             RIP.F_GET_COTIZACION_RIP(ACL.PRECIO, ACC.FECHAALBARAN, ACC.FACTORMONEDA, ACC.CODMONEDA, 2) AS COSTO,
                             RIP.F_GET_COTIZACION_RIP(ACL.TOTAL,  ACC.FECHAALBARAN, ACC.FACTORMONEDA, ACC.CODMONEDA, 2) AS IMPORTE
                         FROM ${ESQ}.ALBCOMPRACAB ACC WITH(NOLOCK)
