@@ -11,20 +11,24 @@ export class ReportesService {
         return res.recordset;
     }
 
-    static async getComisionesCobranzas(desde: string, hasta: string, comisionMarketing: number): Promise<any[]> {
+    static async getCobros(desde: string, hasta: string): Promise<any[]> {
         const pool = await connectDb();
         const res = await pool.request()
-            .input('DESDE',              mssql.Date,  desde)
-            .input('HASTA',              mssql.Date,  hasta)
-            .input('COMISION_MARKETING', mssql.Float, comisionMarketing)
+            .input('DESDE', mssql.Date, desde)
+            .input('HASTA', mssql.Date, hasta)
             .query(`
                 SELECT DISTINCT
-                    CCL.CODVENDEDOR                                              AS VENDEDOR,
-                    V.NOMVENDEDOR                                                AS NOMBRE,
-                    SUM(X.IMPORTE_USD)                                           AS MONTO_USD,
-                    SUM(X2.IMPORTE_VED)                                          AS MONTO,
-                    SUM(X.IMPORTE_USD  * (@COMISION_MARKETING / 100))            AS COMISION_USD,
-                    SUM(X2.IMPORTE_VED * (@COMISION_MARKETING / 100))            AS COMISION_VED
+                    FV.FECHA                                                         AS FECHA_FACTURA,
+                    FVCL.FECHARECIBIDO                                               AS FECHA_RECIBIDO,
+                    CONCAT(T.SERIE, ' - ', T.NUMERO)                                 AS DOCUMENTO,
+                    V.NOMVENDEDOR                                                    AS VENDEDORES,
+                    COALESCE(DT.REFERENCIA COLLATE DATABASE_DEFAULT,
+                             AN.ANTICIPO   COLLATE DATABASE_DEFAULT)                 AS REFERENCIA,
+                    ISNULL(DT.FECHACOBRO, T.FECHASALDADO)                            AS FECHACOBRO,
+                    ISNULL(DT.FECHAPROCESADO, T.FECHAMODIFICADO)                     AS FECHAPROCESADO,
+                    X.VENCIMIENTO,
+                    VFP.DIAS,
+                    C.NOMBRECLIENTE
                 FROM TESORERIA T
                 INNER JOIN FACTURASVENTA FV
                     ON FV.NUMSERIE = T.SERIE AND FV.NUMFACTURA = T.NUMERO AND FV.N = T.N
@@ -76,18 +80,29 @@ export class ReportesService {
                   AND T.FECHATRASPASO >= @DESDE
                   AND T.FECHATRASPASO <  DATEADD(DAY, 1, @HASTA)
                   AND (DT.SERIE IS NOT NULL OR T.COMENTARIO LIKE 'ANTICIPO/VALE ZABD%')
-                  AND CCL.CODVENDEDOR <> 2
-                GROUP BY CCL.CODVENDEDOR, V.NOMVENDEDOR
             `);
         return res.recordset;
     }
 
-    static async getTransferencias(desde: string, hasta: string, codarticulo: number): Promise<any[]> {
+    static async getProveedores(): Promise<{ CODPROVEEDOR: number; NOMPROVEEDOR: string }[]> {
+        const pool = await connectDb();
+        const res = await pool.request().query(`
+            SELECT CODPROVEEDOR, NOMPROVEEDOR
+            FROM PROVEEDORES WITH(NOLOCK)
+            WHERE BLOQUEADO <> 'T' OR BLOQUEADO IS NULL
+            ORDER BY NOMPROVEEDOR
+        `);
+        return res.recordset;
+    }
+
+    static async getTransferencias(desde: string, hasta: string, codarticulo: number, codproveedor: number, codusuario: number): Promise<any[]> {
         const pool = await connectDb();
         const res = await pool.request()
-            .input('DESDE',       mssql.Date, desde)
-            .input('HASTA',       mssql.Date, hasta)
-            .input('CODARTICULO', mssql.Int,  codarticulo || null)
+            .input('DESDE',        mssql.Date, desde)
+            .input('HASTA',        mssql.Date, hasta)
+            .input('CODARTICULO',  mssql.Int,  codarticulo  || null)
+            .input('CODPROVEEDOR', mssql.Int,  codproveedor || null)
+            .input('CODUSUARIO',   mssql.Int,  codusuario   || null)
             .query(`
                 SELECT
                     AVC.FECHA                                        AS FECHA,
@@ -97,15 +112,29 @@ export class ReportesService {
                     AVL.UNIDADESTOTAL                                AS UNIDADES,
                     C.NOMBRECLIENTE                                  AS CLIENTE_PROVEEDOR,
                     AVL.PRECIO                                       AS MONTO_UNITARIO,
-                    AVL.TOTAL                                        AS TOTAL
+                    AVL.TOTAL                                        AS TOTAL,
+                    AVL.SUPEDIDO                                     AS SUPEDIDO,
+                    AP.CODUSUARIO                                    AS CODUSUARIO,
+                    AP.USUARIO                                       AS USUARIO,
+                    P.NOMPROVEEDOR                                   AS PROVEEDOR
                 FROM ALBVENTACAB AVC
-                INNER JOIN ALBVENTALIN  AVL ON AVL.NUMSERIE = AVC.NUMSERIE AND AVL.NUMALBARAN = AVC.NUMALBARAN AND AVL.N = AVC.N
-                INNER JOIN FACTURASVENTA FV  ON FV.NUMSERIE  = AVC.NUMSERIEFAC AND FV.NUMFACTURA = AVC.NUMFAC AND FV.N = AVC.NFAC
-                INNER JOIN TIPOSDOC     TD  ON TD.TIPODOC   = FV.TIPODOC
-                LEFT  JOIN CLIENTES     C   ON C.CODCLIENTE  = AVC.CODCLIENTE
-                WHERE (AVL.CODARTICULO = @CODARTICULO OR ISNULL(@CODARTICULO, 0) = 0)
+                INNER JOIN ALBVENTALIN          AVL   ON AVL.NUMSERIE  = AVC.NUMSERIE  AND AVL.NUMALBARAN = AVC.NUMALBARAN AND AVL.N = AVC.N
+                INNER JOIN FACTURASVENTA        FV    ON FV.NUMSERIE   = AVC.NUMSERIEFAC AND FV.NUMFACTURA = AVC.NUMFAC   AND FV.N = AVC.NFAC
+                INNER JOIN TIPOSDOC             TD    ON TD.TIPODOC    = FV.TIPODOC
+                INNER JOIN ARTICULOS            ART   ON ART.CODARTICULO = AVL.CODARTICULO
+                LEFT  JOIN CLIENTES             C     ON C.CODCLIENTE  = AVC.CODCLIENTE
+                LEFT  JOIN APP_PEDIDO_LOG       AP    ON AP.ORDERID COLLATE LATIN1_GENERAL_CS_AI = AVL.SUPEDIDO AND AP.EST_NUEVO = 'PENDIENTE'
+                LEFT  JOIN ARTICULOSCAMPOSLIBRES ARTCL ON ARTCL.CODARTICULO = AVL.CODARTICULO
+                LEFT  JOIN PROVEEDORES          P     ON P.CODPROVEEDOR = ARTCL.CODPROVEEDORICG
+                LEFT  JOIN GENERAL.DBO.USUARIOS US    ON US.CODUSUARIO = AP.CODUSUARIO
+                WHERE (AVL.CODARTICULO  = @CODARTICULO  OR ISNULL(@CODARTICULO,  0) = 0)
+                  AND (P.CODPROVEEDOR   = @CODPROVEEDOR OR ISNULL(@CODPROVEEDOR, 0) = 0)
+                  AND (US.CODUSUARIO    = @CODUSUARIO   OR ISNULL(@CODUSUARIO,   0) = 0)
                   AND AVL.UNIDADESTOTAL <> 0
                   AND AVC.FECHA BETWEEN @DESDE AND @HASTA
+                  AND ART.TIPOARTICULO = 'A'
+                  AND AVC.FACTURADO = 'T'
+                  AND AVL.CODARTICULO NOT IN (9610, 9611, 9369, 9694)
                 ORDER BY AVL.DESCRIPCION, FV.FECHA
             `);
         return res.recordset;

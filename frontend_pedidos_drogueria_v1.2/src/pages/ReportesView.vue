@@ -188,7 +188,7 @@
           </v-row>
         </v-card-text>
 
-        <v-card-text v-else-if="modalFiltros.reporte.id === 'comisiones-cobranzas'" class="pa-5">
+        <v-card-text v-else-if="modalFiltros.reporte.id === 'cobros'" class="pa-5">
           <v-row dense>
             <v-col cols="6">
               <v-text-field v-model="f.desde" type="date" label="Desde *" variant="outlined"
@@ -197,11 +197,6 @@
             <v-col cols="6">
               <v-text-field v-model="f.hasta" type="date" label="Hasta *" variant="outlined"
                 density="comfortable" hide-details="auto" />
-            </v-col>
-            <v-col cols="12" class="mt-3">
-              <v-text-field v-model.number="f.comision" type="number" min="0" step="0.1"
-                label="% Comisión Marketing" variant="outlined"
-                density="comfortable" hide-details prepend-inner-icon="mdi-percent" suffix="%" />
             </v-col>
           </v-row>
         </v-card-text>
@@ -216,10 +211,21 @@
               <v-text-field v-model="f.hasta" type="date" label="Hasta *" variant="outlined"
                 density="comfortable" hide-details="auto" />
             </v-col>
-            <v-col cols="12" class="mt-3">
+            <v-col cols="12" sm="4" class="mt-3">
               <v-text-field v-model="f.codarticulo" type="number" min="0"
-                label="Código de artículo (0 = todos)" variant="outlined"
+                label="Cod. Artículo (0 = todos)" variant="outlined"
                 density="comfortable" hide-details prepend-inner-icon="mdi-barcode-scan" />
+            </v-col>
+            <v-col cols="12" sm="4" class="mt-3">
+              <v-autocomplete v-model="f.codproveedor" :items="proveedores" item-title="NOMPROVEEDOR"
+                item-value="CODPROVEEDOR" label="Proveedor (todos si vacío)" variant="outlined"
+                density="comfortable" hide-details clearable :loading="cargandoProveedores"
+                prepend-inner-icon="mdi-truck-outline" no-data-text="Sin resultados" />
+            </v-col>
+            <v-col cols="12" sm="4" class="mt-3">
+              <v-text-field v-model="f.codusuario" type="number" min="0"
+                label="Cod. Usuario (0 = todos)" variant="outlined"
+                density="comfortable" hide-details prepend-inner-icon="mdi-account-outline" />
             </v-col>
           </v-row>
         </v-card-text>
@@ -255,9 +261,9 @@ const REPORTES = [
   { id: 'transferencias', nombre: 'Reporte de Transferencias',
     desc: 'Movimientos de albaranes por artículo y período',
     icono: 'mdi-swap-horizontal', color: 'teal' },
-  { id: 'comisiones-cobranzas', nombre: 'Comisiones Cobranzas',
-    desc: 'Comisión por vendedor sobre cobros realizados en el período',
-    icono: 'mdi-cash-multiple', color: 'green' },
+  { id: 'cobros', nombre: 'Reporte de Cobros',
+    desc: 'Cobros realizados en el período con detalle de vencimiento y referencia',
+    icono: 'mdi-cash-check', color: 'green' },
 ];
 
 // ── Navegación ────────────────────────────────────────────────────────────
@@ -271,12 +277,31 @@ const reportesFiltrados = computed(() => {
 });
 
 const modalFiltros = ref<{ mostrar: boolean; reporte: typeof REPORTES[0] | null }>({ mostrar: false, reporte: null });
-const abrirFiltros = (r: typeof REPORTES[0]) => { modalFiltros.value = { mostrar: true, reporte: r }; };
+const abrirFiltros = (r: typeof REPORTES[0]) => {
+  modalFiltros.value = { mostrar: true, reporte: r };
+  if (r.id === 'transferencias') cargarProveedores();
+};
 const volverLista  = () => { vista.value = 'lista'; filas.value = []; reporteActivo.value = null; };
 
 // ── Filtros ───────────────────────────────────────────────────────────────
 const hoy = new Date();
-const f = ref({ desde: `${hoy.getFullYear()}-01-01`, hasta: hoy.toISOString().slice(0, 10), codcliente: 0, codarticulo: 0, comision: 1.0 });
+const f = ref({ desde: `${hoy.getFullYear()}-01-01`, hasta: hoy.toISOString().slice(0, 10), codcliente: 0, codarticulo: 0, codproveedor: null as number | null, codusuario: 0, comision: 1.0 });
+
+// ── Proveedores para autocomplete ─────────────────────────────────────────
+const proveedores = ref<{ CODPROVEEDOR: number; NOMPROVEEDOR: string }[]>([]);
+const cargandoProveedores = ref(false);
+let proveedoresCargados = false;
+
+async function cargarProveedores() {
+  if (proveedoresCargados) return;
+  cargandoProveedores.value = true;
+  try {
+    const { data } = await axios.get(`${API}/api/reportes/proveedores`);
+    if (data.success) { proveedores.value = data.data; proveedoresCargados = true; }
+  } catch { /* silencioso */ } finally {
+    cargandoProveedores.value = false;
+  }
+}
 
 const resumenFiltros = computed(() => {
   if (!reporteActivo.value) return '';
@@ -292,13 +317,17 @@ const UND_RE  = /^[A-Z]{3}_\d{4}_UND$/;
 
 const columnas = ref<Col[]>([]);
 
-const COLS_COMISIONES_COBRANZAS: Col[] = [
-  { key: 'VENDEDOR',     title: 'Cód. Vendedor', align: 'center', type: 'num',   isUnd: false },
-  { key: 'NOMBRE',       title: 'Nombre',        align: 'left',   type: 'texto', isUnd: false },
-  { key: 'MONTO_USD',    title: 'Monto USD',     align: 'right',  type: 'total', isUnd: false },
-  { key: 'MONTO',        title: 'Monto',         align: 'right',  type: 'total', isUnd: false },
-  { key: 'COMISION_USD', title: 'Comisión USD',  align: 'right',  type: 'total', isUnd: false },
-  { key: 'COMISION_VED', title: 'Comisión Gs.',  align: 'right',  type: 'total', isUnd: false },
+const COLS_COBROS: Col[] = [
+  { key: 'FECHA_FACTURA',   title: 'F. Factura',    align: 'center', type: 'fecha', isUnd: false },
+  { key: 'FECHA_RECIBIDO',  title: 'F. Recibido',   align: 'center', type: 'fecha', isUnd: false },
+  { key: 'DOCUMENTO',       title: 'Documento',     align: 'left',   type: 'texto', isUnd: false },
+  { key: 'NOMBRECLIENTE',   title: 'Cliente',       align: 'left',   type: 'texto', isUnd: false },
+  { key: 'VENDEDORES',      title: 'Vendedor',      align: 'left',   type: 'texto', isUnd: false },
+  { key: 'REFERENCIA',      title: 'Referencia',    align: 'left',   type: 'texto', isUnd: false },
+  { key: 'FECHACOBRO',      title: 'F. Cobro',      align: 'center', type: 'fecha', isUnd: false },
+  { key: 'FECHAPROCESADO',  title: 'F. Procesado',  align: 'center', type: 'fecha', isUnd: false },
+  { key: 'VENCIMIENTO',     title: 'Vencimiento',   align: 'center', type: 'fecha', isUnd: false },
+  { key: 'DIAS',            title: 'Días crédito',  align: 'right',  type: 'num',   isUnd: false },
 ];
 
 const COLS_TRANSFERENCIAS: Col[] = [
@@ -310,13 +339,16 @@ const COLS_TRANSFERENCIAS: Col[] = [
   { key: 'CLIENTE_PROVEEDOR',title: 'Cliente',        align: 'left',   type: 'texto',  isUnd: false },
   { key: 'MONTO_UNITARIO',   title: 'Monto Unit.',    align: 'right',  type: 'total',  isUnd: false },
   { key: 'TOTAL',            title: 'Total',          align: 'right',  type: 'total',  isUnd: false },
+  { key: 'SUPEDIDO',         title: 'N° Pedido',      align: 'left',   type: 'texto',  isUnd: false },
+  { key: 'USUARIO',          title: 'Usuario',        align: 'left',   type: 'texto',  isUnd: false },
+  { key: 'PROVEEDOR',        title: 'Proveedor',      align: 'left',   type: 'texto',  isUnd: false },
 ];
 
 const initColumnas = (reporteId: string) => {
   if (!filas.value.length) { columnas.value = []; return; }
 
-  if (reporteId === 'comisiones-cobranzas') {
-    columnas.value = [...COLS_COMISIONES_COBRANZAS];
+  if (reporteId === 'cobros') {
+    columnas.value = [...COLS_COBROS];
     return;
   }
   if (reporteId === 'transferencias') {
@@ -425,15 +457,15 @@ const ejecutarReporte = async () => {
       });
       if (!res.data.success) throw new Error(res.data.message);
       filas.value = res.data.data;
-    } else if (r.id === 'comisiones-cobranzas') {
-      const res = await axios.get(`${API}/api/reportes/comisiones-cobranzas`, {
-        params: { desde: f.value.desde, hasta: f.value.hasta, comision: f.value.comision ?? 1.0 },
+    } else if (r.id === 'cobros') {
+      const res = await axios.get(`${API}/api/reportes/cobros`, {
+        params: { desde: f.value.desde, hasta: f.value.hasta },
       });
       if (!res.data.success) throw new Error(res.data.message);
       filas.value = res.data.data;
     } else if (r.id === 'transferencias') {
       const res = await axios.get(`${API}/api/reportes/transferencias`, {
-        params: { desde: f.value.desde, hasta: f.value.hasta, codarticulo: f.value.codarticulo || 0 },
+        params: { desde: f.value.desde, hasta: f.value.hasta, codarticulo: f.value.codarticulo || 0, codproveedor: f.value.codproveedor ?? 0, codusuario: f.value.codusuario || 0 },
       });
       if (!res.data.success) throw new Error(res.data.message);
       filas.value = res.data.data;

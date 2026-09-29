@@ -11,9 +11,11 @@ export interface CommitEntry {
   texto: string;
 }
 
-export const APP_VERSION = '1.2.24';
+export const APP_VERSION = '1.2.26';
 
 export const VERSIONES: VersionEntry[] = [
+  { version: '1.2.26', fecha: '2026-09-29', desde: '2026-09-29' },
+  { version: '1.2.25', fecha: '2026-09-29', desde: '2026-09-29' },
   { version: '1.2.24', fecha: '2026-09-29', desde: '2026-09-29' },
   { version: '1.2.23', fecha: '2026-09-28', desde: '2026-09-28' },
   { version: '1.2.22', fecha: '2026-08-31', desde: '2026-08-31' },
@@ -42,6 +44,8 @@ export const VERSIONES: VersionEntry[] = [
 ];
 
 export const COMMITS: CommitEntry[] = [
+  { hash: 'pending', date: '2026-09-29', tipo: 'feat', texto: 'reportería: reemplazar Comisiones Cobranzas por Reporte de Cobros — detalle de cobros con fecha factura, recibido, cobro, procesado, vencimiento y días crédito' },
+  { hash: 'pending', date: '2026-09-29', tipo: 'feat', texto: 'transferencias: filtros por CODPROVEEDOR y CODUSUARIO; nuevas columnas SUPEDIDO, USUARIO y PROVEEDOR en el reporte' },
   { hash: 'pending', date: '2026-09-29', tipo: 'fix',  texto: 'albarán compra PDF: agregar columna Dto% (ALBCOMPRALIN.DTO) por línea; muestra "—" cuando es 0' },
   { hash: 'pending', date: '2026-09-28', tipo: 'fix',  texto: 'SEPED: cambiar waitUntil networkidle → load en navegación a /seped/alcabala para evitar timeout cuando la página tiene polling continuo' },
   { hash: 'pending', date: '2026-09-28', tipo: 'feat', texto: 'IMS email: rango semanal configurable hasta el día elegido (diaFinRango); selector "Reporte hasta el día" en UI; columna DIA_FIN_RANGO en DB; default sábado' },

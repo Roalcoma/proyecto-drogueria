@@ -4,8 +4,9 @@ import { authMiddleware } from '../middleware/auth.middleware';
 
 const reportesRouter = Router();
 
+reportesRouter.get('/proveedores',               authMiddleware, ReportesController.getProveedores);
 reportesRouter.get('/top-clientes-por-vendedor', authMiddleware, ReportesController.getTopClientesPorVendedor);
 reportesRouter.get('/transferencias',            authMiddleware, ReportesController.getTransferencias);
-reportesRouter.get('/comisiones-cobranzas',      authMiddleware, ReportesController.getComisionesCobranzas);
+reportesRouter.get('/cobros',                    authMiddleware, ReportesController.getCobros);
 
 export default reportesRouter;
