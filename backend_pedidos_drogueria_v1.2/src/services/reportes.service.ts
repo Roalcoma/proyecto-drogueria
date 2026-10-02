@@ -106,9 +106,10 @@ export class ReportesService {
 
     static async getProveedores(): Promise<{ CODPROVEEDOR: number; NOMPROVEEDOR: string }[]> {
         const pool = await connectDb();
+        const ESQ = process.env.DB_ESQUEMA || 'dbo';
         const res = await pool.request().query(`
             SELECT CODPROVEEDOR, NOMPROVEEDOR
-            FROM PROVEEDORES WITH(NOLOCK)
+            FROM ${ESQ}.PROVEEDORES WITH(NOLOCK)
             WHERE BLOQUEADO <> 'T' OR BLOQUEADO IS NULL
             ORDER BY NOMPROVEEDOR
         `);

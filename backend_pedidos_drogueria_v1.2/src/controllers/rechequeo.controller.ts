@@ -100,7 +100,7 @@ export class RechequeoController {
         const conditions: string[] = ["CAB.NUMSERIE = 'ZACA'"];
         if (desde)      conditions.push("CONVERT(DATE, CAB.FECHAALBARAN) >= @DESDE");
         if (hasta)      conditions.push("CONVERT(DATE, CAB.FECHAALBARAN) <= @HASTA");
-        if (proveedor)  conditions.push("P.NOMPROVEEDOR LIKE @PROV");
+        if (proveedor)  conditions.push("CAB.CODPROVEEDOR = @CODPROVEEDOR");
         if (estatus)    conditions.push("CAST(CAB.IDESTADO AS VARCHAR(50)) = @ESTATUS");
         if (numalbaran) conditions.push("CAB.NUMALBARAN = @NUMALBARAN");
         const where = 'WHERE ' + conditions.join(' AND ');
@@ -110,7 +110,7 @@ export class RechequeoController {
             const r = pool.request();
             if (desde)      r.input('DESDE',     mssql.VarChar(10),   desde);
             if (hasta)      r.input('HASTA',     mssql.VarChar(10),   hasta);
-            if (proveedor)  r.input('PROV',      mssql.NVarChar(100), `%${proveedor}%`);
+            if (proveedor)  r.input('CODPROVEEDOR', mssql.Int, parseInt(proveedor));
             if (estatus)    r.input('ESTATUS',   mssql.NVarChar(50),  estatus);
             if (numalbaran) r.input('NUMALBARAN', mssql.Int,           parseInt(numalbaran));
             return r;

@@ -36,7 +36,11 @@
                     <v-col><v-text-field v-model="albFiltros.desde" type="date" label="Desde" variant="outlined" density="compact" hide-details /></v-col>
                     <v-col><v-text-field v-model="albFiltros.hasta" type="date" label="Hasta" variant="outlined" density="compact" hide-details /></v-col>
                   </v-row>
-                  <v-text-field v-model="albFiltros.proveedor" label="Proveedor" variant="outlined" density="compact" hide-details clearable prepend-inner-icon="mdi-domain" class="mb-2" @keyup.enter="buscarAlbaranes" />
+                  <v-autocomplete v-model="albFiltros.codproveedor"
+                    :items="proveedoresAlb" item-title="NOMPROVEEDOR" item-value="CODPROVEEDOR"
+                    label="Proveedor" variant="outlined" density="compact" hide-details clearable
+                    prepend-inner-icon="mdi-domain" class="mb-2" :loading="cargandoProveedores"
+                    no-data-text="Sin resultados" />
                   <v-btn block color="primary" variant="elevated" :loading="cargandoAlb" @click="buscarAlbaranes" prepend-icon="mdi-magnify">Buscar</v-btn>
                 </div>
 
@@ -622,7 +626,18 @@ onMounted(async () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const estatusOpts  = ['CONFIRMADA', 'PENDIENTE', 'ANULADA', 'EN PROCESO'];
-const albFiltros   = ref({ desde: '', hasta: '', proveedor: '', estatus: '', numalbaran: '' });
+const albFiltros   = ref({ desde: '', hasta: '', codproveedor: null as number | null, estatus: '', numalbaran: '' });
+const proveedoresAlb      = ref<{ CODPROVEEDOR: number; NOMPROVEEDOR: string }[]>([]);
+const cargandoProveedores = ref(false);
+let proveedoresCargados   = false;
+async function cargarProveedoresAlb() {
+  if (proveedoresCargados) return;
+  cargandoProveedores.value = true;
+  try {
+    const r = await axios.get(`${API}/api/reportes/proveedores`);
+    if (r.data.success) { proveedoresAlb.value = r.data.data; proveedoresCargados = true; }
+  } catch (e) { console.error('[RechequeoView] cargarProveedoresAlb:', e); } finally { cargandoProveedores.value = false; }
+}
 const albaranes    = ref<any[]>([]);
 const albTotal     = ref(0);
 const albPage      = ref(1);
@@ -663,7 +678,7 @@ async function buscarAlbaranes() {
     const params: Record<string, string> = { page: String(albPage.value), limit: '50' };
     if (albFiltros.value.desde)      params['desde']      = albFiltros.value.desde;
     if (albFiltros.value.hasta)      params['hasta']      = albFiltros.value.hasta;
-    if (albFiltros.value.proveedor)  params['proveedor']  = albFiltros.value.proveedor;
+    if (albFiltros.value.codproveedor) params['proveedor'] = String(albFiltros.value.codproveedor);
     if (albFiltros.value.estatus)    params['estatus']    = albFiltros.value.estatus;
     if (albFiltros.value.numalbaran) params['numalbaran'] = albFiltros.value.numalbaran;
     const r = await axios.get(`${API}/rechequeo/albaranes`, { params });
@@ -1267,6 +1282,7 @@ function procesarScan(valor: string) {
 onMounted(() => {
   // Albaranes: carga sin filtro de fecha inicial
   buscarAlbaranes();
+  cargarProveedoresAlb();
 
   cargarListas();
 });
