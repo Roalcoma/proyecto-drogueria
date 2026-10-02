@@ -121,6 +121,10 @@
                         <div class="text-caption text-medium-emphasis">Peso Neto / Unidades</div>
                         <div class="text-body-2">{{ albDetalle.PESONETO }} kg / {{ albDetalle.UNIDADES }}</div>
                       </v-col>
+                      <v-col v-if="albDetalle.SUALBARAN" cols="6" md="3">
+                        <div class="text-caption text-medium-emphasis">Cód. Factura Física</div>
+                        <div class="text-body-2">{{ albDetalle.SUALBARAN }}</div>
+                      </v-col>
                       <v-col v-if="albDetalle.NUMSERIEFAC || albDetalle.NUMFAC" cols="6" md="3">
                         <div class="text-caption text-medium-emphasis">Factura Compra</div>
                         <div class="text-body-2">{{ albDetalle.NUMSERIEFAC }}-{{ albDetalle.NUMFAC }}</div>
@@ -750,9 +754,7 @@ async function generarPdfAlbaran() {
       ['Peso Neto:', `${Number(cab.PESONETO) || 0} bultos`,
        'Cotización:', cotizacion > 0 ? `${cotizacion.toFixed(4)} Bs/USD` : '—'],
       ['Factura Compra:', (cab.NUMSERIEFAC && cab.NUMFAC) ? `${cab.NUMSERIEFAC}-${Number(cab.NUMFAC)}` : '—',
-       '', ''],
-      ['Responsable:', cab.RESPONSABLE || '—',
-       '', ''],
+       'Fact. Física:', cab.SUALBARAN || '—'],
     ];
 
     for (const [lblL, valL, lblR, valR] of infoRows) {

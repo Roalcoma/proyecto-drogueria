@@ -151,7 +151,7 @@ export class RechequeoController {
         const { numserie, numalbaran } = req.params as Record<string, string>;
         try {
             const pool = await connectDb();
-            const usdCode = Number(process.env.MONEDA_COTIZACION) || 1;
+            const usdCode = Number(process.env.MONEDA_COTIZACION) || 2;
             const [cabRes, linRes] = await Promise.all([
                 pool.request()
                     .input('NUMSERIE',   mssql.NVarChar(10), numserie)
@@ -159,6 +159,7 @@ export class RechequeoController {
                     .input('USD_CODE',   mssql.Int, usdCode)
                     .query(`
                         SELECT CAB.NUMSERIE, CAB.NUMALBARAN,
+                            ISNULL(CAB.SUALBARAN, '') AS SUALBARAN,
                             CAST(CAB.IDESTADO AS VARCHAR(10)) AS ESTATUS,
                             ISNULL(CONVERT(VARCHAR(10), CAB.FECHAALBARAN,   23), '') AS FECHA,
                             ISNULL(CONVERT(VARCHAR(10), CAB.FECHAMODIFICADO, 23), '') AS FECHAACTUALIZADO,
@@ -189,7 +190,11 @@ export class RechequeoController {
                             ISNULL(CAB.DTOCOMERCIAL, 0) AS DTOCOMERCIAL,
                             ISNULL(CAB.NUMSERIEFAC, '') AS NUMSERIEFAC,
                             ISNULL(CAB.NUMFAC, 0) AS NUMFAC,
-                            CAST(DBO.F_GET_COTIZACION(GETDATE(), @USD_CODE) AS DECIMAL(18,4)) AS COTIZACION
+                            CASE
+                                WHEN CAB.CODMONEDA = @USD_CODE
+                                    THEN CAST(DBO.F_GET_COTIZACION(CAB.FECHAALBARAN, @USD_CODE) AS DECIMAL(18,4))
+                                ELSE CAST(1.0 / NULLIF(CAB.FACTORMONEDA, 0) AS DECIMAL(18,4))
+                            END AS COTIZACION
                         FROM ${ESQ}.ALBCOMPRACAB CAB WITH(NOLOCK)
                         LEFT JOIN ${ESQ}.PROVEEDORES P WITH(NOLOCK) ON P.CODPROVEEDOR = CAB.CODPROVEEDOR
                         WHERE CAB.NUMSERIE = @NUMSERIE AND CAB.NUMALBARAN = @NUMALBARAN
