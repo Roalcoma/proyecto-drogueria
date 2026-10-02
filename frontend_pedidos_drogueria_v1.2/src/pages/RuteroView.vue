@@ -1513,10 +1513,7 @@ const buscar = async () => {
   filtroTipoDoc.value = 'facturas';
   try {
     const res = await axios.get(`${API}/rutero/facturas`, { params: { zona } });
-    facturas.value = res.data.data ?? [];
-    // Auto-seleccionar solo facturas (serie %F)
-    const soloFacturas = facturas.value.filter((f: any) => (f.NUMSERIE ?? '').toUpperCase().endsWith('F'));
-    seleccionadas.value = new Set(soloFacturas.map(clave));
+    facturas.value = (res.data.data ?? []).sort((a: any, b: any) => Number(a.NUMFACTURA) - Number(b.NUMFACTURA));
     if (!facturas.value.length) notify('No hay documentos pendientes para esa zona', 'info');
   } catch (e: any) {
     notify(e.response?.data?.error || e.message || 'Error desconocido', 'error');
@@ -1834,7 +1831,7 @@ const generarPDF = async (numero: string, zonaDisplay: string, lista: any[]) => 
 
   const build = () => {
     const addHeader = (pageNum: number, totalPages: number) => {
-      if (logoData) try { doc.addImage(logoData, 'JPEG', 10, 6, 28, 13); } catch { }
+      if (logoData) try { doc.addImage(logoData, 'JPEG', 15, 6, 28, 13); } catch { }
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(18);
@@ -1859,7 +1856,7 @@ const generarPDF = async (numero: string, zonaDisplay: string, lista: any[]) => 
 
       doc.setDrawColor(31, 78, 121);
       doc.setLineWidth(0.5);
-      doc.line(10, 37, 205, 37);
+      doc.line(15, 37, 200, 37);
     };
 
     // ── Agrupa por cliente ──────────────────────────────────────────────────
@@ -1911,7 +1908,7 @@ const generarPDF = async (numero: string, zonaDisplay: string, lista: any[]) => 
 
     autoTable(doc, {
       startY: 39,
-      margin: { top: 39, left: 10, right: 10 },
+      margin: { top: 39, left: 15, right: 15 },
       head: [['FACTURA', 'B/C', 'DOCS.', 'CESTAS', 'FIRMA / RECIBIDO']],
       body,
       theme: 'grid',
@@ -1922,7 +1919,7 @@ const generarPDF = async (numero: string, zonaDisplay: string, lista: any[]) => 
         1: { cellWidth: 16, halign: 'center' },
         2: { cellWidth: 16, halign: 'center' },
         3: { cellWidth: 16, halign: 'center' },
-        4: { cellWidth: 99.9, minCellHeight: 14 },
+        4: { cellWidth: 89.9, minCellHeight: 14 },
       },
       rowPageBreak: 'avoid',
     });
