@@ -355,7 +355,7 @@ export class PedidosServices {
                              clienteId?: string, codVendedor?: string, riesgo?: string, codruta?: string,
                              fechaDesde?: string, fechaHasta?: string, esPsicotropico?: boolean,
                              nombreCliente?: string, soloFacturado?: boolean, usuario?: string,
-                             nroFactura?: string, editadoPor?: string) {
+                             nroFactura?: string, editadoPor?: string, soloAtrasados?: boolean) {
         try {
             const isAll = Number(limit) === -1;
             let validPage = isAll ? 1 : Math.max(1, Number(page) || 1);
@@ -411,7 +411,8 @@ export class PedidosServices {
                 .input('USD_CODE',       mssql.Int,           usdCode)
                 .input('VED_CODE',       mssql.Int,           vedCode)
                 .input('USUARIO',        mssql.VarChar(100),  usuario       ? `%${usuario.toLowerCase()}%`       : null)
-                .input('EDITADO_POR',    mssql.VarChar(100),  editadoPor    ? `%${editadoPor.toLowerCase()}%`    : null);
+                .input('EDITADO_POR',    mssql.VarChar(100),  editadoPor    ? `%${editadoPor.toLowerCase()}%`    : null)
+                .input('SOLO_ATRASADOS', mssql.Bit,           soloAtrasados  ? 1 : null);
             preIds.forEach((id, i) => req.input(`PRE${i}`, mssql.VarChar(50), id));
 
             const result = await req.query(`
@@ -469,6 +470,7 @@ export class PedidosServices {
                     AND (@USUARIO       IS NULL OR LOWER(ISNULL(LG.USUARIO, '')) LIKE @USUARIO OR LOWER(ISNULL(V.NOMVENDEDOR, '')) LIKE @USUARIO)
                     AND (@EDITADO_POR   IS NULL OR LOWER(ISNULL(LE.EDITADO_POR, '')) LIKE @EDITADO_POR)
                     AND (@SOLO_FACTURADO IS NULL OR FAC.FACTURADO IS NOT NULL)
+                    AND (@SOLO_ATRASADOS IS NULL OR (DATEDIFF(MINUTE, CP.FECHA, GETDATE()) > 60 AND CP.ESTATUS IN ('PENDIENTE','PENDIENTE POR AUTORIZACION')))
                     ${orderIdClause}
                 ORDER BY
                     CP.FECHA DESC
@@ -488,7 +490,8 @@ export class PedidosServices {
                 .input('NOMBRE_CLIENTE2',  mssql.NVarChar(200), nombreCliente ? `%${nombreCliente.toLowerCase()}%` : null)
                 .input('SOLO_FACTURADO2',  mssql.Bit,           soloFacturado  ? 1 : null)
                 .input('USUARIO2',         mssql.VarChar(100),  usuario       ? `%${usuario.toLowerCase()}%`       : null)
-                .input('EDITADO_POR2',     mssql.VarChar(100),  editadoPor    ? `%${editadoPor.toLowerCase()}%`    : null);
+                .input('EDITADO_POR2',     mssql.VarChar(100),  editadoPor    ? `%${editadoPor.toLowerCase()}%`    : null)
+                .input('SOLO_ATRASADOS2',  mssql.Bit,           soloAtrasados  ? 1 : null);
             preIds.forEach((id, i) => countReq.input(`CPRE${i}`, mssql.VarChar(50), id));
             const countOrderIdClause = preIds.length
                 ? `AND CP.ORDERID IN (${preIds.map((_, i) => `@CPRE${i}`).join(',')})`
@@ -536,7 +539,14 @@ export class PedidosServices {
                     AND (@USUARIO2       IS NULL OR LOWER(ISNULL(LG2.USUARIO, '')) LIKE @USUARIO2 OR LOWER(ISNULL(V2.NOMVENDEDOR, '')) LIKE @USUARIO2)
                     AND (@EDITADO_POR2   IS NULL OR LOWER(ISNULL(LE2.EDITADO_POR, '')) LIKE @EDITADO_POR2)
                     AND (@SOLO_FACTURADO2 IS NULL OR PF.SUPEDIDO IS NOT NULL)
+                    AND (@SOLO_ATRASADOS2 IS NULL OR (DATEDIFF(MINUTE, CP.FECHA, GETDATE()) > 60 AND CP.ESTATUS IN ('PENDIENTE','PENDIENTE POR AUTORIZACION')))
                     ${countOrderIdClause}
+            `);
+
+            const atrasadosResult = await pool.request().query(`
+                SELECT COUNT(*) AS CNT FROM ${esquema}.CABECERA_PED WITH (NOLOCK)
+                WHERE ESTATUS IN ('PENDIENTE','PENDIENTE POR AUTORIZACION')
+                  AND DATEDIFF(MINUTE, FECHA, GETDATE()) > 60
             `);
 
             return {
@@ -544,7 +554,8 @@ export class PedidosServices {
                 message: 'Pedidos obtenidos correctamente',
                 data: result.recordset,
                 total: countResult.recordset[0].TOTAL,
-                totalUSD: Number(countResult.recordset[0].TOTAL_USD)
+                totalUSD: Number(countResult.recordset[0].TOTAL_USD),
+                conteoAtrasados: atrasadosResult.recordset[0].CNT
             };
 
         } catch (error) {
@@ -1264,15 +1275,16 @@ export class PedidosServices {
                 }
             }
 
-            // Al pasar a un estatus que reserva stock, verificar disponibilidad por línea
-            // (mientras estuvo en PENDIENTE no reservaba stock, otro pedido pudo haberlo agotado)
+            // Al pasar a un estatus que reserva stock, verificar disponibilidad por línea.
+            // No bloqueante: registra las fallas y autoriza de todas formas.
+            let warningStock: string | undefined;
             if (estatusLimpio === 'PENDIENTE POR AUTORIZACION' || estatusLimpio === 'AUTORIZADO') {
                 const lineasRes = await pool.request()
                     .input('ORDERID_LINEAS', mssql.VarChar(50), orderId)
                     .query(`SELECT LP.CODARTICULO, LP.PRODUCTCOUNT AS CANTIDAD
                             FROM ${esquema}.LINEA_PED LP WITH (NOLOCK) WHERE LP.ORDERID = @ORDERID_LINEAS`);
 
-                const faltantes: string[] = [];
+                const fallasStock: { codarticulo: number; descripcion: string; cantPedida: number; stockDisponible: number }[] = [];
                 for (const linea of lineasRes.recordset) {
                     const stockRes = await pool.request()
                         .input('COD', mssql.Int, linea.CODARTICULO)
@@ -1291,14 +1303,12 @@ export class PedidosServices {
                         `);
                     const disponible: number = stockRes.recordset[0]?.DISPONIBLE ?? 0;
                     if (disponible < linea.CANTIDAD) {
-                        faltantes.push(`${linea.CODARTICULO} (necesita ${linea.CANTIDAD}, disponible ${disponible})`);
+                        fallasStock.push({ codarticulo: linea.CODARTICULO, descripcion: String(linea.CODARTICULO), cantPedida: linea.CANTIDAD, stockDisponible: disponible });
                     }
                 }
-                if (faltantes.length > 0) {
-                    return {
-                        success: false,
-                        message: `Stock insuficiente para: ${faltantes.join('; ')}`
-                    };
+                if (fallasStock.length > 0) {
+                    await PedidosServices.registrarFallas(orderId, fallasStock);
+                    warningStock = `Stock insuficiente para: ${fallasStock.map(f => `${f.codarticulo} (necesita ${f.cantPedida}, disponible ${f.stockDisponible})`).join('; ')}`;
                 }
             }
 
@@ -1326,7 +1336,8 @@ export class PedidosServices {
 
             return {
                 success: true,
-                message: `El estatus del pedido se actualizó a ${estatusLimpio} de forma satisfactoria`
+                message: `El estatus del pedido se actualizó a ${estatusLimpio} de forma satisfactoria`,
+                ...(warningStock ? { warning: warningStock } : {}),
             };
 
         } catch (error) {
@@ -1555,6 +1566,57 @@ export class PedidosServices {
             }
         }
         return fallas;
+    }
+
+    static async getStockFaltantes(orderId: string): Promise<{ codarticulo: number; descripcion: string; cantPedida: number; stockDisponible: number }[]> {
+        const pool = await connectDb();
+        const lineasRes = await pool.request()
+            .input('ORDERID_LINEAS', mssql.VarChar(50), orderId)
+            .query(`SELECT LP.CODARTICULO, LP.PRODUCTCOUNT AS CANTIDAD,
+                           ISNULL(A.DESCRIPCION, CAST(LP.CODARTICULO AS NVARCHAR)) AS DESCRIPCION
+                    FROM ${esquema}.LINEA_PED LP WITH (NOLOCK)
+                    LEFT JOIN ARTICULOS A WITH (NOLOCK) ON A.CODARTICULO = LP.CODARTICULO
+                    WHERE LP.ORDERID = @ORDERID_LINEAS`);
+
+        const faltantes: { codarticulo: number; descripcion: string; cantPedida: number; stockDisponible: number }[] = [];
+        for (const linea of lineasRes.recordset) {
+            const stockRes = await pool.request()
+                .input('COD', mssql.Int, linea.CODARTICULO)
+                .input('ORDERID_EXCL', mssql.VarChar(50), orderId)
+                .input('ALMACEN', mssql.VarChar(10), getDbConfig().codAlmacen)
+                .query(`
+                    SELECT
+                        ISNULL((SELECT SUM(STOCK) FROM STOCKS WITH (NOLOCK) WHERE CODARTICULO = @COD AND CODALMACEN = @ALMACEN), 0)
+                        - ISNULL((
+                            SELECT SUM(LP2.PRODUCTCOUNT) FROM ${esquema}.CABECERA_PED CP2 WITH (NOLOCK)
+                            INNER JOIN ${esquema}.LINEA_PED LP2 WITH (NOLOCK) ON LP2.ORDERID = CP2.ORDERID
+                            WHERE LP2.CODARTICULO = @COD
+                              AND CP2.ORDERID <> @ORDERID_EXCL
+                              AND CP2.ESTATUS IN ('PENDIENTE POR AUTORIZACION','APROBACION PSICOTROPICOS','SANIDAD','AUTORIZADO','EMPACADO','OK')
+                        ), 0) AS DISPONIBLE
+                `);
+            const disponible: number = stockRes.recordset[0]?.DISPONIBLE ?? 0;
+            if (disponible < linea.CANTIDAD) {
+                faltantes.push({ codarticulo: linea.CODARTICULO, descripcion: linea.DESCRIPCION ?? String(linea.CODARTICULO), cantPedida: linea.CANTIDAD, stockDisponible: disponible });
+            }
+        }
+        // Si no hay faltantes actuales pero el pedido tiene fallas históricas, devolverlas
+        // para que el modal de advertencia igualmente aparezca al autorizar
+        if (faltantes.length === 0) {
+            const histRes = await pool.request()
+                .input('OID_HIST', mssql.VarChar(50), orderId)
+                .query(`SELECT CODARTICULO, DESCRIPCION, CANT_PEDIDA, STOCK_DISPONIBLE
+                        FROM ${esquema}.APP_PEDIDO_FALLAS WITH(NOLOCK) WHERE ORDERID = @OID_HIST`);
+            for (const r of histRes.recordset) {
+                faltantes.push({
+                    codarticulo:    Number(r.CODARTICULO),
+                    descripcion:    r.DESCRIPCION ?? String(r.CODARTICULO),
+                    cantPedida:     Number(r.CANT_PEDIDA),
+                    stockDisponible: Number(r.STOCK_DISPONIBLE),
+                });
+            }
+        }
+        return faltantes;
     }
 
     static async registrarFallas(orderId: string, fallas: { codarticulo: number; descripcion: string; cantPedida: number; stockDisponible: number }[]): Promise<void> {

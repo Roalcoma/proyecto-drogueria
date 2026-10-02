@@ -8,5 +8,6 @@ reportesRouter.get('/proveedores',               authMiddleware, ReportesControl
 reportesRouter.get('/top-clientes-por-vendedor', authMiddleware, ReportesController.getTopClientesPorVendedor);
 reportesRouter.get('/transferencias',            authMiddleware, ReportesController.getTransferencias);
 reportesRouter.get('/cobros',                    authMiddleware, ReportesController.getCobros);
+reportesRouter.get('/fallas',                    authMiddleware, ReportesController.getFallas);
 
 export default reportesRouter;

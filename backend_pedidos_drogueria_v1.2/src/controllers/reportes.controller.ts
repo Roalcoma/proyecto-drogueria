@@ -27,6 +27,20 @@ export class ReportesController {
         }
     }
 
+    static async getFallas(req: Request, res: Response): Promise<void> {
+        const { desde, hasta } = req.query;
+        if (!desde || !hasta) {
+            res.status(400).json({ success: false, message: 'Parámetros desde y hasta son requeridos' });
+            return;
+        }
+        try {
+            const data = await ReportesService.getFallas(String(desde), String(hasta));
+            res.json({ success: true, data });
+        } catch (error) {
+            res.status(500).json({ success: false, message: String(error) });
+        }
+    }
+
     static async getCobros(req: Request, res: Response): Promise<void> {
         const { desde, hasta } = req.query;
         if (!desde || !hasta) {

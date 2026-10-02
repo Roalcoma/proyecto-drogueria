@@ -58,7 +58,7 @@ export class PedidosControllers {
             }
 
             // Lista paginada con filtros opcionales
-            const { clienteId, codVendedor, riesgo, codruta, fechaDesde, fechaHasta, esPsicotropico, nombreCliente, soloFacturado, usuario, nroFactura, editadoPor } = req.query;
+            const { clienteId, codVendedor, riesgo, codruta, fechaDesde, fechaHasta, esPsicotropico, nombreCliente, soloFacturado, usuario, nroFactura, editadoPor, soloAtrasados } = req.query;
             const result = await PedidosServices.getPedidos(
                 page, limit,
                 estatus         as string | undefined,
@@ -75,6 +75,7 @@ export class PedidosControllers {
                 usuario         as string | undefined,
                 nroFactura      as string | undefined,
                 editadoPor      as string | undefined,
+                soloAtrasados  === '1' || soloAtrasados  === 'true',
             );
             if (!result.success) return res.status(500).json(result);
             return res.status(200).json(result);
@@ -183,6 +184,16 @@ export class PedidosControllers {
         }
     }
 
+    static async getStockFaltantes(req: Request, res: Response): Promise<void> {
+        const orderId = req.params['orderId'] as string;
+        try {
+            const faltantes = await PedidosServices.getStockFaltantes(orderId);
+            res.json({ success: true, faltantes });
+        } catch (error) {
+            res.status(500).json({ success: false, message: String(error) });
+        }
+    }
+
     static async guardarFallas(req: Request, res: Response): Promise<void> {
         const orderId = req.params['orderId'] as string;
         const { fallas } = req.body;
@@ -228,7 +239,7 @@ export class PedidosControllers {
             return res.status(200).json({
                 success: true,
                 message: `Estatus del pedido ${orderId} actualizado a ${statusFinal} correctamente.`,
-                data: result.message // Opcional, por si el servicio devuelve el registro afectado
+                warning: (result as any).warning,
             });
 
         } catch (error) {

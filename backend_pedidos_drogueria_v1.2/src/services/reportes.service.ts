@@ -11,6 +11,26 @@ export class ReportesService {
         return res.recordset;
     }
 
+    static async getFallas(desde: string, hasta: string): Promise<any[]> {
+        const pool = await connectDb();
+        const res = await pool.request()
+            .input('DESDE', mssql.Date, desde)
+            .input('HASTA', mssql.Date, hasta)
+            .query(`
+                SELECT
+                    F.FECHA,
+                    F.ORDERID,
+                    F.CODARTICULO,
+                    F.DESCRIPCION,
+                    F.CANT_PEDIDA,
+                    F.STOCK_DISPONIBLE
+                FROM dbo.APP_PEDIDO_FALLAS F WITH (NOLOCK)
+                WHERE CAST(F.FECHA AS DATE) BETWEEN @DESDE AND @HASTA
+                ORDER BY F.FECHA DESC
+            `);
+        return res.recordset;
+    }
+
     static async getCobros(desde: string, hasta: string): Promise<any[]> {
         const pool = await connectDb();
         const res = await pool.request()

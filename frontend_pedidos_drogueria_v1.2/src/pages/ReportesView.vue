@@ -201,6 +201,19 @@
           </v-row>
         </v-card-text>
 
+        <v-card-text v-else-if="modalFiltros.reporte.id === 'fallas'" class="pa-5">
+          <v-row dense>
+            <v-col cols="6">
+              <v-text-field v-model="f.desde" type="date" label="Desde *" variant="outlined"
+                density="comfortable" hide-details="auto" />
+            </v-col>
+            <v-col cols="6">
+              <v-text-field v-model="f.hasta" type="date" label="Hasta *" variant="outlined"
+                density="comfortable" hide-details="auto" />
+            </v-col>
+          </v-row>
+        </v-card-text>
+
         <v-card-text v-else-if="modalFiltros.reporte.id === 'transferencias'" class="pa-5">
           <v-row dense>
             <v-col cols="6">
@@ -264,6 +277,9 @@ const REPORTES = [
   { id: 'cobros', nombre: 'Reporte de Cobros',
     desc: 'Cobros realizados en el período con detalle de vencimiento y referencia',
     icono: 'mdi-cash-check', color: 'green' },
+  { id: 'fallas', nombre: 'Reporte de Fallas',
+    desc: 'Artículos con stock insuficiente al momento de autorizar pedidos en el período',
+    icono: 'mdi-alert-circle-outline', color: 'orange' },
 ];
 
 // ── Navegación ────────────────────────────────────────────────────────────
@@ -330,6 +346,15 @@ const COLS_COBROS: Col[] = [
   { key: 'DIAS',            title: 'Días crédito',  align: 'right',  type: 'num',   isUnd: false },
 ];
 
+const COLS_FALLAS: Col[] = [
+  { key: 'FECHA',            title: 'Fecha',           align: 'center', type: 'fecha', isUnd: false },
+  { key: 'ORDERID',          title: 'N° Pedido',       align: 'left',   type: 'texto', isUnd: false },
+  { key: 'CODARTICULO',      title: 'Cód. Art.',       align: 'center', type: 'num',   isUnd: false },
+  { key: 'DESCRIPCION',      title: 'Artículo',        align: 'left',   type: 'texto', isUnd: false },
+  { key: 'CANT_PEDIDA',      title: 'Cant. Pedida',    align: 'right',  type: 'num',   isUnd: false },
+  { key: 'STOCK_DISPONIBLE', title: 'Stock Disponible',align: 'right',  type: 'num',   isUnd: false },
+];
+
 const COLS_TRANSFERENCIAS: Col[] = [
   { key: 'FECHA',            title: 'Fecha',          align: 'center', type: 'fecha',  isUnd: false },
   { key: 'TIPO',             title: 'Tipo',           align: 'left',   type: 'texto',  isUnd: false },
@@ -353,6 +378,10 @@ const initColumnas = (reporteId: string) => {
   }
   if (reporteId === 'transferencias') {
     columnas.value = [...COLS_TRANSFERENCIAS];
+    return;
+  }
+  if (reporteId === 'fallas') {
+    columnas.value = [...COLS_FALLAS];
     return;
   }
 
@@ -466,6 +495,12 @@ const ejecutarReporte = async () => {
     } else if (r.id === 'transferencias') {
       const res = await axios.get(`${API}/api/reportes/transferencias`, {
         params: { desde: f.value.desde, hasta: f.value.hasta, codarticulo: f.value.codarticulo || 0, codproveedor: f.value.codproveedor ?? 0, codusuario: f.value.codusuario || 0 },
+      });
+      if (!res.data.success) throw new Error(res.data.message);
+      filas.value = res.data.data;
+    } else if (r.id === 'fallas') {
+      const res = await axios.get(`${API}/api/reportes/fallas`, {
+        params: { desde: f.value.desde, hasta: f.value.hasta },
       });
       if (!res.data.success) throw new Error(res.data.message);
       filas.value = res.data.data;

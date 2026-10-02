@@ -11,9 +11,12 @@ export interface CommitEntry {
   texto: string;
 }
 
-export const APP_VERSION = '1.2.26';
+export const APP_VERSION = '1.2.29';
 
 export const VERSIONES: VersionEntry[] = [
+  { version: '1.2.29', fecha: '2026-10-02', desde: '2026-10-02' },
+  { version: '1.2.28', fecha: '2026-10-02', desde: '2026-10-02' },
+  { version: '1.2.27', fecha: '2026-10-02', desde: '2026-10-02' },
   { version: '1.2.26', fecha: '2026-09-29', desde: '2026-09-29' },
   { version: '1.2.25', fecha: '2026-09-29', desde: '2026-09-29' },
   { version: '1.2.24', fecha: '2026-09-29', desde: '2026-09-29' },
@@ -44,6 +47,9 @@ export const VERSIONES: VersionEntry[] = [
 ];
 
 export const COMMITS: CommitEntry[] = [
+  { hash: 'pending', date: '2026-10-02', tipo: 'feat', texto: 'reportería: nuevo reporte de fallas — artículos con stock insuficiente al autorizar pedidos, filtrable por rango de fechas' },
+  { hash: 'pending', date: '2026-10-02', tipo: 'feat', texto: 'pedidos: filas con estatus PENDIENTE/PENDIENTE POR AUTORIZACION de más de 1 hora se destacan en rojo; chip contador de atrasados en header; filtro "Solo Atrasados (+1h)"' },
+  { hash: 'pending', date: '2026-10-02', tipo: 'fix',  texto: 'autorización: stock insuficiente muestra modal de confirmación no bloqueante; usuario puede autorizar de todas formas y queda registrado en APP_PEDIDO_FALLAS' },
   { hash: 'pending', date: '2026-09-29', tipo: 'feat', texto: 'reportería: reemplazar Comisiones Cobranzas por Reporte de Cobros — detalle de cobros con fecha factura, recibido, cobro, procesado, vencimiento y días crédito' },
   { hash: 'pending', date: '2026-09-29', tipo: 'feat', texto: 'transferencias: filtros por CODPROVEEDOR y CODUSUARIO; nuevas columnas SUPEDIDO, USUARIO y PROVEEDOR en el reporte' },
   { hash: 'pending', date: '2026-09-29', tipo: 'fix',  texto: 'albarán compra PDF: agregar columna Dto% (ALBCOMPRALIN.DTO) por línea; muestra "—" cuando es 0' },

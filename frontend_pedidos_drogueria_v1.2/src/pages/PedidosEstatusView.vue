@@ -28,6 +28,17 @@
           {{ totalUSDMostrado.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
           <span v-if="pedidosSeleccionados.length > 0" class="text-caption ml-1 font-weight-regular">({{ pedidosSeleccionados.length }} sel.)</span>
         </v-chip>
+        <v-chip
+          v-if="conteoAtrasados > 0"
+          color="red-darken-2"
+          variant="tonal"
+          size="large"
+          prepend-icon="mdi-clock-alert-outline"
+          class="mr-3 font-weight-black text-h6 px-5 cursor-pointer"
+          @click="filtros.soloAtrasados = !filtros.soloAtrasados; aplicarFiltros()"
+        >
+          {{ conteoAtrasados }} atrasado{{ conteoAtrasados !== 1 ? 's' : '' }}
+        </v-chip>
         <v-btn
           prepend-icon="mdi-sync"
           variant="flat"
@@ -167,6 +178,16 @@
           @update:model-value="aplicarFiltros"
         />
       </v-col>
+      <v-col cols="12" sm="6" md="2" class="d-flex align-center">
+        <v-switch
+          v-model="filtros.soloAtrasados"
+          label="Solo Atrasados (+1h)"
+          color="red-darken-2"
+          density="compact"
+          hide-details
+          @update:model-value="aplicarFiltros"
+        />
+      </v-col>
     </v-row>
 
     <v-row>
@@ -185,7 +206,7 @@
             class="custom-table"
             @update:options="cargarPagina"
             :items-per-page-options="[10, 25, 50, 100, 200]"
-            :row-props="({ item }) => item.TIENE_FALLAS ? { class: 'bg-yellow-lighten-4' } : {}"
+            :row-props="getRowProps"
           >
             <template v-slot:item.ORDERID="{ item }">
               <div class="d-flex align-center" style="gap:4px">
@@ -730,6 +751,44 @@
       </v-card>
     </v-dialog>
 
+    <!-- Modal stock insuficiente (no bloqueante) -->
+    <v-dialog v-model="modalFaltantes.mostrar" max-width="580" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="d-flex align-center gap-2 pa-4">
+          <v-icon color="orange-darken-2" size="24">mdi-warehouse</v-icon>
+          <span class="text-h6 font-weight-bold">Stock insuficiente</span>
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-4">
+          <p class="text-body-2 text-medium-emphasis mb-4">
+            Los siguientes artículos del pedido <strong>#{{ modalFaltantes.orderid }}</strong> no tienen stock suficiente.
+            Podés autorizar de todas formas — quedará registrado como falla.
+          </p>
+          <v-list density="compact" class="pa-0">
+            <v-list-item v-for="(f, i) in modalFaltantes.faltantes" :key="i"
+              prepend-icon="mdi-package-variant-remove" base-color="orange-darken-2"
+              rounded="lg" class="mb-1">
+              <v-list-item-title class="text-body-2 font-weight-medium">{{ f.descripcion }}</v-list-item-title>
+              <template v-slot:subtitle>
+                <span class="text-caption text-medium-emphasis">Pedido: {{ f.cantPedida }} · Disponible: {{ f.stockDisponible }}</span>
+              </template>
+            </v-list-item>
+          </v-list>
+        </v-card-text>
+        <v-divider />
+        <v-card-actions class="pa-4 gap-2">
+          <v-btn variant="text" @click="modalFaltantes.mostrar = false" :disabled="modalFaltantes.confirmando">
+            Cancelar
+          </v-btn>
+          <v-spacer />
+          <v-btn color="orange-darken-2" variant="elevated" :loading="modalFaltantes.confirmando" @click="confirmarConFaltantes">
+            <v-icon start>mdi-check-circle</v-icon>
+            Autorizar de todas formas
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- Modal fallas de inventario -->
     <v-dialog v-model="modalDiferencias.mostrar" max-width="750">
       <v-card rounded="xl">
@@ -1032,7 +1091,20 @@ const estatusOpciones = [
 ];
 
 const zonas  = ref<{ zona: string; display: string }[]>([]);
-const filtros = ref({ buscarId: '', clienteId: '', codVendedor: '', estatus: [] as string[], riesgo: null as string | null, codruta: null as string | null, fechaDesde: null as string | null, fechaHasta: null as string | null, esPsicotropico: false, soloIcompras: false, soloFacturado: false, nombreCliente: '', usuario: '', nroFactura: '', editadoPor: '' });
+const filtros = ref({ buscarId: '', clienteId: '', codVendedor: '', estatus: [] as string[], riesgo: null as string | null, codruta: null as string | null, fechaDesde: null as string | null, fechaHasta: null as string | null, esPsicotropico: false, soloIcompras: false, soloFacturado: false, soloAtrasados: false, nombreCliente: '', usuario: '', nroFactura: '', editadoPor: '' });
+const conteoAtrasados = ref(0);
+
+const esAtrasado = (item: any) =>
+  (item.ESTATUS === 'PENDIENTE' || item.ESTATUS === 'PENDIENTE POR AUTORIZACION') &&
+  (Date.now() - new Date(item.FECHA).getTime()) > 3_600_000;
+
+const getRowProps = ({ item }: { item: any }) => {
+  const atrasado = esAtrasado(item);
+  if (atrasado && item.TIENE_FALLAS) return { class: 'bg-red-lighten-4' };
+  if (atrasado) return { class: 'bg-red-lighten-5' };
+  if (item.TIENE_FALLAS) return { class: 'bg-yellow-lighten-4' };
+  return {};
+};
 
 let filtroTimer: ReturnType<typeof setTimeout> | null = null;
 const aplicarFiltros = () => {
@@ -1059,11 +1131,13 @@ const obtenerPedidos = async (page = 1, limit = 10) => {
     if (filtros.value.usuario)        params.usuario        = filtros.value.usuario;
     if (filtros.value.nroFactura)     params.nroFactura     = filtros.value.nroFactura;
     if (filtros.value.editadoPor)     params.editadoPor     = filtros.value.editadoPor;
+    if (filtros.value.soloAtrasados)  params.soloAtrasados  = '1';
     const response = await axios.get(`${import.meta.env.VITE_API_URL}/pedidos`, { params });
     if (response.data.success) {
       pedidos.value = response.data.data;
       totalPedidos.value = response.data.total ?? 0;
       totalUSD.value = response.data.totalUSD ?? 0;
+      conteoAtrasados.value = response.data.conteoAtrasados ?? 0;
       cargarRiesgosMasivos();
     }
   } catch (error) {
@@ -1162,6 +1236,12 @@ const modalAnomalias = ref<{
   anomalias: Anomalia[]; confirmando: boolean;
 }>({ mostrar: false, orderid: '', item: null, nuevoStatus: '', anomalias: [], confirmando: false });
 
+type StockFaltante = { codarticulo: number; descripcion: string; cantPedida: number; stockDisponible: number };
+const modalFaltantes = ref<{
+  mostrar: boolean; orderid: string; item: any; nuevoStatus: string;
+  faltantes: StockFaltante[]; confirmando: boolean;
+}>({ mostrar: false, orderid: '', item: null, nuevoStatus: '', faltantes: [], confirmando: false });
+
 const iconoAnomalia = (tipo: string) => ({
   PRECIO_CERO: 'mdi-currency-usd-off', PRECIO_NEGATIVO: 'mdi-trending-down',
   CANTIDAD_INVALIDA: 'mdi-close-circle-outline', ARTICULO_DUPLICADO: 'mdi-content-copy',
@@ -1192,6 +1272,13 @@ const confirmarConAnomalias = async () => {
   modalAnomalias.value.confirmando = false;
 };
 
+const confirmarConFaltantes = async () => {
+  modalFaltantes.value.confirmando = true;
+  await ejecutarCambioEstatus(modalFaltantes.value.item, modalFaltantes.value.nuevoStatus);
+  modalFaltantes.value.mostrar = false;
+  modalFaltantes.value.confirmando = false;
+};
+
 const actualizarEstatusBD = async (item: any, nuevoStatus: string) => {
   const permitidos = transicionesPermitidas(item.ESTATUS);
   if (!permitidos.includes(nuevoStatus))
@@ -1203,6 +1290,15 @@ const actualizarEstatusBD = async (item: any, nuevoStatus: string) => {
       const anomalias: Anomalia[] = res.data.anomalias ?? [];
       if (anomalias.length > 0) {
         modalAnomalias.value = { mostrar: true, orderid: item.ORDERID, item, nuevoStatus, anomalias, confirmando: false };
+        return;
+      }
+    } catch { /* si falla la verificación, continuar de todas formas */ }
+
+    try {
+      const resFalt = await axios.get(`${import.meta.env.VITE_API_URL}/pedidos/${item.ORDERID}/faltantes`);
+      const faltantes: StockFaltante[] = resFalt.data.faltantes ?? [];
+      if (faltantes.length > 0) {
+        modalFaltantes.value = { mostrar: true, orderid: item.ORDERID, item, nuevoStatus, faltantes, confirmando: false };
         return;
       }
     } catch { /* si falla la verificación, continuar de todas formas */ }
