@@ -744,14 +744,12 @@ export class PedidosServices {
                 return { success: false, message: 'Solo se pueden editar pedidos en estatus PENDIENTE o APROBACION PSICOTROPICOS' };
             }
 
-            if (estatusActual === ESTATUS_APROBACION_PSICOTROPICOS) {
-                const lineasCheck = lineas.map((l: any) => ({ codarticulo: Number(l.codarticulo), cantidad: Number(l.cantidad) }));
-                const { insuficiente } = await PedidosServices.checkStockLineas(lineasCheck, orderId);
-                if (insuficiente.length > 0) {
-                    await transaction.rollback();
-                    const detalle = insuficiente.map(i => `${i.descripcion} (pedido: ${i.cantidad_pedida}, disponible: ${i.disponible})`).join('; ');
-                    return { success: false, message: `Stock insuficiente para: ${detalle}` };
-                }
+            const lineasCheckEdit = lineas.map((l: any) => ({ codarticulo: Number(l.codarticulo), cantidad: Number(l.cantidad) }));
+            const { insuficiente: insuficienteEdit } = await PedidosServices.checkStockLineas(lineasCheckEdit, orderId);
+            if (insuficienteEdit.length > 0) {
+                await transaction.rollback();
+                const detalle = insuficienteEdit.map(i => `${i.descripcion} (pedido: ${i.cantidad_pedida}, disponible: ${i.disponible})`).join('; ');
+                return { success: false, message: `Stock insuficiente para: ${detalle}` };
             }
 
             // 1b. Snapshot de las líneas ANTES de cualquier modificación
