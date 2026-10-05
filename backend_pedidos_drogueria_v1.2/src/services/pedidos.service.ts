@@ -207,13 +207,11 @@ export class PedidosServices {
             const requierePsicotropicos = await this.tieneArticulosPsicotropicos(lineas.map((l: any) => l.codarticulo));
             const estatusInicial = requierePsicotropicos ? ESTATUS_APROBACION_PSICOTROPICOS : 'PENDIENTE';
 
-            if (estatusInicial === ESTATUS_APROBACION_PSICOTROPICOS) {
-                const lineasCheck = lineas.map((l: any) => ({ codarticulo: Number(l.codarticulo), cantidad: Number(l.cantidad) }));
-                const { insuficiente } = await PedidosServices.checkStockLineas(lineasCheck);
-                if (insuficiente.length > 0) {
-                    const detalle = insuficiente.map(i => `${i.descripcion} (pedido: ${i.cantidad_pedida}, disponible: ${i.disponible})`).join('; ');
-                    return { success: false, message: `Stock insuficiente para: ${detalle}` };
-                }
+            const lineasCheck = lineas.map((l: any) => ({ codarticulo: Number(l.codarticulo), cantidad: Number(l.cantidad) }));
+            const { insuficiente } = await PedidosServices.checkStockLineas(lineasCheck);
+            if (insuficiente.length > 0) {
+                const detalle = insuficiente.map(i => `${i.descripcion} (pedido: ${i.cantidad_pedida}, disponible: ${i.disponible})`).join('; ');
+                return { success: false, message: `Stock insuficiente para: ${detalle}` };
             }
 
             const promoNombre = (promocionesAplicadas || []).map((p: any) => p.nombre).filter(Boolean).join(', ');

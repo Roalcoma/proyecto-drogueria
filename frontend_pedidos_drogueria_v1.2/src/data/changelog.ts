@@ -11,9 +11,10 @@ export interface CommitEntry {
   texto: string;
 }
 
-export const APP_VERSION = '1.2.30';
+export const APP_VERSION = '1.2.31';
 
 export const VERSIONES: VersionEntry[] = [
+  { version: '1.2.31', fecha: '2026-10-05', desde: '2026-10-05' },
   { version: '1.2.30', fecha: '2026-10-02', desde: '2026-10-02' },
   { version: '1.2.29', fecha: '2026-10-02', desde: '2026-10-02' },
   { version: '1.2.28', fecha: '2026-10-02', desde: '2026-10-02' },
@@ -48,6 +49,7 @@ export const VERSIONES: VersionEntry[] = [
 ];
 
 export const COMMITS: CommitEntry[] = [
+  { hash: 'pending', date: '2026-10-05', tipo: 'fix',  texto: 'stock: validación al crear pedidos ahora corre para todos los productos (no solo psicotrópicos); iCompras valida stock antes de insertar; getStocks incluye estatus SANIDAD' },
   { hash: 'pending', date: '2026-10-02', tipo: 'feat', texto: 'albaranes compra: filtro proveedor reemplazado por autocomplete con búsqueda; carga al montar; filtra por CODPROVEEDOR exacto sin sensibilidad a mayúsculas' },
   { hash: 'pending', date: '2026-10-02', tipo: 'feat', texto: 'reportería: nuevo reporte de fallas — artículos con stock insuficiente al autorizar pedidos, filtrable por rango de fechas' },
   { hash: 'pending', date: '2026-10-02', tipo: 'feat', texto: 'pedidos: filas con estatus PENDIENTE/PENDIENTE POR AUTORIZACION de más de 1 hora se destacan en rojo; chip contador de atrasados en header; filtro "Solo Atrasados (+1h)"' },

@@ -136,7 +136,7 @@ export class ProductsService {
                 .query(`;WITH CTE_STOCK_RESERVADO AS (
                             SELECT CODARTICULO, ISNULL(SUM(LP.PRODUCTCOUNT), 0) STOCK FROM CABECERA_PED CP WITH (NOLOCK)
                             INNER JOIN LINEA_PED LP WITH (NOLOCK) ON LP.ORDERID = CP.ORDERID
-                            WHERE CP.ESTATUS IN ('PENDIENTE POR AUTORIZACION', 'APROBACION PSICOTROPICOS', 'AUTORIZADO', 'EMPACADO', 'OK')
+                            WHERE CP.ESTATUS IN ('PENDIENTE POR AUTORIZACION', 'APROBACION PSICOTROPICOS', 'SANIDAD', 'AUTORIZADO', 'EMPACADO', 'OK')
                             GROUP BY
                             LP.CODARTICULO
                         )

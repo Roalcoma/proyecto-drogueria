@@ -4,6 +4,7 @@ import mssql from 'mssql';
 import { connectDb } from '../db/db.conection';
 import { getDbConfig } from './dbconfig.service';
 import { STOCK_DISPONIBLE_SQL } from './products.service';
+import { PedidosServices }      from './pedidos.service';
 import { PromocionesService }   from './promociones.service';
 import { PromoEspecialService } from './promoEspecial.service';
 
@@ -464,6 +465,15 @@ export class FarcomprasService {
         };
 
         const orderIds: string[] = [];
+
+        // Validar stock antes de abrir transacción
+        const lineasCheck = lineasAgrupadas.map(l => ({ codarticulo: l.codarticulo, cantidad: Math.round(l.cantidad) }));
+        const { insuficiente } = await PedidosServices.checkStockLineas(lineasCheck);
+        if (insuficiente.length > 0) {
+            const detalle = insuficiente.map(i => `${i.descripcion} (pedido: ${i.cantidad_pedida}, disponible: ${i.disponible})`).join('; ');
+            throw new Error(`Stock insuficiente en iCompras: ${detalle}`);
+        }
+
         let transaction: mssql.Transaction | null = null;
         try {
             transaction = new mssql.Transaction(pool);
