@@ -466,14 +466,6 @@ export class FarcomprasService {
 
         const orderIds: string[] = [];
 
-        // Validar stock antes de abrir transacción
-        const lineasCheck = lineasAgrupadas.map(l => ({ codarticulo: l.codarticulo, cantidad: Math.round(l.cantidad) }));
-        const { insuficiente } = await PedidosServices.checkStockLineas(lineasCheck);
-        if (insuficiente.length > 0) {
-            const detalle = insuficiente.map(i => `${i.descripcion} (pedido: ${i.cantidad_pedida}, disponible: ${i.disponible})`).join('; ');
-            throw new Error(`Stock insuficiente en iCompras: ${detalle}`);
-        }
-
         let transaction: mssql.Transaction | null = null;
         try {
             transaction = new mssql.Transaction(pool);
@@ -487,7 +479,17 @@ export class FarcomprasService {
                 for (let ci = 0; ci < chunks.length; ci++) {
                     const chunk      = chunks[ci];
                     const chunkId    = buildChunkId(tipo, ci + 1);
-                    const totalChunk = chunk.reduce((s, l) => s + l.precioTotal, 0);
+                    // Filtrar líneas sin stock antes de insertar
+                    const { insuficiente: ins } = await PedidosServices.checkStockLineas(
+                        chunk.map(l => ({ codarticulo: l.codarticulo, cantidad: Math.round(l.cantidad) }))
+                    );
+                    const sinStock = new Set(ins.map(i => i.codarticulo));
+                    const chunkOk = sinStock.size > 0 ? chunk.filter(l => !sinStock.has(l.codarticulo)) : chunk;
+                    if (chunkOk.length === 0) {
+                        console.log(`[Farcompras] ${chunkId} omitido — todas las líneas con stock insuficiente`);
+                        continue;
+                    }
+                    const totalChunk = chunkOk.reduce((s, l) => s + l.precioTotal, 0);
                     const estatusInicial = tipo === 'P' ? 'APROBACION PSICOTROPICOS' : 'PENDIENTE';
 
                     await new mssql.Request(transaction)
@@ -516,19 +518,20 @@ export class FarcomprasService {
                     tabla.columns.add('PORCENTAJEIVA',  mssql.Float,         { nullable: true  });
                     tabla.columns.add('MONTOIVA',       mssql.Float,         { nullable: true  });
 
-                    for (const l of chunk) {
+                    for (const l of chunkOk) {
                         tabla.rows.add(chunkId, l.codarticulo, '', codAlmacen, tarifaBaseCatalogo,
                             Math.round(l.cantidad), l.precioUnit,
                             0, 0, 0, 0,
                             l.precioUnit, 0, 0);
                     }
                     await new mssql.Request(transaction).bulk(tabla);
+                    if (ins.length > 0) await PedidosServices.registrarFallas(chunkId, ins.map(i => ({ codarticulo: i.codarticulo, descripcion: i.descripcion, cantPedida: i.cantidad_pedida, stockDisponible: i.disponible })));
                     const tablaOrig = new mssql.Table(`${ESQ}.APP_FARCOMPRAS_LINEAS`);
                     tablaOrig.create = false;
                     tablaOrig.columns.add('ORDERID',     mssql.NVarChar(50), { nullable: false });
                     tablaOrig.columns.add('CODARTICULO', mssql.Int,           { nullable: false });
                     tablaOrig.columns.add('CANTIDAD',    mssql.Int,           { nullable: false });
-                    for (const l of chunk) tablaOrig.rows.add(chunkId, l.codarticulo, Math.round(l.cantidad));
+                    for (const l of chunkOk) tablaOrig.rows.add(chunkId, l.codarticulo, Math.round(l.cantidad));
                     await new mssql.Request(transaction).bulk(tablaOrig);
 
                     await new mssql.Request(transaction)
@@ -540,7 +543,7 @@ export class FarcomprasService {
                                 VALUES (@OID, NULL, @EST, 'FARCOMPRAS', @DET)`);
 
                     orderIds.push(chunkId);
-                    console.log(`[Farcompras] ${archivo} → ${chunkId} (${chunk.length} líneas, tipo ${tipo}, parte ${ci + 1}/${chunks.length})`);
+                    console.log(`[Farcompras] ${archivo} → ${chunkId} (${chunkOk.length}/${chunk.length} líneas, tipo ${tipo}, parte ${ci + 1}/${chunks.length}${ins.length > 0 ? `, ${ins.length} en falla` : ''})`);
                 }
             }
 
@@ -559,7 +562,17 @@ export class FarcomprasService {
                     for (let ci = 0; ci < chunks.length; ci++) {
                         const chunk      = chunks[ci];
                         const chunkId    = buildPEChunkId(tipo, ci + 1);
-                        const totalChunk = chunk.reduce((s, l) => s + l.precioTotal, 0);
+                        // Filtrar líneas sin stock antes de insertar
+                        const { insuficiente: insPE } = await PedidosServices.checkStockLineas(
+                            chunk.map(l => ({ codarticulo: l.codarticulo, cantidad: Math.round(l.cantidad) }))
+                        );
+                        const sinStockPE = new Set(insPE.map(i => i.codarticulo));
+                        const chunkOkPE = sinStockPE.size > 0 ? chunk.filter(l => !sinStockPE.has(l.codarticulo)) : chunk;
+                        if (chunkOkPE.length === 0) {
+                            console.log(`[Farcompras] ${chunkId} omitido — todas las líneas con stock insuficiente (PE promo ${promoId})`);
+                            continue;
+                        }
+                        const totalChunk = chunkOkPE.reduce((s, l) => s + l.precioTotal, 0);
                         const estatusInicial = tipo === 'P' ? 'APROBACION PSICOTROPICOS' : 'PENDIENTE';
                         await new mssql.Request(transaction!)
                             .input('OID', mssql.NVarChar(50), chunkId)
@@ -585,18 +598,19 @@ export class FarcomprasService {
                         tabla.columns.add('PRECIOBRUTO',    mssql.Float,         { nullable: true  });
                         tabla.columns.add('PORCENTAJEIVA',  mssql.Float,         { nullable: true  });
                         tabla.columns.add('MONTOIVA',       mssql.Float,         { nullable: true  });
-                        for (const l of chunk) {
+                        for (const l of chunkOkPE) {
                             tabla.rows.add(chunkId, l.codarticulo, '', codAlmacen, tarifaBaseCatalogo,
                                 Math.round(l.cantidad), l.precioUnit,
                                 0, 0, 0, 0, l.precioUnit, 0, 0);
                         }
                         await new mssql.Request(transaction!).bulk(tabla);
+                        if (insPE.length > 0) await PedidosServices.registrarFallas(chunkId, insPE.map(i => ({ codarticulo: i.codarticulo, descripcion: i.descripcion, cantPedida: i.cantidad_pedida, stockDisponible: i.disponible })));
                         const tablaOrigPE = new mssql.Table(`${ESQ}.APP_FARCOMPRAS_LINEAS`);
                         tablaOrigPE.create = false;
                         tablaOrigPE.columns.add('ORDERID',     mssql.NVarChar(50), { nullable: false });
                         tablaOrigPE.columns.add('CODARTICULO', mssql.Int,           { nullable: false });
                         tablaOrigPE.columns.add('CANTIDAD',    mssql.Int,           { nullable: false });
-                        for (const l of chunk) tablaOrigPE.rows.add(chunkId, l.codarticulo, Math.round(l.cantidad));
+                        for (const l of chunkOkPE) tablaOrigPE.rows.add(chunkId, l.codarticulo, Math.round(l.cantidad));
                         await new mssql.Request(transaction!).bulk(tablaOrigPE);
                         await new mssql.Request(transaction!)
                             .input('OID', mssql.NVarChar(50), chunkId)
@@ -607,7 +621,7 @@ export class FarcomprasService {
                                     VALUES (@OID, NULL, @EST, 'FARCOMPRAS', @DET)`);
                         await PromoEspecialService.registrarPedido(chunkId, diasMontofactura);
                         orderIds.push(chunkId);
-                        console.log(`[Farcompras] ${archivo} → ${chunkId} (PE promo ${promoId}, ${chunk.length} líneas, tipo ${tipo})`);
+                        console.log(`[Farcompras] ${archivo} → ${chunkId} (PE promo ${promoId}, ${chunkOkPE.length}/${chunk.length} líneas, tipo ${tipo}${insPE.length > 0 ? `, ${insPE.length} en falla` : ''})`);
                     }
                 }
             }

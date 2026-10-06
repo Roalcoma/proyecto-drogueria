@@ -5,6 +5,7 @@ import { connectDb } from '../db/db.conection';
 import { PromocionesService }    from './promociones.service';
 import { PromoEspecialService }  from './promoEspecial.service';
 import { getDbConfig }           from './dbconfig.service';
+import { PedidosServices }       from './pedidos.service';
 
 const VED     = Number(process.env.VED) || 1;
 const esquema = process.env.DB_ESQUEMA  || 'dbo';
@@ -557,16 +558,22 @@ export class EcommerceService {
                 for (const r of stockRes.recordset) stockMap.set(r.CODARTICULO, Number(r.STOCK));
             }
 
-            // Recolectar filas válidas (con stock) antes de dividir
+            // Recolectar filas válidas (con stock) antes de dividir; trackear fallas
             type Fila = { codart: number; ref: string; cantidad: number; precioFinal: number; desc1: number; desc2: number; bruto: number };
             const filasValidas: Fila[] = [];
+            const fallasGrupo: { codarticulo: number; descripcion: string; cantPedida: number; stockDisponible: number }[] = [];
             for (const { linea: l, art } of consolidated.values()) {
                 const stockDisponible = stockMap.get(art.codarticulo) ?? 0;
+                const cantPedida = Number(l.CANTIDAD);
                 if (stockDisponible <= 0) {
                     console.log(`[Ecommerce] ${orderIdBase}: artículo ${art.codarticulo} sin stock — descartado`);
+                    fallasGrupo.push({ codarticulo: art.codarticulo, descripcion: String(art.codarticulo), cantPedida, stockDisponible: 0 });
                     continue;
                 }
-                const cantidad    = Math.min(Number(l.CANTIDAD), stockDisponible);
+                const cantidad = Math.min(cantPedida, stockDisponible);
+                if (cantidad < cantPedida) {
+                    fallasGrupo.push({ codarticulo: art.codarticulo, descripcion: String(art.codarticulo), cantPedida, stockDisponible });
+                }
                 const desc1       = art.nodto ? 0 : descuentoGlobal;
                 const desc2       = art.nodto ? 0 : (promoDescMap.get(art.codarticulo) ?? 0);
                 const precioFinal = art.precioUnitario * (1 - desc1 / 100) * (1 - desc2 / 100);
@@ -634,6 +641,10 @@ export class EcommerceService {
 
                 console.log(`[Ecommerce] ${orderIdGrupo}: ${chunk.length} líneas insertadas (chunk ${ci + 1}/${chunks.length})`);
                 idsInsertados.push(orderIdGrupo);
+            }
+            // Registrar fallas de descarte/truncado en el orderId base
+            if (fallasGrupo.length > 0 && idsInsertados.length > 0) {
+                await PedidosServices.registrarFallas(idsInsertados[0], fallasGrupo);
             }
             return idsInsertados;
         };
