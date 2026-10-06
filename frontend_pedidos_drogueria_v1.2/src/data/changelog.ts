@@ -11,9 +11,10 @@ export interface CommitEntry {
   texto: string;
 }
 
-export const APP_VERSION = '1.2.31';
+export const APP_VERSION = '1.2.32';
 
 export const VERSIONES: VersionEntry[] = [
+  { version: '1.2.32', fecha: '2026-10-06', desde: '2026-10-06' },
   { version: '1.2.31', fecha: '2026-10-05', desde: '2026-10-05' },
   { version: '1.2.30', fecha: '2026-10-02', desde: '2026-10-02' },
   { version: '1.2.29', fecha: '2026-10-02', desde: '2026-10-02' },
@@ -49,6 +50,7 @@ export const VERSIONES: VersionEntry[] = [
 ];
 
 export const COMMITS: CommitEntry[] = [
+  { hash: 'pending', date: '2026-10-06', tipo: 'fix',  texto: 'FTP: registra fallas de stock en APP_PEDIDO_FALLAS al crear pedidos (no bloqueante — el pedido se crea igual, las fallas quedan visibles en reporte)' },
   { hash: 'pending', date: '2026-10-05', tipo: 'fix',  texto: 'stock: checkStockLineas corre en creación Y edición de pedidos para todos los productos; iCompras valida stock antes de insertar; getStocks incluye estatus SANIDAD' },
   { hash: 'pending', date: '2026-10-02', tipo: 'feat', texto: 'albaranes compra: filtro proveedor reemplazado por autocomplete con búsqueda; carga al montar; filtra por CODPROVEEDOR exacto sin sensibilidad a mayúsculas' },
   { hash: 'pending', date: '2026-10-02', tipo: 'feat', texto: 'reportería: nuevo reporte de fallas — artículos con stock insuficiente al autorizar pedidos, filtrable por rango de fechas' },

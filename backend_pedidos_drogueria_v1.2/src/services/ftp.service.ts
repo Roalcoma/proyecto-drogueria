@@ -10,6 +10,7 @@ import { STOCK_DISPONIBLE_SQL } from './products.service';
 import { PromocionesService } from './promociones.service';
 import { PromoEspecialService } from './promoEspecial.service';
 import { FarcomprasService } from './farcompras.service';
+import { PedidosServices } from './pedidos.service';
 
 // ftp-srv's FileSystem normalizes '/' to '\' on Windows via path.normalize.
 // Subclass it to fix cwd after construction so PWD always returns '/'.
@@ -509,6 +510,12 @@ export class FtpService {
                                 l.precioUnit, 0, 0);
                         }
                         await pool.request().bulk(tabla);
+                        // Registrar fallas de stock (no bloqueante — el pedido se crea igual)
+                        try {
+                            const lineasStockPE = chunk.map(l => ({ codarticulo: l.codarticulo, cantidad: Math.round(l.cantidad) }));
+                            const { insuficiente: insPE } = await PedidosServices.checkStockLineas(lineasStockPE, chunkId);
+                            if (insPE.length > 0) await PedidosServices.registrarFallas(chunkId, insPE.map(i => ({ codarticulo: i.codarticulo, descripcion: i.descripcion, cantPedida: i.cantidad_pedida, stockDisponible: i.disponible })));
+                        } catch (_e) { console.error('[FTP] Error registrando fallas PE', chunkId, _e); }
                         const tablaOrigPE = new mssql.Table('APP_FTP_LINEAS');
                         tablaOrigPE.create = false;
                         tablaOrigPE.columns.add('ORDERID',     mssql.NVarChar(50), { nullable: false });
@@ -578,6 +585,12 @@ export class FtpService {
                             l.precioUnit, 0, 0);
                     }
                     await pool.request().bulk(tabla);
+                    // Registrar fallas de stock (no bloqueante — el pedido se crea igual)
+                    try {
+                        const lineasStock = chunk.map(l => ({ codarticulo: l.codarticulo, cantidad: Math.round(l.cantidad) }));
+                        const { insuficiente: ins } = await PedidosServices.checkStockLineas(lineasStock, chunkId);
+                        if (ins.length > 0) await PedidosServices.registrarFallas(chunkId, ins.map(i => ({ codarticulo: i.codarticulo, descripcion: i.descripcion, cantPedida: i.cantidad_pedida, stockDisponible: i.disponible })));
+                    } catch (_e) { console.error('[FTP] Error registrando fallas', chunkId, _e); }
                     const tablaOrig = new mssql.Table('APP_FTP_LINEAS');
                     tablaOrig.create = false;
                     tablaOrig.columns.add('ORDERID',     mssql.NVarChar(50), { nullable: false });
