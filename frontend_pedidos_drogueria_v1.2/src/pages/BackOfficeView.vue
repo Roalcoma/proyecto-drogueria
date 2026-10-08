@@ -745,6 +745,7 @@ const MODULOS = [
   { bit: 1048576, codigo: 'DTO_ARTICULO',     nombre: 'Desc. por Artículo',       icono: 'mdi-label-percent-outline' },
   { bit: 2097152, codigo: 'CANCELAR_SANIDAD', nombre: 'Cancelar desde Sanidad',   icono: 'mdi-hospital-box-outline'  },
   { bit: 4194304, codigo: 'REPORTERIA',       nombre: 'Reportería',               icono: 'mdi-chart-bar'             },
+  { bit: 8388608, codigo: 'STOCK_LIBRE',      nombre: 'Stock libre y alertas',    icono: 'mdi-warehouse'             },
 ];
 
 const headers = [

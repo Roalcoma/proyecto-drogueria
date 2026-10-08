@@ -11,9 +11,15 @@ export interface CommitEntry {
   texto: string;
 }
 
-export const APP_VERSION = '1.2.33';
+export const APP_VERSION = '1.2.39';
 
 export const VERSIONES: VersionEntry[] = [
+  { version: '1.2.39', fecha: '2026-10-08', desde: '2026-10-08' },
+  { version: '1.2.38', fecha: '2026-10-08', desde: '2026-10-08' },
+  { version: '1.2.37', fecha: '2026-10-08', desde: '2026-10-08' },
+  { version: '1.2.36', fecha: '2026-10-08', desde: '2026-10-08' },
+  { version: '1.2.35', fecha: '2026-10-07', desde: '2026-10-07' },
+  { version: '1.2.34', fecha: '2026-10-07', desde: '2026-10-07' },
   { version: '1.2.33', fecha: '2026-10-06', desde: '2026-10-06' },
   { version: '1.2.32', fecha: '2026-10-06', desde: '2026-10-06' },
   { version: '1.2.31', fecha: '2026-10-05', desde: '2026-10-05' },
@@ -51,6 +57,19 @@ export const VERSIONES: VersionEntry[] = [
 ];
 
 export const COMMITS: CommitEntry[] = [
+  { hash: 'pending', date: '2026-10-08', tipo: 'feat', texto: 'stock libre y alertas: nueva pantalla (módulo STOCK_LIBRE) con stock ZAV − reservado por la app por artículo y pedidos que lo reservan; monitor cada 5 min registra en APP_ALERTAS_STOCK los sobregiros causados desde ICG con pedidos afectados y traspasos/albaranes directos/consumos de las 24 h previas; aviso de sobregiros en Control de Estatus' },
+  { hash: 'pending', date: '2026-10-08', tipo: 'fix',  texto: 'control de estatus: botón de fallas visible en todo pedido marcado (antes solo en e-commerce/FTP/Farcompras); el modal muestra el faltante de hoy y si no hay, el histórico con el nombre del artículo; el aviso de diferencias al autorizar externos ya filtra por el campo correcto' },
+  { hash: 'pending', date: '2026-10-08', tipo: 'fix',  texto: 'control de estatus: la fila se marca con falla también cuando el pedido activo hoy no tiene stock suficiente (cálculo en vivo), no solo si ya tenía fallas registradas' },
+  { hash: 'pending', date: '2026-10-08', tipo: 'fix',  texto: 'seguridad: promociones, grupos de artículos, metas, descuento D1/D3 de clientes, pedidos, clientes, productos y reclamos exigen sesión; escrituras exigen su permiso (promociones, metas, gestión clientes, desc. por artículo); borrar/fusionar exige Control Estatus; aprobar psicotrópicos/sanidad/código exige Aprobación Psico' },
+  { hash: 'pending', date: '2026-10-08', tipo: 'fix',  texto: 'montos: el servidor calcula precio base (tarifa, o el pactado al editar/copiar), valida descuentos 0-99.99%, exige permiso para D4, fuerza 0% en artículos sin descuento, calcula IVA por artículo y el total del pedido; la edición ya no borra el IVA y respeta el vendedor elegido' },
+  { hash: 'pending', date: '2026-10-08', tipo: 'feat', texto: 'autorización parcial: al autorizar con faltantes se recortan las líneas a las unidades disponibles y se recalcula el total; lock de reservas (sp_getapplock) evita que dos usuarios reserven el mismo stock a la vez en estatus, creación, edición, fusión e integraciones' },
+  { hash: 'pending', date: '2026-10-08', tipo: 'fix',  texto: 'pedidos: creación en una sola transacción; solo se borran pedidos PENDIENTE (y sus fallas); no se pueden agregar psicotrópicos a un pedido normal al editar; carrito verifica stock de todo el pedido antes de crear y, si una parte falla, deja en el carrito solo lo pendiente' },
+  { hash: 'pending', date: '2026-10-08', tipo: 'fix',  texto: 'integraciones: FTP procesa cada archivo en una transacción (antes podía perder partes de un pedido); FTP/e-commerce/Farcompras registran IVA por artículo e ignoran descuentos de datos maestros fuera de rango; Farcompras aplica D1 del cliente y D2 de promo publicados; e-commerce usa almacén/tarifa de la configuración y no se cuelga con máximo de líneas 0' },
+  { hash: 'pending', date: '2026-10-08', tipo: 'fix',  texto: 'reportes: el conteo del filtro de riesgo convierte moneda igual que la lista' },
+  { hash: 'pending', date: '2026-10-08', tipo: 'fix',  texto: 'stock: la validación suma las cantidades del mismo artículo repetido en varias líneas (antes cada línea pasaba por separado, p. ej. tras una fusión); el cambio de estatus reutiliza checkStockLineas; el menú de estatus ya no ofrece PENDIENTE→AUTORIZADO' },
+  { hash: 'pending', date: '2026-10-08', tipo: 'fix',  texto: 'stock: PENDIENTE→PENDIENTE POR AUTORIZACION ahora es bloqueante; elimina la transición directa PENDIENTE→AUTORIZADO para forzar el flujo de reserva de stock' },
+  { hash: 'pending', date: '2026-10-07', tipo: 'feat', texto: 'auditoría de pedidos: snapshot pre-modificación en APP_PEDIDO_AUDITORIA/CAB/LIN antes de cualquier edición, cambio de estatus o aprobación de psicotrópico' },
+  { hash: 'pending', date: '2026-10-07', tipo: 'feat', texto: 'fusión de pedidos: snapshot completo pre-fusión en APP_FUSION_LOG + APP_FUSION_SNAPSHOT_CAB/LIN/PROMO — guarda cabeceras, líneas con descuentos y promociones de todos los pedidos involucrados antes de fusionar' },
   { hash: 'pending', date: '2026-10-06', tipo: 'fix',  texto: 'stock: ecommerce y farcompras registran fallas en APP_PEDIDO_FALLAS; farcompras cambia de bloqueo global a filtro+fallas por chunk (igual que FTP); ecommerce registra descartados y truncados' },
   { hash: 'pending', date: '2026-10-06', tipo: 'fix',  texto: 'FTP: registra fallas de stock en APP_PEDIDO_FALLAS al crear pedidos (no bloqueante — el pedido se crea igual, las fallas quedan visibles en reporte)' },
   { hash: 'pending', date: '2026-10-05', tipo: 'fix',  texto: 'stock: checkStockLineas corre en creación Y edición de pedidos para todos los productos; iCompras valida stock antes de insertar; getStocks incluye estatus SANIDAD' },

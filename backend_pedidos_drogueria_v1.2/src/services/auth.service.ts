@@ -37,6 +37,7 @@ export const MODULOS_SISTEMA = [
     { bit: 1048576, codigo: 'DTO_ARTICULO',       nombre: 'Desc. por Artículo',         ruta: '/descuento-articulo',  icono: 'mdi-label-percent-outline', orden: 21 },
     { bit: 2097152, codigo: 'CANCELAR_SANIDAD',   nombre: 'Cancelar desde Sanidad',     ruta: '',                     icono: 'mdi-hospital-box-outline',  orden: 22 },
     { bit: 4194304, codigo: 'REPORTERIA',         nombre: 'Reportería',                 ruta: '/reporteria',          icono: 'mdi-chart-bar',             orden: 23 },
+    { bit: 8388608, codigo: 'STOCK_LIBRE',        nombre: 'Stock libre y alertas',      ruta: '/stock-libre',         icono: 'mdi-warehouse',             orden: 24 },
 ];
 
 export interface ModuloPermiso {

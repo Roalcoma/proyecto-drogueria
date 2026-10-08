@@ -4,7 +4,7 @@ import mssql from 'mssql';
 import { connectDb } from '../db/db.conection';
 import { getDbConfig } from './dbconfig.service';
 import { STOCK_DISPONIBLE_SQL } from './products.service';
-import { PedidosServices }      from './pedidos.service';
+import { PedidosServices, dtoValido } from './pedidos.service';
 import { PromocionesService }   from './promociones.service';
 import { PromoEspecialService } from './promoEspecial.service';
 
@@ -171,11 +171,8 @@ export class FarcomprasService {
 
     // ── Generación de inventario.txt (catálogo general) ───────────────────────
 
-    static async generarInventario(rutaBase: string): Promise<void> {
-        const { tarifaBaseCatalogo, codAlmacen } = getDbConfig();
-        const pool = await connectDb();
-
-        // D2 de promos activas para todos los clientes (primer tramo, slot 2)
+    // D2 de promos activas para todos los clientes (primer tramo, slot 2): es lo que se publica en inventario.txt
+    private static async d2PromosParaTodos(): Promise<Map<number, number>> {
         const d2Map = new Map<number, number>();
         try {
             const vigentes = await PromocionesService.getVigentes();
@@ -189,6 +186,14 @@ export class FarcomprasService {
                 }
             }
         } catch {}
+        return d2Map;
+    }
+
+    static async generarInventario(rutaBase: string): Promise<void> {
+        const { tarifaBaseCatalogo, codAlmacen } = getDbConfig();
+        const pool = await connectDb();
+
+        const d2Map = await FarcomprasService.d2PromosParaTodos();
 
         const result = await pool.request()
             .input('TARIFA',  mssql.Int,         tarifaBaseCatalogo)
@@ -344,7 +349,9 @@ export class FarcomprasService {
                                 FROM CLIENTESCAMPOSLIBRES CCL WITH (NOLOCK)
                                 WHERE CCL.CODCLIENTE = CL.CODCLIENTE
                                   AND CCL.CODVENDEDOR IS NOT NULL
-                                  AND LTRIM(RTRIM(CAST(CCL.CODVENDEDOR AS NVARCHAR))) != ''), 1) AS CODVENDEDOR
+                                  AND LTRIM(RTRIM(CAST(CCL.CODVENDEDOR AS NVARCHAR))) != ''), 1) AS CODVENDEDOR,
+                        ISNULL((SELECT TOP 1 TRY_CAST(CCL2.D1 AS FLOAT) FROM CLIENTESCAMPOSLIBRES CCL2 WITH (NOLOCK)
+                                WHERE CCL2.CODCLIENTE = CL.CODCLIENTE), 0) AS D1
                     FROM CLIENTES CL WITH (NOLOCK)
                     WHERE LTRIM(RTRIM(ISNULL(CL.NIF20,''))) = LTRIM(RTRIM(@RIF))`);
         if (clienteRes.recordset.length === 0) {
@@ -352,6 +359,7 @@ export class FarcomprasService {
             return;
         }
         const { CODCLIENTE, CODVENDEDOR } = clienteRes.recordset[0];
+        const d1Cliente = dtoValido(Number(clienteRes.recordset[0].D1) || 0);
 
         // Líneas 2+ : codarticulo;descripcion;cantidad;precioTotal
         const lineas = todasLasLineas.slice(1)
@@ -396,8 +404,10 @@ export class FarcomprasService {
                         ISNULL(A.NODTOAPLICABLE,0) AS NODTO,
                         CASE WHEN A.SECCION = @dptoPsico THEN 1 ELSE 0 END AS ES_PSICO,
                         ISNULL(PCL.DIASPROTECCION,0) AS DIAS_PROT,
-                        ISNULL(ACL.CODPROVEEDORICG, 0) AS CODPROVEEDORICG
+                        ISNULL(ACL.CODPROVEEDORICG, 0) AS CODPROVEEDORICG,
+                        ISNULL(IMP.IVA, 0) AS IVA
                     FROM ARTICULOS A WITH(NOLOCK)
+                    LEFT JOIN IMPUESTOS IMP WITH(NOLOCK) ON IMP.TIPOIVA = A.TIPOIMPUESTO
                     LEFT JOIN ARTICULOSCAMPOSLIBRES ACL WITH(NOLOCK) ON ACL.CODARTICULO = A.CODARTICULO
                     LEFT JOIN PROVEEDORESCAMPOSLIBRES PCL WITH(NOLOCK) ON PCL.CODPROVEEDOR = ACL.CODPROVEEDORICG
                     WHERE A.CODARTICULO IN (${codigos})
@@ -406,8 +416,8 @@ export class FarcomprasService {
         ]);
 
         const preciosSistema = new Map<number, number>(preciosRes.recordset.map((r: any) => [r.CODARTICULO, Number(r.PNETO)]));
-        const artInfoMap = new Map<number, { nodto: boolean; esPsico: boolean; diasProt: number; codproveedoricg: number }>(
-            artInfoRes.recordset.map((r: any) => [Number(r.CODARTICULO), { nodto: !!r.NODTO, esPsico: !!r.ES_PSICO, diasProt: Number(r.DIAS_PROT), codproveedoricg: Number(r.CODPROVEEDORICG) }])
+        const artInfoMap = new Map<number, { nodto: boolean; esPsico: boolean; diasProt: number; codproveedoricg: number; iva: number }>(
+            artInfoRes.recordset.map((r: any) => [Number(r.CODARTICULO), { nodto: !!r.NODTO, esPsico: !!r.ES_PSICO, diasProt: Number(r.DIAS_PROT), codproveedoricg: Number(r.CODPROVEEDORICG), iva: Number(r.IVA) || 0 }])
         );
         const artPEMap = new Map<number, { promoId: number; diasMontofactura: number }>();
         for (const promo of peVigentes) {
@@ -425,12 +435,26 @@ export class FarcomprasService {
             return 'N';
         };
 
-        // Sin cliente ICG: precio base sin descuentos
+        // Mismos descuentos que se le publican al cliente: D1 en clientes.txt y D2 de promo en inventario.txt
+        const d2Map = await FarcomprasService.d2PromosParaTodos();
+        const dtoMap = new Map<number, { d1: number; d2: number; precioFinal: number }>();
         for (const l of lineasAgrupadas) {
-            const pneto  = preciosSistema.get(l.codarticulo) ?? 0;
+            const pneto = preciosSistema.get(l.codarticulo) ?? 0;
+            const nodto = artInfoMap.get(l.codarticulo)?.nodto ?? false;
+            const d1 = nodto ? 0 : d1Cliente;
+            const d2 = nodto ? 0 : dtoValido(d2Map.get(l.codarticulo) ?? 0);
+            const precioFinal = pneto * (1 - d1 / 100) * (1 - d2 / 100);
             l.precioUnit  = pneto;
-            l.precioTotal = pneto * l.cantidad;
+            l.precioTotal = precioFinal * l.cantidad;
+            dtoMap.set(l.codarticulo, { d1, d2, precioFinal });
         }
+        const filaLinea = (chunkId: string, l: { codarticulo: number; cantidad: number; precioUnit: number }) => {
+            const dto = dtoMap.get(l.codarticulo) ?? { d1: 0, d2: 0, precioFinal: l.precioUnit };
+            const cant = Math.round(l.cantidad);
+            const iva = artInfoMap.get(l.codarticulo)?.iva ?? 0;
+            return [chunkId, l.codarticulo, '', codAlmacen, tarifaBaseCatalogo, cant, dto.precioFinal,
+                    dto.d1, dto.d2, 0, 0, l.precioUnit, iva, dto.precioFinal * cant * iva / 100] as const;
+        };
 
         const lineasPE = new Map<number, { lines: typeof lineasAgrupadas; diasMontofactura: number }>();
         const lineasNormales: typeof lineasAgrupadas = [];
@@ -465,11 +489,14 @@ export class FarcomprasService {
         };
 
         const orderIds: string[] = [];
+        const fallasPendientes: { orderId: string; fallas: { codarticulo: number; descripcion: string; cantPedida: number; stockDisponible: number }[] }[] = [];
+        const pePendientes: { orderId: string; dias: number }[] = [];
 
         let transaction: mssql.Transaction | null = null;
         try {
             transaction = new mssql.Transaction(pool);
             await transaction.begin();
+            await PedidosServices.bloquearStock(transaction);
 
             for (const [tipo, artsTipo] of grupos) {
                 const sz = step === Infinity ? artsTipo.length : step;
@@ -481,7 +508,7 @@ export class FarcomprasService {
                     const chunkId    = buildChunkId(tipo, ci + 1);
                     // Filtrar líneas sin stock antes de insertar
                     const { insuficiente: ins } = await PedidosServices.checkStockLineas(
-                        chunk.map(l => ({ codarticulo: l.codarticulo, cantidad: Math.round(l.cantidad) }))
+                        chunk.map(l => ({ codarticulo: l.codarticulo, cantidad: Math.round(l.cantidad) })), undefined, transaction!
                     );
                     const sinStock = new Set(ins.map(i => i.codarticulo));
                     const chunkOk = sinStock.size > 0 ? chunk.filter(l => !sinStock.has(l.codarticulo)) : chunk;
@@ -518,14 +545,9 @@ export class FarcomprasService {
                     tabla.columns.add('PORCENTAJEIVA',  mssql.Float,         { nullable: true  });
                     tabla.columns.add('MONTOIVA',       mssql.Float,         { nullable: true  });
 
-                    for (const l of chunkOk) {
-                        tabla.rows.add(chunkId, l.codarticulo, '', codAlmacen, tarifaBaseCatalogo,
-                            Math.round(l.cantidad), l.precioUnit,
-                            0, 0, 0, 0,
-                            l.precioUnit, 0, 0);
-                    }
+                    for (const l of chunkOk) tabla.rows.add(...filaLinea(chunkId, l));
                     await new mssql.Request(transaction).bulk(tabla);
-                    if (ins.length > 0) await PedidosServices.registrarFallas(chunkId, ins.map(i => ({ codarticulo: i.codarticulo, descripcion: i.descripcion, cantPedida: i.cantidad_pedida, stockDisponible: i.disponible })));
+                    if (ins.length > 0) fallasPendientes.push({ orderId: chunkId, fallas: ins.map(i => ({ codarticulo: i.codarticulo, descripcion: i.descripcion, cantPedida: i.cantidad_pedida, stockDisponible: i.disponible })) });
                     const tablaOrig = new mssql.Table(`${ESQ}.APP_FARCOMPRAS_LINEAS`);
                     tablaOrig.create = false;
                     tablaOrig.columns.add('ORDERID',     mssql.NVarChar(50), { nullable: false });
@@ -564,7 +586,7 @@ export class FarcomprasService {
                         const chunkId    = buildPEChunkId(tipo, ci + 1);
                         // Filtrar líneas sin stock antes de insertar
                         const { insuficiente: insPE } = await PedidosServices.checkStockLineas(
-                            chunk.map(l => ({ codarticulo: l.codarticulo, cantidad: Math.round(l.cantidad) }))
+                            chunk.map(l => ({ codarticulo: l.codarticulo, cantidad: Math.round(l.cantidad) })), undefined, transaction!
                         );
                         const sinStockPE = new Set(insPE.map(i => i.codarticulo));
                         const chunkOkPE = sinStockPE.size > 0 ? chunk.filter(l => !sinStockPE.has(l.codarticulo)) : chunk;
@@ -598,13 +620,9 @@ export class FarcomprasService {
                         tabla.columns.add('PRECIOBRUTO',    mssql.Float,         { nullable: true  });
                         tabla.columns.add('PORCENTAJEIVA',  mssql.Float,         { nullable: true  });
                         tabla.columns.add('MONTOIVA',       mssql.Float,         { nullable: true  });
-                        for (const l of chunkOkPE) {
-                            tabla.rows.add(chunkId, l.codarticulo, '', codAlmacen, tarifaBaseCatalogo,
-                                Math.round(l.cantidad), l.precioUnit,
-                                0, 0, 0, 0, l.precioUnit, 0, 0);
-                        }
+                        for (const l of chunkOkPE) tabla.rows.add(...filaLinea(chunkId, l));
                         await new mssql.Request(transaction!).bulk(tabla);
-                        if (insPE.length > 0) await PedidosServices.registrarFallas(chunkId, insPE.map(i => ({ codarticulo: i.codarticulo, descripcion: i.descripcion, cantPedida: i.cantidad_pedida, stockDisponible: i.disponible })));
+                        if (insPE.length > 0) fallasPendientes.push({ orderId: chunkId, fallas: insPE.map(i => ({ codarticulo: i.codarticulo, descripcion: i.descripcion, cantPedida: i.cantidad_pedida, stockDisponible: i.disponible })) });
                         const tablaOrigPE = new mssql.Table(`${ESQ}.APP_FARCOMPRAS_LINEAS`);
                         tablaOrigPE.create = false;
                         tablaOrigPE.columns.add('ORDERID',     mssql.NVarChar(50), { nullable: false });
@@ -619,7 +637,7 @@ export class FarcomprasService {
                                 `Pedido Farcompras PE (promo ${promoId}) desde ${archivo}. Tipo: ${tipo}. Parte ${ci + 1}/${chunks.length}.`)
                             .query(`INSERT INTO ${ESQ}.APP_PEDIDO_LOG (ORDERID, EST_ANTERIOR, EST_NUEVO, USUARIO, DETALLES)
                                     VALUES (@OID, NULL, @EST, 'FARCOMPRAS', @DET)`);
-                        await PromoEspecialService.registrarPedido(chunkId, diasMontofactura);
+                        pePendientes.push({ orderId: chunkId, dias: diasMontofactura });
                         orderIds.push(chunkId);
                         console.log(`[Farcompras] ${archivo} → ${chunkId} (PE promo ${promoId}, ${chunkOkPE.length}/${chunk.length} líneas, tipo ${tipo}${insPE.length > 0 ? `, ${insPE.length} en falla` : ''})`);
                     }
@@ -627,6 +645,9 @@ export class FarcomprasService {
             }
 
             await transaction.commit();
+            transaction = null;
+            for (const f of fallasPendientes) await PedidosServices.registrarFallas(f.orderId, f.fallas);
+            for (const pe of pePendientes) await PromoEspecialService.registrarPedido(pe.orderId, pe.dias);
             fs.renameSync(rutaCompleta, rutaCompleta.replace(/\.txt$/i, '.bak'));
             await FarcomprasService.log(archivo, 'PROCESADO', orderIds.join(', '),
                 `${lineasAgrupadas.length} línea(s) → ${orderIds.join(', ')}`);

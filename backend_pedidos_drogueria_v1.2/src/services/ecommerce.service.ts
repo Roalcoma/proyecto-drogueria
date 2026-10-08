@@ -5,7 +5,7 @@ import { connectDb } from '../db/db.conection';
 import { PromocionesService }    from './promociones.service';
 import { PromoEspecialService }  from './promoEspecial.service';
 import { getDbConfig }           from './dbconfig.service';
-import { PedidosServices }       from './pedidos.service';
+import { PedidosServices, dtoValido } from './pedidos.service';
 
 const VED     = Number(process.env.VED) || 1;
 const esquema = process.env.DB_ESQUEMA  || 'dbo';
@@ -409,7 +409,7 @@ export class EcommerceService {
         const barcodeToArt = new Map<string, {
             codarticulo: number; nodto: boolean; ref: string;
             seccion: number; diasProteccion: number; precioUnitario: number;
-            codproveedoricg: number;
+            codproveedoricg: number; pctIva: number;
         }>();
         if (barcodes.length > 0) {
             const artReq = pool.request();
@@ -422,8 +422,10 @@ export class EcommerceService {
                        ISNULL(A.SECCION, 0)           AS SECCION,
                        ISNULL(PCL.DIASPROTECCION, 0)  AS DIASPROTECCION,
                        ISNULL(PV.PNETO, 0)            AS PNETO,
-                       ISNULL(ACL.CODPROVEEDORICG, 0) AS CODPROVEEDORICG
+                       ISNULL(ACL.CODPROVEEDORICG, 0) AS CODPROVEEDORICG,
+                       ISNULL(IMP.IVA, 0)             AS IVA
                 FROM ARTICULOS A WITH (NOLOCK)
+                LEFT JOIN IMPUESTOS IMP WITH (NOLOCK) ON IMP.TIPOIVA = A.TIPOIMPUESTO
                 LEFT JOIN ARTICULOSCAMPOSLIBRES ACL WITH (NOLOCK) ON ACL.CODARTICULO = A.CODARTICULO
                 LEFT JOIN PROVEEDORESCAMPOSLIBRES PCL WITH (NOLOCK) ON PCL.CODPROVEEDOR = ACL.CODPROVEEDORICG
                 LEFT JOIN PRECIOSVENTA PV WITH (NOLOCK) ON PV.CODARTICULO = A.CODARTICULO AND PV.IDTARIFAV = @TARIFA AND PV.COLOR = '.' AND PV.TALLA = '.'
@@ -438,6 +440,7 @@ export class EcommerceService {
                     diasProteccion:  Number(r.DIASPROTECCION),
                     precioUnitario:  Number(r.PNETO),
                     codproveedoricg: Number(r.CODPROVEEDORICG),
+                    pctIva:          Number(r.IVA) || 0,
                 });
             });
         }
@@ -521,10 +524,12 @@ export class EcommerceService {
 
         // 8. Helper: armar tabla e insertar un grupo (dentro de una transacción).
         //    Si el grupo supera maxLineasPorPedido, se parte en pedidos consecutivos.
+        // Fallas se registran recién después del commit: si la transacción se revierte no deben quedar
+        const fallasPendientes: { orderId: string; fallas: { codarticulo: number; descripcion: string; cantPedida: number; stockDisponible: number }[] }[] = [];
         const insertarGrupo = async (sufijo: string, items: GrupoLinea[], tx: mssql.Transaction, baseOverride?: string): Promise<string[]> => {
             const orderIdBase = baseOverride ?? (sufijo === 'normal' ? orderId : orderId + sufijo);
             const estatus     = sufijo === 'P' ? 'APROBACION PSICOTROPICOS' : 'PENDIENTE';
-            const maxLineas   = getDbConfig().maxLineasPorPedido;
+            const { maxLineasPorPedido: maxLineas, codAlmacen, tarifaBaseCatalogo } = getDbConfig();
 
             const consolidated = new Map<number, { linea: any; art: (typeof items)[0]['art'] }>();
             for (const { linea: l, art } of items) {
@@ -559,7 +564,7 @@ export class EcommerceService {
             }
 
             // Recolectar filas válidas (con stock) antes de dividir; trackear fallas
-            type Fila = { codart: number; ref: string; cantidad: number; precioFinal: number; desc1: number; desc2: number; bruto: number };
+            type Fila = { codart: number; ref: string; cantidad: number; precioFinal: number; desc1: number; desc2: number; bruto: number; pctIva: number };
             const filasValidas: Fila[] = [];
             const fallasGrupo: { codarticulo: number; descripcion: string; cantPedida: number; stockDisponible: number }[] = [];
             for (const { linea: l, art } of consolidated.values()) {
@@ -574,10 +579,10 @@ export class EcommerceService {
                 if (cantidad < cantPedida) {
                     fallasGrupo.push({ codarticulo: art.codarticulo, descripcion: String(art.codarticulo), cantPedida, stockDisponible });
                 }
-                const desc1       = art.nodto ? 0 : descuentoGlobal;
-                const desc2       = art.nodto ? 0 : (promoDescMap.get(art.codarticulo) ?? 0);
+                const desc1       = art.nodto ? 0 : dtoValido(descuentoGlobal);
+                const desc2       = art.nodto ? 0 : dtoValido(promoDescMap.get(art.codarticulo) ?? 0);
                 const precioFinal = art.precioUnitario * (1 - desc1 / 100) * (1 - desc2 / 100);
-                filasValidas.push({ codart: art.codarticulo, ref: art.ref, cantidad, precioFinal, desc1, desc2, bruto: art.precioUnitario });
+                filasValidas.push({ codart: art.codarticulo, ref: art.ref, cantidad, precioFinal, desc1, desc2, bruto: art.precioUnitario, pctIva: art.pctIva });
             }
 
             if (filasValidas.length === 0) {
@@ -587,7 +592,8 @@ export class EcommerceService {
 
             // Dividir en chunks según maxLineasPorPedido
             const chunks: Fila[][] = [];
-            for (let i = 0; i < filasValidas.length; i += maxLineas) chunks.push(filasValidas.slice(i, i + maxLineas));
+            const paso = maxLineas > 0 ? maxLineas : filasValidas.length;
+            for (let i = 0; i < filasValidas.length; i += paso) chunks.push(filasValidas.slice(i, i + paso));
 
             const idsInsertados: string[] = [];
             for (let ci = 0; ci < chunks.length; ci++) {
@@ -609,11 +615,14 @@ export class EcommerceService {
                 tabla.columns.add('DESCUENTO3',     mssql.Float,       { nullable: true  });
                 tabla.columns.add('DESCUENTO4',     mssql.Float,       { nullable: true  });
                 tabla.columns.add('PRECIOBRUTO',    mssql.Float,       { nullable: true  });
+                tabla.columns.add('PORCENTAJEIVA',  mssql.Float,       { nullable: true  });
+                tabla.columns.add('MONTOIVA',       mssql.Float,       { nullable: true  });
 
                 let total = 0;
                 for (const f of chunk) {
                     total += f.precioFinal * f.cantidad;
-                    tabla.rows.add(orderIdGrupo, f.codart, f.ref, 'ZAV', VED, f.cantidad, f.precioFinal, f.desc1, f.desc2, 0, 0, f.bruto);
+                    tabla.rows.add(orderIdGrupo, f.codart, f.ref, codAlmacen, tarifaBaseCatalogo, f.cantidad, f.precioFinal, f.desc1, f.desc2, 0, 0, f.bruto,
+                        f.pctIva, f.precioFinal * f.cantidad * f.pctIva / 100);
                 }
 
                 await new mssql.Request(tx)
@@ -644,7 +653,7 @@ export class EcommerceService {
             }
             // Registrar fallas de descarte/truncado en el orderId base
             if (fallasGrupo.length > 0 && idsInsertados.length > 0) {
-                await PedidosServices.registrarFallas(idsInsertados[0], fallasGrupo);
+                fallasPendientes.push({ orderId: idsInsertados[0], fallas: fallasGrupo });
             }
             return idsInsertados;
         };
@@ -652,9 +661,11 @@ export class EcommerceService {
         // 9. Insertar cada grupo dentro de una transacción — si falla alguno, todos se revierten
         const idsCreados: string[] = [];
         const peOrderIdBase = `PE-EC-${ped.NUMERO_PEDIDO}`;
+        const pePendientes: { orderId: string; dias: number }[] = [];
         const tx = new mssql.Transaction(pool);
         await tx.begin();
         try {
+            await PedidosServices.bloquearStock(tx);
             for (const [sufijo, items] of gruposConLineas) {
                 const ids = await insertarGrupo(sufijo, items, tx);
                 idsCreados.push(...ids);
@@ -671,7 +682,7 @@ export class EcommerceService {
                     if (!items.length) continue;
                     const peBase = sufijo === 'normal' ? peOrderIdBase : peOrderIdBase + sufijo;
                     const ids = await insertarGrupo(sufijo, items, tx, peBase);
-                    for (const oid of ids) await PromoEspecialService.registrarPedido(oid, diasMontofactura);
+                    for (const oid of ids) pePendientes.push({ orderId: oid, dias: diasMontofactura });
                     idsCreados.push(...ids);
                 }
             }
@@ -680,6 +691,9 @@ export class EcommerceService {
             await tx.rollback();
             throw err;
         }
+
+        for (const f of fallasPendientes) await PedidosServices.registrarFallas(f.orderId, f.fallas);
+        for (const p of pePendientes) await PromoEspecialService.registrarPedido(p.orderId, p.dias);
 
         // 10. Marcar procesado
         await pool.request()

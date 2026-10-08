@@ -10,7 +10,7 @@ import { STOCK_DISPONIBLE_SQL } from './products.service';
 import { PromocionesService } from './promociones.service';
 import { PromoEspecialService } from './promoEspecial.service';
 import { FarcomprasService } from './farcompras.service';
-import { PedidosServices } from './pedidos.service';
+import { PedidosServices, dtoValido } from './pedidos.service';
 
 // ftp-srv's FileSystem normalizes '/' to '\' on Windows via path.normalize.
 // Subclass it to fix cwd after construction so PWD always returns '/'.
@@ -333,8 +333,10 @@ export class FtpService {
                         CASE WHEN A.SECCION = @dptoPsico THEN 1 ELSE 0 END AS ES_PSICO,
                         ISNULL(PCL.DIASPROTECCION,0) AS DIAS_PROT,
                         ISNULL(ACL.CODPROVEEDORICG, 0) AS CODPROVEEDORICG,
-                        ISNULL(ACL.DTOARTICULO, 0) AS DTOARTICULO
+                        ISNULL(ACL.DTOARTICULO, 0) AS DTOARTICULO,
+                        ISNULL(IMP.IVA, 0) AS IVA
                     FROM ARTICULOS A WITH(NOLOCK)
+                    LEFT JOIN IMPUESTOS IMP WITH(NOLOCK) ON IMP.TIPOIVA = A.TIPOIMPUESTO
                     LEFT JOIN ARTICULOSCAMPOSLIBRES ACL WITH(NOLOCK) ON ACL.CODARTICULO = A.CODARTICULO
                     LEFT JOIN PROVEEDORESCAMPOSLIBRES PCL WITH(NOLOCK) ON PCL.CODPROVEEDOR = ACL.CODPROVEEDORICG
                     WHERE A.CODARTICULO IN (${codigos})
@@ -346,10 +348,10 @@ export class FtpService {
         const preciosSistema = new Map<number, number>(preciosRes.recordset.map((r: any) => [r.CODARTICULO, Number(r.PNETO)]));
         const d1Cliente  = Number(dtoCliRes.recordset[0]?.D1 ?? 0);
         const cclD3      = Number(dtoCliRes.recordset[0]?.D3 ?? 0);
-        const artInfoMap = new Map<number, { nodto: boolean; esPsico: boolean; diasProt: number; codproveedoricg: number; dtoArticulo: number }>(
+        const artInfoMap = new Map<number, { nodto: boolean; esPsico: boolean; diasProt: number; codproveedoricg: number; dtoArticulo: number; iva: number }>(
             artInfoRes.recordset.map((r: any) => [
                 Number(r.CODARTICULO),
-                { nodto: !!r.NODTO, esPsico: !!r.ES_PSICO, diasProt: Number(r.DIAS_PROT), codproveedoricg: Number(r.CODPROVEEDORICG), dtoArticulo: Number(r.DTOARTICULO) }
+                { nodto: !!r.NODTO, esPsico: !!r.ES_PSICO, diasProt: Number(r.DIAS_PROT), codproveedoricg: Number(r.CODPROVEEDORICG), dtoArticulo: Number(r.DTOARTICULO), iva: Number(r.IVA) || 0 }
             ])
         );
         const artPEMap = new Map<number, { promoId: number; diasMontofactura: number }>();
@@ -359,6 +361,7 @@ export class FtpService {
                     artPEMap.set(cod, { promoId: promo.ID, diasMontofactura: promo.DIASMONTOFACTURA });
             }
         }
+        const ivaDe = (cod: number): number => artInfoMap.get(cod)?.iva ?? 0;
         const getTipo = (cod: number): string => {
             const info = artInfoMap.get(cod);
             if (!info)             return 'N';
@@ -414,9 +417,9 @@ export class FtpService {
             const nodto = artInfoMap.get(l.codarticulo)?.nodto ?? false;
             const promo = promoMap.get(l.codarticulo) ?? { d2: 0, d3: 0 };
             const dtoArticulo = artInfoMap.get(l.codarticulo)?.dtoArticulo ?? 0;
-            const d1 = nodto ? 0 : d1Cliente;
-            const d2 = nodto ? 0 : promo.d2;
-            const d3 = nodto ? 0 : (dtoArticulo > 0 ? dtoArticulo : cclD3 > 0 ? cclD3 : promo.d3);
+            const d1 = nodto ? 0 : dtoValido(d1Cliente);
+            const d2 = nodto ? 0 : dtoValido(promo.d2);
+            const d3 = nodto ? 0 : dtoValido(dtoArticulo > 0 ? dtoArticulo : cclD3 > 0 ? cclD3 : promo.d3);
             const precioFinal = pneto * (1 - d1/100) * (1 - d2/100) * (1 - d3/100);
             l.precioUnit  = pneto;
             l.precioTotal = precioFinal * l.cantidad;
@@ -460,7 +463,15 @@ export class FtpService {
         };
 
         const orderIds: string[] = [];
+        // Todo el archivo entra en una sola transacción: si algo falla no queda ninguna parte creada
+        // y el próximo escaneo lo reintenta completo (antes quedaba a medias y se descartaba como YA_PROCESADO)
+        const fallasPendientes: { orderId: string; fallas: { codarticulo: number; descripcion: string; cantPedida: number; stockDisponible: number }[] }[] = [];
+        const pePendientes: { orderId: string; dias: number }[] = [];
+        let tx: mssql.Transaction | null = null;
         try {
+            tx = new mssql.Transaction(pool);
+            await tx.begin();
+            await PedidosServices.bloquearStock(tx);
             // ── Pedidos de Promoción Especial ────────────────────────────────────
             for (const [promoId, { lines: peLines, diasMontofactura }] of lineasPE) {
                 const peGrupos = new Map<string, typeof lineasAgrupadas>();
@@ -476,9 +487,19 @@ export class FtpService {
                     for (let ci = 0; ci < tipoCh.length; ci++) {
                         const chunk      = tipoCh[ci];
                         const chunkId    = buildPEChunkId(tipo, ci + 1);
-                        const totalChunk = chunk.reduce((s, l) => s + l.precioTotal, 0);
+                        // Filtrar líneas sin stock antes de insertar
+                        const { insuficiente: insPE } = await PedidosServices.checkStockLineas(
+                            chunk.map(l => ({ codarticulo: l.codarticulo, cantidad: Math.round(l.cantidad) })), undefined, tx
+                        );
+                        const sinStockPE = new Set(insPE.map(i => i.codarticulo));
+                        const chunkOkPE = sinStockPE.size > 0 ? chunk.filter(l => !sinStockPE.has(l.codarticulo)) : chunk;
+                        if (chunkOkPE.length === 0) {
+                            console.log(`[FTP] ${chunkId} omitido — todas las líneas con stock insuficiente (PE promo ${promoId})`);
+                            continue;
+                        }
+                        const totalChunk = chunkOkPE.reduce((s, l) => s + l.precioTotal, 0);
                         const estatusInicial = tipo === 'P' ? 'APROBACION PSICOTROPICOS' : 'PENDIENTE';
-                        await pool.request()
+                        await new mssql.Request(tx)
                             .input('OID', mssql.NVarChar(50), chunkId)
                             .input('CLI', mssql.Int, CODCLIENTE)
                             .input('VND', mssql.Int, CODVENDEDOR)
@@ -502,37 +523,32 @@ export class FtpService {
                         tabla.columns.add('PRECIOBRUTO',    mssql.Float,         { nullable: true  });
                         tabla.columns.add('PORCENTAJEIVA',  mssql.Float,         { nullable: true  });
                         tabla.columns.add('MONTOIVA',       mssql.Float,         { nullable: true  });
-                        for (const l of chunk) {
+                        for (const l of chunkOkPE) {
                             const dto = dtoMap.get(l.codarticulo) ?? { d1: 0, d2: 0, d3: 0, precioFinal: l.precioUnit };
                             tabla.rows.add(chunkId, l.codarticulo, '', almacen, tarifa,
                                 Math.round(l.cantidad), dto.precioFinal,
                                 dto.d1, dto.d2, dto.d3, 0,
-                                l.precioUnit, 0, 0);
+                                l.precioUnit, ivaDe(l.codarticulo), dto.precioFinal * Math.round(l.cantidad) * ivaDe(l.codarticulo) / 100);
                         }
-                        await pool.request().bulk(tabla);
-                        // Registrar fallas de stock (no bloqueante — el pedido se crea igual)
-                        try {
-                            const lineasStockPE = chunk.map(l => ({ codarticulo: l.codarticulo, cantidad: Math.round(l.cantidad) }));
-                            const { insuficiente: insPE } = await PedidosServices.checkStockLineas(lineasStockPE, chunkId);
-                            if (insPE.length > 0) await PedidosServices.registrarFallas(chunkId, insPE.map(i => ({ codarticulo: i.codarticulo, descripcion: i.descripcion, cantPedida: i.cantidad_pedida, stockDisponible: i.disponible })));
-                        } catch (_e) { console.error('[FTP] Error registrando fallas PE', chunkId, _e); }
+                        await new mssql.Request(tx).bulk(tabla);
+                        if (insPE.length > 0) fallasPendientes.push({ orderId: chunkId, fallas: insPE.map(i => ({ codarticulo: i.codarticulo, descripcion: i.descripcion, cantPedida: i.cantidad_pedida, stockDisponible: i.disponible })) });
                         const tablaOrigPE = new mssql.Table('APP_FTP_LINEAS');
                         tablaOrigPE.create = false;
                         tablaOrigPE.columns.add('ORDERID',     mssql.NVarChar(50), { nullable: false });
                         tablaOrigPE.columns.add('CODARTICULO', mssql.Int,           { nullable: false });
                         tablaOrigPE.columns.add('CANTIDAD',    mssql.Int,           { nullable: false });
-                        for (const l of chunk) tablaOrigPE.rows.add(chunkId, l.codarticulo, Math.round(l.cantidad));
-                        await pool.request().bulk(tablaOrigPE);
-                        await pool.request()
+                        for (const l of chunkOkPE) tablaOrigPE.rows.add(chunkId, l.codarticulo, Math.round(l.cantidad));
+                        await new mssql.Request(tx).bulk(tablaOrigPE);
+                        await new mssql.Request(tx)
                             .input('OID', mssql.NVarChar(50), chunkId)
                             .input('EST', mssql.NVarChar(50), estatusInicial)
                             .input('DET', mssql.NVarChar(500),
                                 `Pedido FTP PE (promo ${promoId}) desde ${archivo}. Tipo: ${tipo}. Parte ${ci + 1}/${tipoCh.length}.`)
                             .query(`INSERT INTO ${esquema}.APP_PEDIDO_LOG (ORDERID, EST_ANTERIOR, EST_NUEVO, USUARIO, DETALLES)
                                     VALUES (@OID, NULL, @EST, 'FTP', @DET)`);
-                        await PromoEspecialService.registrarPedido(chunkId, diasMontofactura);
+                        pePendientes.push({ orderId: chunkId, dias: diasMontofactura });
                         orderIds.push(chunkId);
-                        console.log(`[FTP] ${archivo} → ${chunkId} (PE promo ${promoId}, ${chunk.length} líneas, tipo ${tipo})`);
+                        console.log(`[FTP] ${archivo} → ${chunkId} (PE promo ${promoId}, ${chunkOkPE.length}/${chunk.length} líneas, tipo ${tipo}${insPE.length > 0 ? `, ${insPE.length} en falla` : ''})`);
                     }
                 }
             }
@@ -548,10 +564,20 @@ export class FtpService {
                 for (let ci = 0; ci < tipoCh.length; ci++) {
                     const chunk      = tipoCh[ci];
                     const chunkId    = buildChunkId(tipo, ci + 1);
-                    const totalChunk = chunk.reduce((s, l) => s + l.precioTotal, 0);
+                    // Filtrar líneas sin stock antes de insertar
+                    const { insuficiente: ins } = await PedidosServices.checkStockLineas(
+                        chunk.map(l => ({ codarticulo: l.codarticulo, cantidad: Math.round(l.cantidad) })), undefined, tx
+                    );
+                    const sinStock = new Set(ins.map(i => i.codarticulo));
+                    const chunkOk = sinStock.size > 0 ? chunk.filter(l => !sinStock.has(l.codarticulo)) : chunk;
+                    if (chunkOk.length === 0) {
+                        console.log(`[FTP] ${chunkId} omitido — todas las líneas con stock insuficiente`);
+                        continue;
+                    }
+                    const totalChunk = chunkOk.reduce((s, l) => s + l.precioTotal, 0);
                     const estatusInicial = tipo === 'P' ? 'APROBACION PSICOTROPICOS' : 'PENDIENTE';
 
-                    await pool.request()
+                    await new mssql.Request(tx)
                         .input('OID', mssql.NVarChar(15), chunkId)
                         .input('CLI', mssql.Int, CODCLIENTE)
                         .input('VND', mssql.Int, CODVENDEDOR)
@@ -577,29 +603,24 @@ export class FtpService {
                     tabla.columns.add('PORCENTAJEIVA',  mssql.Float,         { nullable: true  });
                     tabla.columns.add('MONTOIVA',       mssql.Float,         { nullable: true  });
 
-                    for (const l of chunk) {
+                    for (const l of chunkOk) {
                         const dto = dtoMap.get(l.codarticulo) ?? { d1: 0, d2: 0, d3: 0, precioFinal: l.precioUnit };
                         tabla.rows.add(chunkId, l.codarticulo, '', almacen, tarifa,
                             Math.round(l.cantidad), dto.precioFinal,
                             dto.d1, dto.d2, dto.d3, 0,
-                            l.precioUnit, 0, 0);
+                            l.precioUnit, ivaDe(l.codarticulo), dto.precioFinal * Math.round(l.cantidad) * ivaDe(l.codarticulo) / 100);
                     }
-                    await pool.request().bulk(tabla);
-                    // Registrar fallas de stock (no bloqueante — el pedido se crea igual)
-                    try {
-                        const lineasStock = chunk.map(l => ({ codarticulo: l.codarticulo, cantidad: Math.round(l.cantidad) }));
-                        const { insuficiente: ins } = await PedidosServices.checkStockLineas(lineasStock, chunkId);
-                        if (ins.length > 0) await PedidosServices.registrarFallas(chunkId, ins.map(i => ({ codarticulo: i.codarticulo, descripcion: i.descripcion, cantPedida: i.cantidad_pedida, stockDisponible: i.disponible })));
-                    } catch (_e) { console.error('[FTP] Error registrando fallas', chunkId, _e); }
+                    await new mssql.Request(tx).bulk(tabla);
+                    if (ins.length > 0) fallasPendientes.push({ orderId: chunkId, fallas: ins.map(i => ({ codarticulo: i.codarticulo, descripcion: i.descripcion, cantPedida: i.cantidad_pedida, stockDisponible: i.disponible })) });
                     const tablaOrig = new mssql.Table('APP_FTP_LINEAS');
                     tablaOrig.create = false;
                     tablaOrig.columns.add('ORDERID',     mssql.NVarChar(50), { nullable: false });
                     tablaOrig.columns.add('CODARTICULO', mssql.Int,           { nullable: false });
                     tablaOrig.columns.add('CANTIDAD',    mssql.Int,           { nullable: false });
-                    for (const l of chunk) tablaOrig.rows.add(chunkId, l.codarticulo, Math.round(l.cantidad));
-                    await pool.request().bulk(tablaOrig);
+                    for (const l of chunkOk) tablaOrig.rows.add(chunkId, l.codarticulo, Math.round(l.cantidad));
+                    await new mssql.Request(tx).bulk(tablaOrig);
 
-                    await pool.request()
+                    await new mssql.Request(tx)
                         .input('OID', mssql.NVarChar(15), chunkId)
                         .input('EST', mssql.NVarChar(50), estatusInicial)
                         .input('DET', mssql.NVarChar(500),
@@ -608,15 +629,21 @@ export class FtpService {
                                 VALUES (@OID, NULL, @EST, 'FTP', @DET)`);
 
                     orderIds.push(chunkId);
-                    console.log(`[FTP] ${archivo} → ${chunkId} (${chunk.length} líneas, tipo ${tipo}, parte ${ci + 1}/${tipoCh.length})`);
+                    console.log(`[FTP] ${archivo} → ${chunkId} (${chunkOk.length}/${chunk.length} líneas, tipo ${tipo}, parte ${ci + 1}/${tipoCh.length}${ins.length > 0 ? `, ${ins.length} en falla` : ''})`);
                 }
             }
+
+            await tx.commit();
+            tx = null;
+            for (const f of fallasPendientes) await PedidosServices.registrarFallas(f.orderId, f.fallas);
+            for (const pe of pePendientes) await PromoEspecialService.registrarPedido(pe.orderId, pe.dias);
 
             fs.renameSync(rutaCompleta, rutaCompleta.replace(/\.txt$/i, '.bak'));
             await FtpService.registrarAuditoria(archivo, 'PROCESADO', codCli, orderIds.join(', '),
                 `${lineas.length} línea(s) → ${orderIds.join(', ')}`);
 
         } catch (err) {
+            if (tx) { try { await tx.rollback(); } catch { /* ya revertida */ } }
             console.error(`[FTP] Error insertando ${baseId}:`, err);
             await FtpService.registrarAuditoria(archivo, 'ERROR_INSERCION', codCli, baseId,
                 String(err).substring(0, 500));

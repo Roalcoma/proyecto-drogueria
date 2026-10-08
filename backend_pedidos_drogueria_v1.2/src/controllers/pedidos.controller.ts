@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { PedidosServices } from "../services/pedidos.service";
-import { RequestConUsuario } from "../middleware/auth.middleware";
+import { RequestConUsuario, tieneBit, BITS } from "../middleware/auth.middleware";
 
 export class PedidosControllers {
     static async reservarNumero(req: Request, res: Response) {
@@ -17,11 +17,13 @@ export class PedidosControllers {
             const {pedidos} = req.body
             console.log('Pedido recibido en controller: ', req.body)
 
-            const postPedidos = await PedidosServices.postPedidosCabecera(pedidos, req.usuario?.id, req.usuario?.usuario)
+            if (!pedidos) return res.status(400).json({ success: false, message: 'No fue enviado un pedido en body' })
+
+            const postPedidos = await PedidosServices.postPedidosCabecera(pedidos, req.usuario?.id, req.usuario?.usuario, tieneBit(req, BITS.DESCUENTO_LINEA))
 
             if (!postPedidos.success) {
                 console.error('Hubo un error al subir el pedido', postPedidos.message);
-                return res.status(500).json(postPedidos);
+                return res.status(400).json(postPedidos);
             }
 
             return res.status(200).json(postPedidos);
@@ -93,21 +95,23 @@ export class PedidosControllers {
     static async updatePedido(req: RequestConUsuario, res: Response) {
         try {
             const { pedidos } = req.body
-            const orderId = pedidos.orderId
 
-            if(!pedidos) {
-                console.error('No fue enviado un pedido en body')
-                return res.status(500).json({
+            if(!pedidos?.orderId) {
+                return res.status(400).json({
                     success: false,
                     message: 'No fue enviado un pedido en body'
                 })
             }
 
-            const updatePedido = await PedidosServices.updatePedidoCompleto(orderId, pedidos, req.usuario?.id, req.usuario?.usuario)
+            const updatePedido = await PedidosServices.updatePedidoCompleto(String(pedidos.orderId), pedidos, req.usuario?.id, req.usuario?.usuario, {
+                editar:         tieneBit(req, BITS.EDICION),
+                editarPsico:    tieneBit(req, BITS.EDICION, BITS.DESCUENTO_LINEA, BITS.APROBACION_PSICO),
+                descuentoLinea: tieneBit(req, BITS.DESCUENTO_LINEA),
+            })
 
             if(updatePedido.success === false) {
                 console.error('Hubo un error al actualizar el pedido', updatePedido.message)
-                return res.status(500).json(updatePedido)
+                return res.status(400).json(updatePedido)
             }
 
             return res.status(200).json(updatePedido)

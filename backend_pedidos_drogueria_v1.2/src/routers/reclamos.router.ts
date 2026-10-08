@@ -1,7 +1,9 @@
 import { Router } from "express";
 import { ReclamosController } from "../controllers/reclamos.controller";
+import { authMiddleware } from "../middleware/auth.middleware";
 
 const reclamosRouter = Router();
+reclamosRouter.use(authMiddleware);
 
 reclamosRouter.get('/',                         ReclamosController.getReclamos);
 reclamosRouter.post('/',                        ReclamosController.crear);

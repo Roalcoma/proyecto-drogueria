@@ -1,37 +1,39 @@
 import { Router } from "express";
 import { PedidosControllers } from "../controllers/pedidos.controller";
-import { authMiddleware } from "../middleware/auth.middleware";
+import { authMiddleware, requiereBits, BITS } from "../middleware/auth.middleware";
 
 const pedidosRouter = Router()
 
+pedidosRouter.use(authMiddleware)
+
 pedidosRouter.post('/reservar-numero', PedidosControllers.reservarNumero)
 
-pedidosRouter.post('/', authMiddleware, PedidosControllers.postPedidos)
+pedidosRouter.post('/', PedidosControllers.postPedidos)
 
 pedidosRouter.get('/', PedidosControllers.getPedidos)
 
-pedidosRouter.put('/', authMiddleware, PedidosControllers.updatePedido)
+pedidosRouter.put('/', PedidosControllers.updatePedido)
 
-pedidosRouter.delete('/', authMiddleware, PedidosControllers.deletePedido)
+pedidosRouter.delete('/', requiereBits(BITS.ESTATUS), PedidosControllers.deletePedido)
 
-pedidosRouter.put('/status', authMiddleware, PedidosControllers.updatePedidoStatus)
+pedidosRouter.put('/status', PedidosControllers.updatePedidoStatus)
 
-pedidosRouter.put('/aprobar-psicotropico', authMiddleware, PedidosControllers.aprobarPsicotropico)
-pedidosRouter.put('/marcar-sanidad',        authMiddleware, PedidosControllers.marcarSanidad)
+pedidosRouter.put('/aprobar-psicotropico', requiereBits(BITS.APROBACION_PSICO), PedidosControllers.aprobarPsicotropico)
+pedidosRouter.put('/marcar-sanidad',        requiereBits(BITS.APROBACION_PSICO), PedidosControllers.marcarSanidad)
 
-pedidosRouter.put('/codigo-aprobacion', authMiddleware, PedidosControllers.actualizarCodigoAprobacion)
+pedidosRouter.put('/codigo-aprobacion', requiereBits(BITS.APROBACION_PSICO), PedidosControllers.actualizarCodigoAprobacion)
 
-pedidosRouter.post('/check-stock-lineas', authMiddleware, PedidosControllers.checkStockLineas)
+pedidosRouter.post('/check-stock-lineas', PedidosControllers.checkStockLineas)
 
 pedidosRouter.get('/conteo', PedidosControllers.getConteo)
 
-pedidosRouter.get('/auditoria', authMiddleware, PedidosControllers.getAuditoria)
+pedidosRouter.get('/auditoria', PedidosControllers.getAuditoria)
 
-pedidosRouter.post('/fusionar', authMiddleware, PedidosControllers.fusionarPedidos)
+pedidosRouter.post('/fusionar', requiereBits(BITS.ESTATUS), PedidosControllers.fusionarPedidos)
 
-pedidosRouter.get('/:orderId/anomalias',    authMiddleware, PedidosControllers.getAnomaliasPedido)
-pedidosRouter.get('/:orderId/diferencias', authMiddleware, PedidosControllers.getDiferenciasPedido)
-pedidosRouter.get('/:orderId/faltantes',   authMiddleware, PedidosControllers.getStockFaltantes)
-pedidosRouter.post('/:orderId/fallas',     authMiddleware, PedidosControllers.guardarFallas)
+pedidosRouter.get('/:orderId/anomalias',    PedidosControllers.getAnomaliasPedido)
+pedidosRouter.get('/:orderId/diferencias', PedidosControllers.getDiferenciasPedido)
+pedidosRouter.get('/:orderId/faltantes',   PedidosControllers.getStockFaltantes)
+pedidosRouter.post('/:orderId/fallas',     PedidosControllers.guardarFallas)
 
 export default pedidosRouter

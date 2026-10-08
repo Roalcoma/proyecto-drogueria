@@ -8,7 +8,7 @@ import 'dotenv/config'
 const esquema = process.env.DB_ESQUEMA || 'dbo';
 
 const TRANSICIONES_PERMITIDAS: Record<string, string[]> = {
-    'PENDIENTE':                  ['PENDIENTE POR AUTORIZACION', 'AUTORIZADO', 'CANCELADO'],
+    'PENDIENTE':                  ['PENDIENTE POR AUTORIZACION', 'CANCELADO'],
     'PENDIENTE POR AUTORIZACION': ['AUTORIZADO', 'CANCELADO'],
     'AUTORIZADO':                 ['CANCELADO'],
     'OK':                         ['CANCELADO'],
@@ -19,6 +19,21 @@ const TRANSICIONES_PERMITIDAS: Record<string, string[]> = {
 };
 
 export const ESTATUS_APROBACION_PSICOTROPICOS = 'APROBACION PSICOTROPICOS';
+
+// Para descuentos que vienen de datos maestros (cliente, artículo, promoción) en las integraciones:
+// fuera de 0–99.99% es un dato corrupto (ya hubo un D3 de 192% → precio negativo) y se ignora
+export const dtoValido = (pct: number): number => {
+    const n = Number(pct) || 0;
+    if (n >= 0 && n < 100) return n;
+    console.warn(`[Descuentos] Porcentaje inválido ignorado: ${pct}`);
+    return 0;
+};
+
+export type LineaNormalizada = {
+    codarticulo: number; referencia: string; cantidad: number;
+    d1: number; d2: number; d3: number; d4: number;
+    precioBruto: number; precio: number; pctIva: number; montoIva: number; esPsico: boolean;
+};
 
 const ESTATUSES_VALIDOS = new Set([
     'PENDIENTE', 'PENDIENTE POR AUTORIZACION', 'APROBACION PSICOTROPICOS', 'SANIDAD',
@@ -153,6 +168,103 @@ export class PedidosServices {
                 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_PFALLAS_OID' AND object_id=OBJECT_ID('${esquema}.APP_PEDIDO_FALLAS'))
                     CREATE INDEX IX_PFALLAS_OID ON ${esquema}.APP_PEDIDO_FALLAS (ORDERID)
             `);
+            await pool.request().query(`
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='APP_FUSION_LOG')
+                    CREATE TABLE ${esquema}.APP_FUSION_LOG (
+                        ID              INT IDENTITY(1,1) PRIMARY KEY,
+                        ORDERID_MAESTRO VARCHAR(50)     NOT NULL,
+                        ORDERIDS_FUSION NVARCHAR(500)   NOT NULL,
+                        CODUSUARIO      INT             NULL,
+                        USUARIO         VARCHAR(100)    NULL,
+                        FECHA_FUSION    DATETIME        NOT NULL DEFAULT GETDATE()
+                    );
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='APP_FUSION_SNAPSHOT_CAB')
+                    CREATE TABLE ${esquema}.APP_FUSION_SNAPSHOT_CAB (
+                        ID              INT IDENTITY(1,1) PRIMARY KEY,
+                        FUSION_ID       INT             NOT NULL,
+                        ROL             VARCHAR(10)     NOT NULL,
+                        ORDERID         VARCHAR(50)     NOT NULL,
+                        CLIENTEID       INT             NULL,
+                        FECHA           DATETIME        NULL,
+                        ESTATUS         VARCHAR(50)     NULL,
+                        CODVENDEDOR     INT             NULL,
+                        TOTALPRECIO     FLOAT           NULL,
+                        OBSERVACIONES   NVARCHAR(255)   NULL,
+                        PROMO_NOMBRE    NVARCHAR(500)   NULL
+                    );
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='APP_FUSION_SNAPSHOT_LIN')
+                    CREATE TABLE ${esquema}.APP_FUSION_SNAPSHOT_LIN (
+                        ID              INT IDENTITY(1,1) PRIMARY KEY,
+                        FUSION_ID       INT             NOT NULL,
+                        ORDERID         VARCHAR(50)     NOT NULL,
+                        CODARTICULO     INT             NULL,
+                        REFERENCIA      VARCHAR(50)     NULL,
+                        CODALMACEN      VARCHAR(10)     NULL,
+                        IDTARIFAV       INT             NULL,
+                        PRODUCTCOUNT    INT             NULL,
+                        PRECIOUNITARIO  FLOAT           NULL,
+                        DESCUENTO1      FLOAT           NULL,
+                        DESCUENTO2      FLOAT           NULL,
+                        DESCUENTO3      FLOAT           NULL,
+                        DESCUENTO4      FLOAT           NULL,
+                        PRECIOBRUTO     FLOAT           NULL,
+                        PORCENTAJEIVA   FLOAT           NULL,
+                        MONTOIVA        FLOAT           NULL
+                    );
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='APP_FUSION_SNAPSHOT_PROMO')
+                    CREATE TABLE ${esquema}.APP_FUSION_SNAPSHOT_PROMO (
+                        ID                  INT IDENTITY(1,1) PRIMARY KEY,
+                        FUSION_ID           INT             NOT NULL,
+                        ORDERID             VARCHAR(50)     NOT NULL,
+                        IDPROMOCION         INT             NOT NULL,
+                        NOMBREPROMOCION     NVARCHAR(150)   NOT NULL,
+                        PORCENTAJEAPLICADO  FLOAT           NOT NULL,
+                        BASETOTAL           FLOAT           NULL
+                    )
+            `);
+            await pool.request().query(`
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='APP_PEDIDO_AUDITORIA')
+                    CREATE TABLE ${esquema}.APP_PEDIDO_AUDITORIA (
+                        ID              INT IDENTITY(1,1) PRIMARY KEY,
+                        ORDERID         VARCHAR(50)     NOT NULL,
+                        ACCION          VARCHAR(50)     NOT NULL,
+                        CODUSUARIO      INT             NULL,
+                        USUARIO         VARCHAR(100)    NULL,
+                        FECHA           DATETIME        NOT NULL DEFAULT GETDATE()
+                    );
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='APP_PEDIDO_AUDITORIA_CAB')
+                    CREATE TABLE ${esquema}.APP_PEDIDO_AUDITORIA_CAB (
+                        ID              INT IDENTITY(1,1) PRIMARY KEY,
+                        AUDITORIA_ID    INT             NOT NULL,
+                        ORDERID         VARCHAR(50)     NOT NULL,
+                        CLIENTEID       INT             NULL,
+                        FECHA           DATETIME        NULL,
+                        ESTATUS         VARCHAR(50)     NULL,
+                        CODVENDEDOR     INT             NULL,
+                        TOTALPRECIO     FLOAT           NULL,
+                        OBSERVACIONES   NVARCHAR(255)   NULL,
+                        PROMO_NOMBRE    NVARCHAR(500)   NULL
+                    );
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='APP_PEDIDO_AUDITORIA_LIN')
+                    CREATE TABLE ${esquema}.APP_PEDIDO_AUDITORIA_LIN (
+                        ID              INT IDENTITY(1,1) PRIMARY KEY,
+                        AUDITORIA_ID    INT             NOT NULL,
+                        ORDERID         VARCHAR(50)     NOT NULL,
+                        CODARTICULO     INT             NULL,
+                        REFERENCIA      VARCHAR(50)     NULL,
+                        CODALMACEN      VARCHAR(10)     NULL,
+                        IDTARIFAV       INT             NULL,
+                        PRODUCTCOUNT    INT             NULL,
+                        PRECIOUNITARIO  FLOAT           NULL,
+                        DESCUENTO1      FLOAT           NULL,
+                        DESCUENTO2      FLOAT           NULL,
+                        DESCUENTO3      FLOAT           NULL,
+                        DESCUENTO4      FLOAT           NULL,
+                        PRECIOBRUTO     FLOAT           NULL,
+                        PORCENTAJEIVA   FLOAT           NULL,
+                        MONTOIVA        FLOAT           NULL
+                    )
+            `);
             console.log('Tablas de pedidos verificadas.');
         } catch (err) {
             console.error('Advertencia en PedidosServices.initTablas:', err);
@@ -181,21 +293,136 @@ export class PedidosServices {
             .query(`UPDATE ${esquema}.APP_PEDIDO_SEQ SET ULTIMO_ID = @V`);
     }
 
-    private static async tieneArticulosPsicotropicos(codigos: number[]): Promise<boolean> {
-        if (codigos.length === 0) return false;
-        const pool = await connectDb();
-        const request = pool.request();
-        const placeholders = codigos.map((id, i) => { request.input(`cod${i}`, id); return `@cod${i}`; }).join(',');
-        request.input('dptoPsico', mssql.Int, getDbConfig().dptoPsicotropicos);
-        const result = await request.query(`SELECT COUNT(*) AS CNT FROM ARTICULOS WITH (NOLOCK) WHERE CODARTICULO IN (${placeholders}) AND SECCION = @dptoPsico`);
-        return result.recordset[0].CNT > 0;
+    // Serializa toda operación que reserva stock (chequeo + cambio) para que dos usuarios no reserven el mismo stock a la vez.
+    // ponytail: lock global; pasar a un lock por artículo si aparece contención
+    static async bloquearStock(tx: mssql.Transaction): Promise<void> {
+        const r = await new mssql.Request(tx).query(`
+            DECLARE @r INT;
+            EXEC @r = sp_getapplock @Resource = 'PEDIDOS_RESERVA_STOCK', @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 20000;
+            SELECT @r AS R
+        `);
+        if (Number(r.recordset[0].R) < 0) throw new Error('Otra operación está reservando stock en este momento. Intente de nuevo.');
     }
 
-    static async postPedidosCabecera(pedido: any, codusuario?: number, usuario?: string) {
+    // Precios y descuentos de un pedido existente, aceptados al copiarlo o editarlo
+    private static async referenciasDePedido(orderId: string, source?: mssql.ConnectionPool | mssql.Transaction): Promise<Map<number, { brutos: number[]; d4s: number[] }>> {
+        const req = source ? new mssql.Request(source as any) : (await connectDb()).request();
+        const res = await req.input('OID_REF', mssql.VarChar(50), orderId)
+            .query(`SELECT CODARTICULO, PRECIOBRUTO, ISNULL(DESCUENTO4, 0) AS D4 FROM ${esquema}.LINEA_PED WITH (NOLOCK) WHERE ORDERID = @OID_REF`);
+        const mapa = new Map<number, { brutos: number[]; d4s: number[] }>();
+        for (const r of res.recordset) {
+            const ref = mapa.get(Number(r.CODARTICULO)) ?? { brutos: [], d4s: [] };
+            if (r.PRECIOBRUTO != null) ref.brutos.push(Number(r.PRECIOBRUTO));
+            ref.d4s.push(Number(r.D4));
+            mapa.set(Number(r.CODARTICULO), ref);
+        }
+        return mapa;
+    }
+
+    // El servidor decide los montos: precio base de la tarifa (o el ya pactado en el pedido de referencia),
+    // descuentos validados, precio neto, IVA del artículo y total. Lo que mande el navegador solo se usa como propuesta.
+    static async normalizarLineas(
+        lineas: any[],
+        puedeDescuentoLinea: boolean,
+        referencias?: Map<number, { brutos: number[]; d4s: number[] }>,
+    ): Promise<{ lineas: LineaNormalizada[]; total: number; ajustes: string[] }> {
+        if (!Array.isArray(lineas) || lineas.length === 0) throw new Error('El pedido no tiene líneas');
+        const cerca = (a: number, b: number) => Math.abs(a - b) < 0.005;
+        const pct = (v: any, campo: string, cod: number) => {
+            const n = Number(v ?? 0) || 0;
+            if (n < 0 || n >= 100) throw new Error(`Descuento ${campo} inválido (${n}%) en artículo ${cod}`);
+            return n;
+        };
+
+        const entrada = lineas.map((l: any) => {
+            const cod = Math.trunc(Number(l.codarticulo));
+            const cantidad = Number(l.cantidad);
+            if (!(cod > 0)) throw new Error(`Código de artículo inválido (${l.codarticulo})`);
+            if (!Number.isInteger(cantidad) || cantidad < 1) throw new Error(`Cantidad inválida (${l.cantidad}) en artículo ${cod}`);
+            return {
+                cod, cantidad, referencia: String(l.referencia ?? '').substring(0, 50),
+                d1: pct(l.DESCUENTO1, 'D1', cod), d2: pct(l.DESCUENTO2, 'D2', cod),
+                d3: pct(l.DESCUENTO3, 'D3', cod), d4: pct(l.DESCUENTO4, 'D4', cod),
+                brutoPropuesto: l.PRECIOBRUTO != null && l.PRECIOBRUTO !== '' ? Number(l.PRECIOBRUTO) : null,
+            };
+        });
+
+        const { tarifaBaseCatalogo, dptoPsicotropicos } = getDbConfig();
+        const codigos = [...new Set(entrada.map(e => e.cod))];
+        const pool = await connectDb();
+        const artRes = await pool.request()
+            .input('TARIFA', mssql.Int, tarifaBaseCatalogo)
+            .query(`
+                SELECT A.CODARTICULO, ISNULL(A.NODTOAPLICABLE, 0) AS NODTO, A.SECCION,
+                       PV.PNETO, ISNULL(IMP.IVA, 0) AS IVA
+                FROM ARTICULOS A WITH (NOLOCK)
+                LEFT JOIN PRECIOSVENTA PV WITH (NOLOCK) ON PV.CODARTICULO = A.CODARTICULO AND PV.IDTARIFAV = @TARIFA AND PV.COLOR = '.' AND PV.TALLA = '.'
+                LEFT JOIN IMPUESTOS IMP WITH (NOLOCK) ON IMP.TIPOIVA = A.TIPOIMPUESTO
+                WHERE A.CODARTICULO IN (${codigos.join(',')})
+            `);
+        const arts = new Map<number, any>(artRes.recordset.map((r: any) => [Number(r.CODARTICULO), r]));
+
+        const ajustes: string[] = [];
+        const salida: LineaNormalizada[] = entrada.map(e => {
+            const art = arts.get(e.cod);
+            if (!art) throw new Error(`El artículo ${e.cod} no existe`);
+            if (art.PNETO == null) throw new Error(`El artículo ${e.cod} no tiene precio en la tarifa ${tarifaBaseCatalogo}`);
+            const ref = referencias?.get(e.cod);
+            const nodto = art.NODTO === true || art.NODTO === 1;
+
+            let { d1, d2, d3, d4 } = e;
+            if (nodto) d1 = d2 = d3 = d4 = 0;
+            if (d4 > 0 && !puedeDescuentoLinea && !(ref?.d4s.some(x => cerca(x, d4))))
+                throw new Error(`No tiene permiso para aplicar descuento manual (D4) en el artículo ${e.cod}`);
+
+            const tarifa = Number(art.PNETO);
+            const pactado = e.brutoPropuesto != null ? ref?.brutos.find(b => cerca(b, e.brutoPropuesto!)) : undefined;
+            const bruto = pactado ?? tarifa;
+            if (e.brutoPropuesto != null && !cerca(e.brutoPropuesto, bruto))
+                ajustes.push(`art. ${e.cod}: precio base ${e.brutoPropuesto} → ${bruto}`);
+
+            const precio = bruto * (1 - d1 / 100) * (1 - d2 / 100) * (1 - d3 / 100) * (1 - d4 / 100);
+            const pctIva = Number(art.IVA) || 0;
+            return {
+                codarticulo: e.cod, referencia: e.referencia, cantidad: e.cantidad,
+                d1, d2, d3, d4, precioBruto: bruto, precio,
+                pctIva, montoIva: precio * e.cantidad * pctIva / 100,
+                esPsico: Number(art.SECCION) === Number(dptoPsicotropicos),
+            };
+        });
+
+        return { lineas: salida, total: salida.reduce((s, l) => s + l.precio * l.cantidad, 0), ajustes };
+    }
+
+    private static async insertarLineas(tx: mssql.Transaction, lineas: LineaNormalizada[], orderId: string): Promise<void> {
+        const { codAlmacen, tarifaBaseCatalogo } = getDbConfig();
+        const tabla = new mssql.Table(`${esquema}.LINEA_PED`);
+        tabla.create = false;
+        tabla.columns.add('ORDERID',        mssql.VarChar(50), { nullable: false });
+        tabla.columns.add('CODARTICULO',    mssql.Int,         { nullable: false });
+        tabla.columns.add('REFERENCIA',     mssql.VarChar(50), { nullable: true });
+        tabla.columns.add('CODALMACEN',     mssql.VarChar(10), { nullable: false });
+        tabla.columns.add('IDTARIFAV',      mssql.Int,         { nullable: false });
+        tabla.columns.add('PRODUCTCOUNT',   mssql.Int,         { nullable: false });
+        tabla.columns.add('PRECIOUNITARIO', mssql.Float,       { nullable: false });
+        tabla.columns.add('DESCUENTO1',     mssql.Float,       { nullable: true });
+        tabla.columns.add('DESCUENTO2',     mssql.Float,       { nullable: true });
+        tabla.columns.add('DESCUENTO3',     mssql.Float,       { nullable: true });
+        tabla.columns.add('DESCUENTO4',     mssql.Float,       { nullable: true });
+        tabla.columns.add('PRECIOBRUTO',    mssql.Float,       { nullable: true });
+        tabla.columns.add('PORCENTAJEIVA',  mssql.Float,       { nullable: true });
+        tabla.columns.add('MONTOIVA',       mssql.Float,       { nullable: true });
+        for (const l of lineas) {
+            tabla.rows.add(orderId, l.codarticulo, l.referencia, codAlmacen, tarifaBaseCatalogo, l.cantidad, l.precio,
+                l.d1, l.d2, l.d3, l.d4, l.precioBruto, l.pctIva, l.montoIva);
+        }
+        await new mssql.Request(tx).bulk(tabla);
+    }
+
+    static async postPedidosCabecera(pedido: any, codusuario?: number, usuario?: string, puedeDescuentoLinea = false) {
+        let tx: mssql.Transaction | null = null;
         try {
-            console.log('Datos recibidos para el pedido:', pedido);
-            const { clienteId, codVendedor, totalPed, lineas, sufijo, promocionesAplicadas, diasMontofactura, sourceOrderId } = pedido;
-            // Si el frontend pre-asignó un número, úsalo; si no, reserva uno nuevo
+            const { clienteId, codVendedor, lineas, sufijo, promocionesAplicadas, diasMontofactura, sourceOrderId } = pedido;
             let orderId: string;
             if (pedido.orderId) {
                 orderId = String(pedido.orderId);
@@ -204,27 +431,39 @@ export class PedidosServices {
                 orderId = sufijo ? `${num}${sufijo}` : String(num);
             }
 
-            const requierePsicotropicos = await this.tieneArticulosPsicotropicos(lineas.map((l: any) => l.codarticulo));
-            const estatusInicial = requierePsicotropicos ? ESTATUS_APROBACION_PSICOTROPICOS : 'PENDIENTE';
+            const referencias = sourceOrderId ? await PedidosServices.referenciasDePedido(String(sourceOrderId)) : undefined;
+            const norm = await PedidosServices.normalizarLineas(lineas, puedeDescuentoLinea, referencias);
+            const estatusInicial = norm.lineas.some(l => l.esPsico) ? ESTATUS_APROBACION_PSICOTROPICOS : 'PENDIENTE';
+            const promoNombre = (promocionesAplicadas || []).map((p: any) => p.nombre).filter(Boolean).join(', ');
 
-            const lineasCheck = lineas.map((l: any) => ({ codarticulo: Number(l.codarticulo), cantidad: Number(l.cantidad) }));
-            const { insuficiente } = await PedidosServices.checkStockLineas(lineasCheck);
+            const maxLineas = getDbConfig().maxLineasPorPedido ?? 0;
+            const partes: LineaNormalizada[][] = [];
+            const paso = maxLineas > 0 ? maxLineas : norm.lineas.length;
+            for (let i = 0; i < norm.lineas.length; i += paso) partes.push(norm.lineas.slice(i, i + paso));
+
+            const pool = await connectDb();
+            tx = new mssql.Transaction(pool);
+            await tx.begin();
+            if (estatusInicial !== 'PENDIENTE') await PedidosServices.bloquearStock(tx);
+
+            const { insuficiente } = await PedidosServices.checkStockLineas(
+                norm.lineas.map(l => ({ codarticulo: l.codarticulo, cantidad: l.cantidad })), undefined, tx);
             if (insuficiente.length > 0) {
+                await tx.rollback();
                 const detalle = insuficiente.map(i => `${i.descripcion} (pedido: ${i.cantidad_pedida}, disponible: ${i.disponible})`).join('; ');
                 return { success: false, message: `Stock insuficiente para: ${detalle}` };
             }
 
-            const promoNombre = (promocionesAplicadas || []).map((p: any) => p.nombre).filter(Boolean).join(', ');
-
-            const maxLineas = getDbConfig().maxLineasPorPedido ?? 0;
-            const insertarCabecera = async (chunkId: string, chunkTotal: number) => {
-                const pool = await connectDb();
-                return pool.request()
-                    .input('ORDERID', mssql.NVarChar, chunkId)
+            const orderIds: string[] = [];
+            for (let idx = 0; idx < partes.length; idx++) {
+                const chunkId = idx === 0 ? orderId : `${orderId}-${idx + 1}`;
+                const totalParte = partes[idx].reduce((s, l) => s + l.precio * l.cantidad, 0);
+                await new mssql.Request(tx)
+                    .input('ORDERID', mssql.VarChar(50), chunkId)
                     .input('CLIENTEID', mssql.Int, clienteId)
                     .input('CODVENDEDOR', mssql.Int, codVendedor)
-                    .input('TOTALPRECIO', mssql.Float, chunkTotal)
-                    .input('ESTATUS', mssql.VarChar, estatusInicial)
+                    .input('TOTALPRECIO', mssql.Float, totalParte)
+                    .input('ESTATUS', mssql.VarChar(50), estatusInicial)
                     .input('PROMO_NOMBRE', mssql.NVarChar(500), promoNombre || null)
                     .query(`INSERT INTO ${esquema}.CABECERA_PED (
                                 ORDERID, CLIENTEID, FECHA, ESTATUS, CODVENDEDOR, TOTALPRECIO, PROMO_NOMBRE
@@ -232,120 +471,38 @@ export class PedidosServices {
                                 @ORDERID, @CLIENTEID, GETDATE(), @ESTATUS,
                                 ISNULL(NULLIF((SELECT TOP 1 CAST(CCL.CODVENDEDOR AS INT) FROM CLIENTESCAMPOSLIBRES CCL WITH (NOLOCK) WHERE CCL.CODCLIENTE = @CLIENTEID AND CCL.CODVENDEDOR IS NOT NULL AND LTRIM(RTRIM(CAST(CCL.CODVENDEDOR AS NVARCHAR)))!=''), 0), @CODVENDEDOR),
                                 @TOTALPRECIO, @PROMO_NOMBRE
-                            );`);
-            };
-
-            if (maxLineas > 0 && lineas.length > maxLineas) {
-                const totalChunks = Math.ceil(lineas.length / maxLineas);
-                const orderIds: string[] = [];
-                for (let i = 0; i < lineas.length; i += maxLineas) {
-                    const chunk = lineas.slice(i, i + maxLineas);
-                    const idx = Math.floor(i / maxLineas);
-                    const chunkId = idx === 0 ? orderId : `${orderId}-${idx + 1}`;
-                    const chunkTotal = chunk.reduce((s: number, l: any) => s + ((l.precio || 0) * (l.cantidad || 0)), 0);
-
-                    const result = await insertarCabecera(chunkId, chunkTotal || totalPed);
-                    const insertLineas = await this.postPedidosLinea(chunk, chunkId);
-                    if (Number(result.rowsAffected) === 0 || insertLineas.success === false) {
-                        return { success: false, message: 'No se pudo insertar el pedido' };
-                    }
-                    await PedidosServices.registrarLog(chunkId, null, estatusInicial, codusuario, usuario,
-                        `Pedido creado (parte ${idx + 1}/${totalChunks}). Cliente: ${clienteId}.`);
-                    orderIds.push(chunkId);
-                }
-                await PromocionesService.registrarAplicadas(orderId, promocionesAplicadas);
-                return { success: true, message: 'El pedido fue insertado de forma satisfactoria', orderId, orderIds };
+                            )`);
+                await PedidosServices.insertarLineas(tx, partes[idx], chunkId);
+                orderIds.push(chunkId);
             }
-
-            const result = await insertarCabecera(orderId, totalPed);
-            const insertLineas = await this.postPedidosLinea(lineas, orderId);
-
-            if (Number(result.rowsAffected) === 0 || insertLineas.success === false) {
-                return { success: false, message: 'No se pudo insertar el pedido' };
-            }
+            await tx.commit();
+            tx = null;
 
             await PromocionesService.registrarAplicadas(orderId, promocionesAplicadas);
-            if (diasMontofactura) await PromoEspecialService.registrarPedido(orderId, diasMontofactura);
-            const detallesCreacion = sourceOrderId
-                ? `Pedido copiado de ${sourceOrderId}. Cliente: ${clienteId}. Total: ${totalPed}`
-                : `Pedido creado. Cliente: ${clienteId}. Total: ${totalPed}`;
-            await PedidosServices.registrarLog(orderId, sourceOrderId ? `COPIA:${sourceOrderId}` : null, estatusInicial, codusuario, usuario, detallesCreacion);
-
-            return { success: true, message: 'El pedido fue insertado de forma satisfactoria', orderId };
-
-        } catch (error) {
-            console.error('Error al subir el pedido: ', error)
-            return { success: false, message: 'Hubo un fallo con la base de datos', error: error }
-        }
-    }
-
-    static async postPedidosLinea(lineas: any[], orderId: string) {
-        try {
-            const pool = await connectDb();
-
-            // PREPARAR LA TABLA EN MEMORIA
-            const tablaLineas = new mssql.Table(`${esquema}.LINEA_PED`);
-            tablaLineas.create = false;
-
-            tablaLineas.columns.add('ORDERID', mssql.VarChar(50), { nullable: false });
-            tablaLineas.columns.add('CODARTICULO', mssql.Int, { nullable: false });
-            tablaLineas.columns.add('REFERENCIA', mssql.VarChar(50), { nullable: true });
-            tablaLineas.columns.add('CODALMACEN', mssql.VarChar(10), { nullable: false });
-            tablaLineas.columns.add('IDTARIFAV', mssql.Int, { nullable: false });
-            tablaLineas.columns.add('PRODUCTCOUNT', mssql.Int, { nullable: false });
-            tablaLineas.columns.add('PRECIOUNITARIO', mssql.Float, { nullable: false });
-
-            tablaLineas.columns.add('DESCUENTO1', mssql.Float, { nullable: true });
-            tablaLineas.columns.add('DESCUENTO2', mssql.Float, { nullable: true });
-            tablaLineas.columns.add('DESCUENTO3', mssql.Float, { nullable: true });
-            tablaLineas.columns.add('DESCUENTO4', mssql.Float, { nullable: true });
-            tablaLineas.columns.add('PRECIOBRUTO', mssql.Float, { nullable: true });
-            tablaLineas.columns.add('PORCENTAJEIVA', mssql.Float, { nullable: true });
-            tablaLineas.columns.add('MONTOIVA', mssql.Float, { nullable: true });
-
-            for (let i = 0; i < lineas.length; i++) {
-                const {
-                    codarticulo, referencia, idtarifav, cantidad, precio,
-                    DESCUENTO1, DESCUENTO2, DESCUENTO3, DESCUENTO4, PRECIOBRUTO,
-                    PORCENTAJEIVA, MONTOIVA
-                } = lineas[i];
-
-                if (!cantidad || cantidad < 1) throw new Error(`Cantidad inválida (${cantidad}) en artículo ${codarticulo}`);
-
-                tablaLineas.rows.add(
-                    orderId,
-                    codarticulo,
-                    referencia || '',
-                    getDbConfig().codAlmacen,
-                    idtarifav,
-                    cantidad,
-                    precio,
-                    DESCUENTO1 || 0,
-                    DESCUENTO2 || 0,
-                    DESCUENTO3 || 0,
-                    DESCUENTO4 || 0,
-                    PRECIOBRUTO || precio,
-                    PORCENTAJEIVA || 0,
-                    MONTOIVA || 0
-                );
+            if (diasMontofactura) for (const oid of orderIds) await PromoEspecialService.registrarPedido(oid, diasMontofactura);
+            const ajustesTxt = norm.ajustes.length ? ` | Precios ajustados por el servidor: ${norm.ajustes.join('; ')}` : '';
+            for (let idx = 0; idx < orderIds.length; idx++) {
+                const total = partes[idx].reduce((s, l) => s + l.precio * l.cantidad, 0);
+                const parte = orderIds.length > 1 ? ` (parte ${idx + 1}/${orderIds.length})` : '';
+                const detalles = sourceOrderId
+                    ? `Pedido copiado de ${sourceOrderId}${parte}. Cliente: ${clienteId}. Total: ${total.toFixed(2)}${ajustesTxt}`
+                    : `Pedido creado${parte}. Cliente: ${clienteId}. Total: ${total.toFixed(2)}${ajustesTxt}`;
+                await PedidosServices.registrarLog(orderIds[idx], sourceOrderId ? `COPIA:${sourceOrderId}` : null, estatusInicial, codusuario, usuario, detalles);
             }
 
-            // 4. EJECUTAR BULK INSERT
-            const result = await pool.request().bulk(tablaLineas);
-            
             return {
                 success: true,
-                message: `Se insertaron ${lineas.length} líneas correctamente`,
-                filasAfectadas: result.rowsAffected
+                message: 'El pedido fue insertado de forma satisfactoria',
+                orderId,
+                ...(orderIds.length > 1 ? { orderIds } : {}),
+                total: norm.total,
+                ...(norm.ajustes.length ? { warning: `Algunos precios se actualizaron a la tarifa vigente: ${norm.ajustes.join('; ')}` } : {}),
             };
 
         } catch (error) {
-            console.error('Error al subir las líneas del pedido: ', error);
-            return {
-                success: false,
-                message: 'Hubo un fallo con la base de datos al procesar el detalle',
-                error: error instanceof Error ? error.message : String(error)
-            };
+            if (tx) { try { await tx.rollback(); } catch { /* ya revertida */ } }
+            console.error('Error al subir el pedido: ', error);
+            return { success: false, message: `No se pudo crear el pedido: ${error instanceof Error ? error.message : String(error)}` };
         }
     }
 
@@ -395,6 +552,7 @@ export class PedidosServices {
 
             const req = pool.request()
                 .input('OFFSET',         mssql.Int,           offset)
+                .input('ALMACEN',        mssql.VarChar(10),   getDbConfig().codAlmacen)
                 .input('LIMIT',          mssql.Int,           validLimit)
                 .input('BUSCAR_ID',      mssql.VarChar(50),   buscarId      ? `%${buscarId}%`      : null)
                 .input('CLIENTE_ID',     mssql.Int,           clienteId     ? Number(clienteId)     : null)
@@ -423,7 +581,21 @@ export class PedidosServices {
                     V.NOMVENDEDOR,
                     CR.ESTATUS AS RIESGO_ESTATUS,
                     (SELECT SUM(LP.PRODUCTCOUNT) FROM ${esquema}.LINEA_PED LP WITH (NOLOCK) WHERE LP.ORDERID = CP.ORDERID) AS TOTALUNIDADES,
-                    CASE WHEN EXISTS (SELECT 1 FROM ${esquema}.APP_PEDIDO_FALLAS WITH(NOLOCK) WHERE ORDERID = CP.ORDERID) THEN 1 ELSE 0 END AS TIENE_FALLAS
+                    CASE WHEN EXISTS (SELECT 1 FROM ${esquema}.APP_PEDIDO_FALLAS WITH(NOLOCK) WHERE ORDERID = CP.ORDERID)
+                           -- falla viva: algún artículo pide más de lo que hay (stock menos lo reservado por otros pedidos)
+                           OR EXISTS (
+                                SELECT 1 FROM ${esquema}.LINEA_PED LF WITH (NOLOCK)
+                                WHERE LF.ORDERID = CP.ORDERID
+                                  AND CP.ESTATUS IN ('PENDIENTE','PENDIENTE POR AUTORIZACION','APROBACION PSICOTROPICOS','SANIDAD','AUTORIZADO','EMPACADO')
+                                GROUP BY LF.CODARTICULO
+                                HAVING SUM(LF.PRODUCTCOUNT) >
+                                       ISNULL((SELECT SUM(S.STOCK) FROM STOCKS S WITH (NOLOCK) WHERE S.CODARTICULO = LF.CODARTICULO AND S.CODALMACEN = @ALMACEN), 0)
+                                     - ISNULL((SELECT SUM(L2.PRODUCTCOUNT) FROM ${esquema}.CABECERA_PED C2 WITH (NOLOCK)
+                                               INNER JOIN ${esquema}.LINEA_PED L2 WITH (NOLOCK) ON L2.ORDERID = C2.ORDERID
+                                               WHERE L2.CODARTICULO = LF.CODARTICULO AND C2.ORDERID <> CP.ORDERID
+                                                 AND C2.ESTATUS IN ('PENDIENTE POR AUTORIZACION','APROBACION PSICOTROPICOS','SANIDAD','AUTORIZADO','EMPACADO','OK')), 0)
+                           )
+                         THEN 1 ELSE 0 END AS TIENE_FALLAS
                 FROM
                     ${esquema}.CABECERA_PED CP WITH (NOLOCK)
                     LEFT JOIN CLIENTES CL WITH (NOLOCK) ON CL.CODCLIENTE = CP.CLIENTEID
@@ -489,7 +661,9 @@ export class PedidosServices {
                 .input('SOLO_FACTURADO2',  mssql.Bit,           soloFacturado  ? 1 : null)
                 .input('USUARIO2',         mssql.VarChar(100),  usuario       ? `%${usuario.toLowerCase()}%`       : null)
                 .input('EDITADO_POR2',     mssql.VarChar(100),  editadoPor    ? `%${editadoPor.toLowerCase()}%`    : null)
-                .input('SOLO_ATRASADOS2',  mssql.Bit,           soloAtrasados  ? 1 : null);
+                .input('SOLO_ATRASADOS2',  mssql.Bit,           soloAtrasados  ? 1 : null)
+                .input('USD_CODE2',        mssql.Int,           usdCode)
+                .input('VED_CODE2',        mssql.Int,           vedCode);
             preIds.forEach((id, i) => countReq.input(`CPRE${i}`, mssql.VarChar(50), id));
             const countOrderIdClause = preIds.length
                 ? `AND CP.ORDERID IN (${preIds.map((_, i) => `@CPRE${i}`).join(',')})`
@@ -514,9 +688,9 @@ export class PedidosServices {
                     SELECT CL.CODCLIENTE,
                         CASE
                             WHEN CL.RIESGOCONCEDIDO = 0 THEN 'SIN LIMITE'
-                            WHEN (ISNULL(SUM(T.IMPORTE),0) * 100.0 / CL.RIESGOCONCEDIDO) >= 100 THEN 'SUPERADO'
-                            WHEN (ISNULL(SUM(T.IMPORTE),0) * 100.0 / CL.RIESGOCONCEDIDO) >= 80  THEN 'ALTO'
-                            WHEN (ISNULL(SUM(T.IMPORTE),0) * 100.0 / CL.RIESGOCONCEDIDO) >= 30  THEN 'MEDIO'
+                            WHEN (ISNULL(SUM(CASE WHEN ISNULL(T.CODMONEDA,1)=@USD_CODE2 THEN T.IMPORTE ELSE T.IMPORTE/NULLIF(DBO.F_GET_COTIZACION(GETDATE(),@VED_CODE2),0) END),0) * 100.0 / CL.RIESGOCONCEDIDO) >= 100 THEN 'SUPERADO'
+                            WHEN (ISNULL(SUM(CASE WHEN ISNULL(T.CODMONEDA,1)=@USD_CODE2 THEN T.IMPORTE ELSE T.IMPORTE/NULLIF(DBO.F_GET_COTIZACION(GETDATE(),@VED_CODE2),0) END),0) * 100.0 / CL.RIESGOCONCEDIDO) >= 80  THEN 'ALTO'
+                            WHEN (ISNULL(SUM(CASE WHEN ISNULL(T.CODMONEDA,1)=@USD_CODE2 THEN T.IMPORTE ELSE T.IMPORTE/NULLIF(DBO.F_GET_COTIZACION(GETDATE(),@VED_CODE2),0) END),0) * 100.0 / CL.RIESGOCONCEDIDO) >= 30  THEN 'MEDIO'
                             ELSE 'BAJO'
                         END AS ESTATUS
                     FROM CLIENTES CL WITH (NOLOCK)
@@ -706,29 +880,31 @@ export class PedidosServices {
         }
     }
 
-    static async updatePedidoCompleto(orderId: string, pedido: any, codusuario?: number, usuario?: string) {
+    static async updatePedidoCompleto(
+        orderId: string, pedido: any, codusuario?: number, usuario?: string,
+        permisos: { editar: boolean; editarPsico: boolean; descuentoLinea: boolean } = { editar: false, editarPsico: false, descuentoLinea: false },
+    ) {
         let transaction: mssql.Transaction | null = null;
 
         try {
-            const { clienteId, codVendedor, totalPed, lineas } = pedido;
+            const { clienteId, codVendedor, lineas } = pedido;
 
             const maxLineasEdit = getDbConfig().maxLineasPorPedido ?? 0;
-            if (maxLineasEdit > 0 && lineas.length > maxLineasEdit) {
+            if (maxLineasEdit > 0 && Array.isArray(lineas) && lineas.length > maxLineasEdit) {
                 return {
                     success: false,
                     message: `El pedido tiene ${lineas.length} líneas, superando el límite de ${maxLineasEdit} por pedido.`
                 };
             }
-            
+
             const pool = await connectDb();
             transaction = new mssql.Transaction(pool);
             await transaction.begin();
 
-            // 1. Verificar que el pedido existe y está PENDIENTE
-            const checkReq = new mssql.Request(transaction);
-            const checkRes = await checkReq
+            // 1. Verificar que el pedido existe y bloquear su fila hasta terminar
+            const checkRes = await new mssql.Request(transaction)
                 .input('ORDERID', mssql.VarChar(50), orderId)
-                .query(`SELECT ESTATUS, TOTALPRECIO, CLIENTEID FROM ${esquema}.CABECERA_PED WITH (NOLOCK) WHERE ORDERID = @ORDERID`);
+                .query(`SELECT ESTATUS, TOTALPRECIO, CLIENTEID FROM ${esquema}.CABECERA_PED WITH (UPDLOCK, ROWLOCK) WHERE ORDERID = @ORDERID`);
 
             if (checkRes.recordset.length === 0) {
                 await transaction.rollback();
@@ -743,18 +919,17 @@ export class PedidosServices {
                 await transaction.rollback();
                 return { success: false, message: 'Solo se pueden editar pedidos en estatus PENDIENTE o APROBACION PSICOTROPICOS' };
             }
-
-            const lineasCheckEdit = lineas.map((l: any) => ({ codarticulo: Number(l.codarticulo), cantidad: Number(l.cantidad) }));
-            const { insuficiente: insuficienteEdit } = await PedidosServices.checkStockLineas(lineasCheckEdit, orderId);
-            if (insuficienteEdit.length > 0) {
+            const autorizado = estatusActual === 'PENDIENTE' ? permisos.editar : permisos.editarPsico;
+            if (!autorizado) {
                 await transaction.rollback();
-                const detalle = insuficienteEdit.map(i => `${i.descripcion} (pedido: ${i.cantidad_pedida}, disponible: ${i.disponible})`).join('; ');
-                return { success: false, message: `Stock insuficiente para: ${detalle}` };
+                return { success: false, message: `No tienes permiso para editar pedidos en estatus ${estatusActual}` };
             }
 
+            // APROBACION PSICOTROPICOS ya reserva stock: cambiar sus cantidades es una reserva nueva
+            if (estatusActual === ESTATUS_APROBACION_PSICOTROPICOS) await PedidosServices.bloquearStock(transaction);
+
             // 1b. Snapshot de las líneas ANTES de cualquier modificación
-            const snapReq = new mssql.Request(transaction);
-            const snapRes = await snapReq
+            const snapRes = await new mssql.Request(transaction)
                 .input('ORDERID_SNAP', mssql.VarChar(50), orderId)
                 .query(`SELECT CODARTICULO, REFERENCIA, PRODUCTCOUNT, PRECIOUNITARIO,
                                DESCUENTO1, DESCUENTO2, DESCUENTO3, DESCUENTO4, PRECIOBRUTO
@@ -769,72 +944,59 @@ export class PedidosServices {
                 bruto:  Number(r.PRECIOBRUTO ?? r.PRECIOUNITARIO),
             }));
 
-            // 2. Actualizar la Cabecera (Totales, Vendedor o Cliente si cambió)
-            const updateCabeceraReq = new mssql.Request(transaction);
-            await updateCabeceraReq
+            // Precios ya pactados en este pedido se respetan; artículos nuevos toman la tarifa vigente
+            const referencias = new Map<number, { brutos: number[]; d4s: number[] }>();
+            for (const l of lineasAntes) {
+                const ref = referencias.get(Number(l.cod)) ?? { brutos: [], d4s: [] };
+                ref.brutos.push(l.bruto);
+                ref.d4s.push(l.d4);
+                referencias.set(Number(l.cod), ref);
+            }
+            const norm = await PedidosServices.normalizarLineas(lineas, permisos.descuentoLinea, referencias);
+
+            if (estatusActual === 'PENDIENTE' && norm.lineas.some(l => l.esPsico)) {
+                await transaction.rollback();
+                return { success: false, message: 'Los psicotrópicos deben ir en un pedido aparte para pasar por aprobación sanitaria. Créelos desde el carrito.' };
+            }
+
+            const { insuficiente: insuficienteEdit } = await PedidosServices.checkStockLineas(
+                norm.lineas.map(l => ({ codarticulo: l.codarticulo, cantidad: l.cantidad })), orderId, transaction);
+            if (insuficienteEdit.length > 0) {
+                await transaction.rollback();
+                const detalle = insuficienteEdit.map(i => `${i.descripcion} (pedido: ${i.cantidad_pedida}, disponible: ${i.disponible})`).join('; ');
+                return { success: false, message: `Stock insuficiente para: ${detalle}` };
+            }
+
+            // Auditoría pre-edición: snapshot de cabecera + líneas actuales
+            await PedidosServices.auditarPedido(orderId, 'EDICION', codusuario, usuario, transaction, true);
+
+            // 2. Cabecera: total calculado en el servidor; el vendedor elegido en la edición se respeta
+            const vendedor = Number(codVendedor) > 0 ? Math.trunc(Number(codVendedor)) : null;
+            await new mssql.Request(transaction)
                 .input('ORDERID', mssql.VarChar(50), orderId)
                 .input('CLIENTEID', mssql.Int, clienteId)
-                .input('CODVENDEDOR', mssql.Int, codVendedor)
-                .input('TOTALPRECIO', mssql.Decimal(18, 2), totalPed)
+                .input('CODVENDEDOR', mssql.Int, vendedor)
+                .input('TOTALPRECIO', mssql.Float, norm.total)
                 .query(`
                     UPDATE ${esquema}.CABECERA_PED
                     SET CLIENTEID = @CLIENTEID,
-                        CODVENDEDOR = ISNULL((SELECT CODVENDEDOR FROM CLIENTES WITH (NOLOCK) WHERE CODCLIENTE = @CLIENTEID), @CODVENDEDOR),
+                        CODVENDEDOR = ISNULL(@CODVENDEDOR, CODVENDEDOR),
                         TOTALPRECIO = @TOTALPRECIO
                     WHERE ORDERID = @ORDERID
                 `);
 
-            // 3. Borrar todas las líneas actuales de este pedido
-            const deleteLineasReq = new mssql.Request(transaction);
-            await deleteLineasReq
+            // 3. Reemplazar las líneas
+            await new mssql.Request(transaction)
                 .input('ORDERID', mssql.VarChar(50), orderId)
                 .query(`DELETE FROM ${esquema}.LINEA_PED WHERE ORDERID = @ORDERID`);
+            await PedidosServices.insertarLineas(transaction, norm.lineas, orderId);
 
-            // 4. Re-insertar las líneas con INSERT parametrizados (más confiable que bulk dentro de transaction)
-            for (let i = 0; i < lineas.length; i++) {
-                const { codarticulo, referencia, codalmacen, idtarifav, cantidad, precio,
-                        DESCUENTO1, DESCUENTO2, DESCUENTO3, DESCUENTO4, PRECIOBRUTO,
-                        PORCENTAJEIVA, MONTOIVA } = lineas[i];
-                if (!cantidad || cantidad < 1) throw new Error(`Cantidad inválida (${cantidad}) en artículo ${codarticulo}`);
-                const insReq = new mssql.Request(transaction);
-                insReq.input('ORDERID',        mssql.VarChar(50),    orderId);
-                insReq.input('CODARTICULO',    mssql.Int,            codarticulo);
-                insReq.input('REFERENCIA',     mssql.VarChar(50),    referencia || '');
-                insReq.input('CODALMACEN',     mssql.VarChar(10),    codalmacen);
-                insReq.input('IDTARIFAV',      mssql.Int,            idtarifav);
-                insReq.input('PRODUCTCOUNT',   mssql.Int,            cantidad);
-                insReq.input('PRECIOUNITARIO', mssql.Decimal(18, 2), precio);
-                insReq.input('D1',             mssql.Float,          Number(DESCUENTO1 ?? 0));
-                insReq.input('D2',             mssql.Float,          Number(DESCUENTO2 ?? 0));
-                insReq.input('D3',             mssql.Float,          Number(DESCUENTO3 ?? 0));
-                insReq.input('D4',             mssql.Float,          Number(DESCUENTO4 ?? 0));
-                insReq.input('PRECIOBRUTO',    mssql.Float,          Number(PRECIOBRUTO ?? precio));
-                insReq.input('PIVA',           mssql.Float,          Number(PORCENTAJEIVA ?? 0));
-                insReq.input('MIVA',           mssql.Float,          Number(MONTOIVA ?? 0));
-                await insReq.query(`
-                    INSERT INTO ${esquema}.LINEA_PED
-                        (ORDERID, CODARTICULO, REFERENCIA, CODALMACEN, IDTARIFAV, PRODUCTCOUNT,
-                         PRECIOUNITARIO, DESCUENTO1, DESCUENTO2, DESCUENTO3, DESCUENTO4,
-                         PRECIOBRUTO, PORCENTAJEIVA, MONTOIVA)
-                    VALUES
-                        (@ORDERID, @CODARTICULO, @REFERENCIA, @CODALMACEN, @IDTARIFAV, @PRODUCTCOUNT,
-                         @PRECIOUNITARIO, @D1, @D2, @D3, @D4,
-                         @PRECIOBRUTO, @PIVA, @MIVA)
-                `);
-            }
-
-            // 6. Si todo salió perfecto, confirmamos los cambios en la base de datos
             await transaction.commit();
+            transaction = null;
 
-            // Snapshot de las líneas DESPUÉS (normalizado igual que el de antes)
-            const lineasDespues = lineas.map((l: any) => ({
-                cod:    l.codarticulo,
-                ref:    l.referencia ?? '',
-                qty:    Number(l.cantidad),
-                precio: Number(l.precio),
-                d1: Number(l.DESCUENTO1 ?? 0), d2: Number(l.DESCUENTO2 ?? 0),
-                d3: Number(l.DESCUENTO3 ?? 0), d4: Number(l.DESCUENTO4 ?? 0),
-                bruto:  Number(l.PRECIOBRUTO ?? l.precio),
+            const lineasDespues = norm.lineas.map(l => ({
+                cod: l.codarticulo, ref: l.referencia, qty: l.cantidad, precio: l.precio,
+                d1: l.d1, d2: l.d2, d3: l.d3, d4: l.d4, bruto: l.precioBruto,
             }));
 
             // Calcular diff para DETALLES
@@ -864,34 +1026,31 @@ export class PedidosServices {
             if (agregados)         partesDiff.push(`${agregados} agregada(s)`);
             if (modificados)       partesDiff.push(`${modificados} modificada(s)`);
             if (precioCero.length) partesDiff.push(`⚠ precio=0 en art. ${precioCero.join(',')}`);
-            const detallesLog = `total: ${totalAntes} → ${totalPed}${clienteAntes !== Number(clienteId) ? ` | cliente: ${clienteAntes} → ${clienteId}` : ''} | ${partesDiff.join(' | ') || 'sin cambios en líneas'}`;
+            if (norm.ajustes.length) partesDiff.push(`precios ajustados: ${norm.ajustes.join('; ')}`);
+            const detallesLog = `total: ${totalAntes.toFixed(2)} → ${norm.total.toFixed(2)}${clienteAntes !== Number(clienteId) ? ` | cliente: ${clienteAntes} → ${clienteId}` : ''} | ${partesDiff.join(' | ') || 'sin cambios en líneas'}`;
 
             await PedidosServices.registrarLog(
                 orderId, estatusActual, 'EDITADO', codusuario, usuario,
                 detallesLog,
                 JSON.stringify({ total: totalAntes, cliente: clienteAntes, lineas: lineasAntes }),
-                JSON.stringify({ total: totalPed,   cliente: clienteId,    lineas: lineasDespues }),
+                JSON.stringify({ total: norm.total, cliente: clienteId,    lineas: lineasDespues }),
             );
 
             return {
                 success: true,
-                message: 'El pedido fue actualizado de forma satisfactoria'
+                message: 'El pedido fue actualizado de forma satisfactoria',
+                total: norm.total,
+                ...(norm.ajustes.length ? { warning: `Algunos precios se actualizaron a la tarifa vigente: ${norm.ajustes.join('; ')}` } : {}),
             };
 
         } catch (error) {
-            // Si ocurre cualquier error, revertimos absolutamente todo
             if (transaction) {
-                try {
-                    await transaction.rollback();
-                } catch (rollbackError) {
-                    console.error('Error al intentar hacer rollback:', rollbackError);
-                }
+                try { await transaction.rollback(); } catch (rollbackError) { console.error('Error al intentar hacer rollback:', rollbackError); }
             }
             console.error(`Error al actualizar el pedido ${orderId}: `, error);
             return {
                 success: false,
-                message: 'Hubo un fallo crítico al actualizar el pedido',
-                error: error instanceof Error ? error.message : String(error)
+                message: `No se pudo actualizar el pedido: ${error instanceof Error ? error.message : String(error)}`,
             };
         }
     }
@@ -956,34 +1115,86 @@ export class PedidosServices {
         const hayPsico = orders.some((o: any) => o.ESTATUS === 'PENDIENTE POR AUTORIZACION');
         const estadoFinal = hayPsico ? 'PENDIENTE POR AUTORIZACION' : 'PENDIENTE';
 
-        // Si el resultado será PENDIENTE POR AUTORIZACION, verificar stock para las líneas
-        // de pedidos en PENDIENTE (las que pasarán a reservar por primera vez tras la fusión)
-        if (estadoFinal === 'PENDIENTE POR AUTORIZACION') {
-            const pendienteIds = orders.filter((o: any) => o.ESTATUS === 'PENDIENTE').map((o: any) => o.ORDERID as string);
-            if (pendienteIds.length > 0) {
-                const linReq = pool.request();
-                const linPH = pendienteIds.map((id, i) => { linReq.input(`LF${i}`, mssql.VarChar(50), id); return `@LF${i}`; }).join(',');
-                const linRes = await linReq.query(`
-                    SELECT CODARTICULO, SUM(PRODUCTCOUNT) AS CANTIDAD
-                    FROM ${esquema}.LINEA_PED WITH (NOLOCK)
-                    WHERE ORDERID IN (${linPH})
-                    GROUP BY CODARTICULO
-                `);
-                const lineasPendientes = linRes.recordset.map((r: any) => ({ codarticulo: Number(r.CODARTICULO), cantidad: Number(r.CANTIDAD) }));
-                if (lineasPendientes.length > 0) {
-                    const { insuficiente } = await PedidosServices.checkStockLineas(lineasPendientes);
+        let transaction: mssql.Transaction | null = null;
+        try {
+            transaction = new mssql.Transaction(pool);
+            await transaction.begin();
+
+            // Reconfirmar estatus con la fila bloqueada: otro usuario pudo cambiarlos desde la validación
+            const lockReq = new mssql.Request(transaction);
+            const lockPH = orderIds.map((id, i) => { lockReq.input(`LK${i}`, mssql.VarChar(50), id); return `@LK${i}`; }).join(',');
+            const lockRes = await lockReq.query(`SELECT ORDERID, ESTATUS FROM ${esquema}.CABECERA_PED WITH (UPDLOCK, ROWLOCK) WHERE ORDERID IN (${lockPH})`);
+            const cambiado = lockRes.recordset.find((r: any) => orders.find((o: any) => o.ORDERID === r.ORDERID)?.ESTATUS !== r.ESTATUS);
+            if (cambiado || lockRes.recordset.length !== orderIds.length) {
+                await transaction.rollback();
+                return { success: false, message: 'Uno de los pedidos cambió de estatus mientras se fusionaba. Recargue e intente de nuevo.' };
+            }
+
+            // Si el resultado será PENDIENTE POR AUTORIZACION, las líneas de pedidos en PENDIENTE
+            // pasan a reservar stock: se verifican con el lock de reservas tomado
+            if (estadoFinal === 'PENDIENTE POR AUTORIZACION') {
+                const pendienteIds = orders.filter((o: any) => o.ESTATUS === 'PENDIENTE').map((o: any) => o.ORDERID as string);
+                if (pendienteIds.length > 0) {
+                    await PedidosServices.bloquearStock(transaction);
+                    const linReq = new mssql.Request(transaction);
+                    const linPH = pendienteIds.map((id, i) => { linReq.input(`LF${i}`, mssql.VarChar(50), id); return `@LF${i}`; }).join(',');
+                    const linRes = await linReq.query(`
+                        SELECT CODARTICULO, SUM(PRODUCTCOUNT) AS CANTIDAD
+                        FROM ${esquema}.LINEA_PED WITH (NOLOCK)
+                        WHERE ORDERID IN (${linPH})
+                        GROUP BY CODARTICULO
+                    `);
+                    const lineasPendientes = linRes.recordset.map((r: any) => ({ codarticulo: Number(r.CODARTICULO), cantidad: Number(r.CANTIDAD) }));
+                    const { insuficiente } = await PedidosServices.checkStockLineas(lineasPendientes, undefined, transaction);
                     if (insuficiente.length > 0) {
+                        await transaction.rollback();
                         const detalle = insuficiente.map(i => `${i.descripcion} (pedido: ${i.cantidad_pedida}, disponible: ${i.disponible})`).join('; ');
                         return { success: false, message: `No se puede fusionar: stock insuficiente para ${detalle}` };
                     }
                 }
             }
-        }
 
-        let transaction: mssql.Transaction | null = null;
-        try {
-            transaction = new mssql.Transaction(pool);
-            await transaction.begin();
+            // 0. Snapshot pre-fusión (atómico con la transacción — si falla, no queda basura)
+            const logRes = await new mssql.Request(transaction)
+                .input('MASTER',     mssql.VarChar(50),    masterId)
+                .input('IDS',        mssql.NVarChar(500),  orderIds.join(', '))
+                .input('CODUSUARIO', mssql.Int,            codusuario ?? null)
+                .input('USUARIO',    mssql.VarChar(100),   usuario ?? null)
+                .query(`
+                    INSERT INTO ${esquema}.APP_FUSION_LOG (ORDERID_MAESTRO, ORDERIDS_FUSION, CODUSUARIO, USUARIO)
+                    VALUES (@MASTER, @IDS, @CODUSUARIO, @USUARIO);
+                    SELECT SCOPE_IDENTITY() AS FUSION_ID
+                `);
+            const fusionId = Number(logRes.recordset[0].FUSION_ID);
+
+            const snapReq = new mssql.Request(transaction);
+            snapReq.input('FID', mssql.Int, fusionId);
+            const whereSnap = orderIds.map((id, i) => {
+                snapReq.input(`SID${i}`, mssql.VarChar(50), id);
+                return `ORDERID = @SID${i} OR ORDERID LIKE @SID${i} + '-%'`;
+            }).join(' OR ');
+            await snapReq.query(`
+                INSERT INTO ${esquema}.APP_FUSION_SNAPSHOT_CAB
+                    (FUSION_ID, ROL, ORDERID, CLIENTEID, FECHA, ESTATUS, CODVENDEDOR, TOTALPRECIO, OBSERVACIONES, PROMO_NOMBRE)
+                SELECT @FID,
+                       CASE WHEN ORDERID = @SID0 OR ORDERID LIKE @SID0 + '-%' THEN 'MAESTRO' ELSE 'FUENTE' END,
+                       ORDERID, CLIENTEID, FECHA, ESTATUS, CODVENDEDOR, TOTALPRECIO,
+                       ISNULL(OBSERVACIONES, ''), ISNULL(PROMO_NOMBRE, '')
+                FROM ${esquema}.CABECERA_PED WITH (NOLOCK) WHERE ${whereSnap};
+
+                INSERT INTO ${esquema}.APP_FUSION_SNAPSHOT_LIN
+                    (FUSION_ID, ORDERID, CODARTICULO, REFERENCIA, CODALMACEN, IDTARIFAV, PRODUCTCOUNT,
+                     PRECIOUNITARIO, DESCUENTO1, DESCUENTO2, DESCUENTO3, DESCUENTO4, PRECIOBRUTO, PORCENTAJEIVA, MONTOIVA)
+                SELECT @FID,
+                       ORDERID, CODARTICULO, REFERENCIA, CODALMACEN, IDTARIFAV, PRODUCTCOUNT,
+                       PRECIOUNITARIO, DESCUENTO1, DESCUENTO2, DESCUENTO3, DESCUENTO4, PRECIOBRUTO, PORCENTAJEIVA, MONTOIVA
+                FROM ${esquema}.LINEA_PED WITH (NOLOCK) WHERE ${whereSnap};
+
+                INSERT INTO ${esquema}.APP_FUSION_SNAPSHOT_PROMO
+                    (FUSION_ID, ORDERID, IDPROMOCION, NOMBREPROMOCION, PORCENTAJEAPLICADO, BASETOTAL)
+                SELECT @FID, ORDERID, IDPROMOCION, NOMBREPROMOCION, PORCENTAJEAPLICADO, BASETOTAL
+                FROM ${esquema}.APP_PEDIDO_PROMOCIONES WITH (NOLOCK) WHERE ${whereSnap}
+            `);
 
             for (const fuenteId of fuenteIds) {
                 // Mover líneas (incluyendo chunks: fuenteId-2, fuenteId-3…)
@@ -994,22 +1205,24 @@ export class PedidosServices {
                         UPDATE ${esquema}.LINEA_PED SET ORDERID = @MASTER
                         WHERE ORDERID = @FUENTE OR ORDERID LIKE @FUENTE + '-%'
                     `);
-                // Eliminar logs y cabeceras de la fuente (y sus chunks)
+                // Migrar logs de la fuente al maestro; borrar promociones y cabeceras de la fuente
                 await new mssql.Request(transaction)
+                    .input('MASTER', mssql.VarChar(50), masterId)
                     .input('FUENTE', mssql.VarChar(50), fuenteId)
                     .query(`
-                        DELETE FROM ${esquema}.APP_PEDIDO_LOG  WHERE ORDERID = @FUENTE OR ORDERID LIKE @FUENTE + '-%';
+                        UPDATE ${esquema}.APP_PEDIDO_LOG SET ORDERID = @MASTER
+                            WHERE ORDERID = @FUENTE OR ORDERID LIKE @FUENTE + '-%';
                         DELETE FROM ${esquema}.APP_PEDIDO_PROMOCIONES WHERE ORDERID = @FUENTE OR ORDERID LIKE @FUENTE + '-%';
-                        DELETE FROM ${esquema}.CABECERA_PED     WHERE ORDERID = @FUENTE OR ORDERID LIKE @FUENTE + '-%'
+                        DELETE FROM ${esquema}.CABECERA_PED            WHERE ORDERID = @FUENTE OR ORDERID LIKE @FUENTE + '-%'
                     `);
             }
 
-            // Mover líneas de los chunks del maestro al maestro, luego borrar los chunks
+            // Consolidar chunks del maestro en el maestro
             await new mssql.Request(transaction)
                 .input('MASTER', mssql.VarChar(50), masterId)
                 .query(`
-                    UPDATE ${esquema}.LINEA_PED SET ORDERID = @MASTER WHERE ORDERID LIKE @MASTER + '-%';
-                    DELETE FROM ${esquema}.APP_PEDIDO_LOG        WHERE ORDERID LIKE @MASTER + '-%';
+                    UPDATE ${esquema}.LINEA_PED      SET ORDERID = @MASTER WHERE ORDERID LIKE @MASTER + '-%';
+                    UPDATE ${esquema}.APP_PEDIDO_LOG SET ORDERID = @MASTER WHERE ORDERID LIKE @MASTER + '-%';
                     DELETE FROM ${esquema}.APP_PEDIDO_PROMOCIONES WHERE ORDERID LIKE @MASTER + '-%';
                     DELETE FROM ${esquema}.CABECERA_PED           WHERE ORDERID LIKE @MASTER + '-%'
                 `);
@@ -1052,6 +1265,18 @@ export class PedidosServices {
             transaction = new mssql.Transaction(pool);
             await transaction.begin();
 
+            const est = await new mssql.Request(transaction)
+                .input('ORDERID', mssql.VarChar(50), orderId)
+                .query(`SELECT ESTATUS FROM ${esquema}.CABECERA_PED WITH (UPDLOCK, ROWLOCK) WHERE ORDERID = @ORDERID`);
+            if (est.recordset.length === 0) {
+                await transaction.rollback();
+                return { success: false, message: 'No se pudo eliminar. El pedido no existe.' };
+            }
+            if (est.recordset[0].ESTATUS !== 'PENDIENTE') {
+                await transaction.rollback();
+                return { success: false, message: `Solo se pueden eliminar pedidos en PENDIENTE (este está en ${est.recordset[0].ESTATUS}). Use CANCELADO.` };
+            }
+
             // 1. Archivar cabecera y líneas antes de borrar
             await new mssql.Request(transaction)
                 .input('ORDERID',    mssql.VarChar(50),  orderId)
@@ -1076,46 +1301,31 @@ export class PedidosServices {
                                PRECIOBRUTO, PORCENTAJEIVA, MONTOIVA, GETDATE()
                         FROM ${esquema}.LINEA_PED WITH (NOLOCK) WHERE ORDERID = @ORDERID`);
 
-            // 2. Borrar promociones aplicadas
+            // 2. Borrar promociones, fallas, líneas y cabecera
             await new mssql.Request(transaction)
                 .input('ORDERID', mssql.VarChar(50), orderId)
-                .query(`DELETE FROM ${esquema}.APP_PEDIDO_PROMOCIONES WHERE ORDERID = @ORDERID`);
+                .query(`
+                    DELETE FROM ${esquema}.APP_PEDIDO_PROMOCIONES WHERE ORDERID = @ORDERID;
+                    DELETE FROM ${esquema}.APP_PEDIDO_FALLAS      WHERE ORDERID = @ORDERID;
+                    DELETE FROM ${esquema}.LINEA_PED              WHERE ORDERID = @ORDERID;
+                    DELETE FROM ${esquema}.CABECERA_PED           WHERE ORDERID = @ORDERID;
+                `);
 
-            // 3. Borrar líneas
-            await new mssql.Request(transaction)
-                .input('ORDERID', mssql.VarChar(50), orderId)
-                .query(`DELETE FROM ${esquema}.LINEA_PED WHERE ORDERID = @ORDERID`);
-
-            // 4. Borrar cabecera
-            const result = await new mssql.Request(transaction)
-                .input('ORDERID', mssql.VarChar(50), orderId)
-                .query(`DELETE FROM ${esquema}.CABECERA_PED WHERE ORDERID = @ORDERID`);
-
-            if (Number(result.rowsAffected[0]) === 0) {
-                await transaction.rollback();
-                return { success: false, message: 'No se pudo eliminar. El pedido no existe.' };
-            }
-
-            // 5. Registrar eliminación en el log (dentro de la transacción)
+            // 3. Registrar eliminación en el log (dentro de la transacción)
             await new mssql.Request(transaction)
                 .input('ORDERID',    mssql.VarChar(50),  orderId)
                 .input('CODUSUARIO', mssql.Int,          codusuario ?? null)
                 .input('USUARIO',    mssql.VarChar(100), usuario ?? null)
                 .query(`INSERT INTO ${esquema}.APP_PEDIDO_LOG (ORDERID, EST_ANTERIOR, EST_NUEVO, CODUSUARIO, USUARIO, DETALLES)
-                        VALUES (@ORDERID, NULL, 'ELIMINADO', @CODUSUARIO, @USUARIO, 'Pedido eliminado manualmente')`);
+                        VALUES (@ORDERID, 'PENDIENTE', 'ELIMINADO', @CODUSUARIO, @USUARIO, 'Pedido eliminado manualmente')`);
 
             await transaction.commit();
 
             return { success: true, message: 'El pedido y todos sus artículos fueron eliminados de forma satisfactoria' };
 
         } catch (error) {
-            // Revertir en caso de cualquier fallo
             if (transaction) {
-                try {
-                    await transaction.rollback();
-                } catch (rollbackError) {
-                    console.error('Error al intentar hacer rollback:', rollbackError);
-                }
+                try { await transaction.rollback(); } catch (rollbackError) { console.error('Error al intentar hacer rollback:', rollbackError); }
             }
             console.error(`Error al eliminar el pedido ${orderId}: `, error);
             return {
@@ -1161,16 +1371,21 @@ export class PedidosServices {
         return anomalias;
     }
 
-    static async checkStockLineas(lineas: { codarticulo: number; cantidad: number }[], excludeOrderId?: string) {
+    // source: pasar la transacción que tiene tomado el lock de reservas para leer dentro de ella
+    static async checkStockLineas(
+        lineas: { codarticulo: number; cantidad: number }[],
+        excludeOrderId?: string,
+        source?: mssql.ConnectionPool | mssql.Transaction,
+    ): Promise<{ insuficiente: { codarticulo: number; descripcion: string; cantidad_pedida: number; disponible: number }[] }> {
         if (!lineas.length) return { insuficiente: [] };
-        const pool = await connectDb();
         const { codAlmacen } = getDbConfig();
         // Validate all codes are integers before interpolating
         const codigos = lineas.map(l => Math.trunc(Number(l.codarticulo))).filter(n => n > 0);
         if (!codigos.length) return { insuficiente: [] };
 
         const excludeClause = excludeOrderId ? `AND CP.ORDERID <> @EXCL_OID` : '';
-        const req = pool.request().input('ALMACEN', mssql.VarChar(10), codAlmacen);
+        const req = (source ? new mssql.Request(source as any) : (await connectDb()).request())
+            .input('ALMACEN', mssql.VarChar(10), codAlmacen);
         if (excludeOrderId) req.input('EXCL_OID', mssql.VarChar(50), excludeOrderId);
 
         const stockRes = await req.query(`
@@ -1194,20 +1409,28 @@ export class PedidosServices {
             stockRes.recordset.map((r: any) => [Number(r.CODARTICULO), { disponible: Number(r.DISPONIBLE), descripcion: r.DESCRIPCION ?? '' }])
         );
 
-        const insuficiente = lineas
-            .filter(l => {
-                const s = stockMap.get(Number(l.codarticulo));
-                return !s || s.disponible < l.cantidad;
+        // Sumar por artículo: el mismo código en varias líneas (p. ej. tras una fusión) compite por el mismo stock
+        const pedidoPorArticulo = new Map<number, number>();
+        for (const l of lineas) {
+            const cod = Number(l.codarticulo);
+            pedidoPorArticulo.set(cod, (pedidoPorArticulo.get(cod) ?? 0) + Number(l.cantidad));
+        }
+
+        const insuficiente = [...pedidoPorArticulo.entries()]
+            .filter(([cod, cantidad]) => {
+                const s = stockMap.get(cod);
+                return !s || s.disponible < cantidad;
             })
-            .map(l => {
-                const s = stockMap.get(Number(l.codarticulo));
-                return { codarticulo: l.codarticulo, descripcion: s?.descripcion ?? String(l.codarticulo), cantidad_pedida: l.cantidad, disponible: s?.disponible ?? 0 };
+            .map(([cod, cantidad]) => {
+                const s = stockMap.get(cod);
+                return { codarticulo: cod, descripcion: s?.descripcion ?? String(cod), cantidad_pedida: cantidad, disponible: s?.disponible ?? 0 };
             });
 
         return { insuficiente };
     }
 
     static async updateEstatusPedido(orderId: string, nuevoEstatus: string, codusuario?: number, usuario?: string, visibilidadUsuario?: number, anomaliasConfirmadas?: string) {
+        let tx: mssql.Transaction | null = null;
         try {
             const estatusLimpio = nuevoEstatus.trim().toUpperCase();
             const BIT_AUTORIZADOR = 2048;
@@ -1225,23 +1448,35 @@ export class PedidosServices {
             }
 
             const puedeAutorizar = (vis & BIT_AUTORIZADOR) !== 0 || (vis & BIT_BACKOFFICE) !== 0;
+            const reservaStock = estatusLimpio === 'PENDIENTE POR AUTORIZACION' || estatusLimpio === 'AUTORIZADO';
 
-            // Obtener estatus actual (necesario antes de validar permisos)
-            const checkRes = await pool.request()
-                .input('ORDERID_CHK', mssql.VarChar(50), orderId)
-                .query(`SELECT ESTATUS FROM ${esquema}.CABECERA_PED WITH (NOLOCK) WHERE ORDERID = @ORDERID_CHK`);
-
-            if (checkRes.recordset.length === 0) {
-                return { success: false, message: 'El pedido no existe' };
+            // Los cambios que reservan stock se hacen en una transacción con el lock de reservas:
+            // nadie más puede chequear/reservar stock hasta que este cambio termine.
+            if (reservaStock) {
+                tx = new mssql.Transaction(pool);
+                await tx.begin();
+                await PedidosServices.bloquearStock(tx);
             }
+            const src: mssql.ConnectionPool | mssql.Transaction = tx ?? pool;
+            const req = () => new mssql.Request(src as any);
+            const abortar = async (resp: any) => {
+                if (tx) { await tx.rollback(); tx = null; }
+                return resp;
+            };
+
+            const checkRes = await req()
+                .input('ORDERID_CHK', mssql.VarChar(50), orderId)
+                .query(`SELECT ESTATUS FROM ${esquema}.CABECERA_PED ${tx ? 'WITH (UPDLOCK, ROWLOCK)' : 'WITH (NOLOCK)'} WHERE ORDERID = @ORDERID_CHK`);
+
+            if (checkRes.recordset.length === 0) return abortar({ success: false, message: 'El pedido no existe' });
 
             const estadoActual = checkRes.recordset[0].ESTATUS as string;
             const permitidos = TRANSICIONES_PERMITIDAS[estadoActual] ?? [];
             if (!permitidos.includes(estatusLimpio)) {
-                return {
+                return abortar({
                     success: false,
                     message: `No se puede cambiar de "${estadoActual}" a "${estatusLimpio}". Transición no permitida.`
-                };
+                });
             }
 
             // CANCELADO desde PENDIENTE o ICG no requiere rol Autorizador
@@ -1249,66 +1484,96 @@ export class PedidosServices {
             const requiereAutorizador = estatusLimpio === 'AUTORIZADO' ||
                 (estatusLimpio === 'CANCELADO' && !cancelacionLibre);
             if (requiereAutorizador && !puedeAutorizar) {
-                return {
+                return abortar({
                     success: false,
                     message: 'No tienes permiso para realizar esta transición. Se requiere el rol Autorizador.'
-                };
+                });
             }
 
             // Verificar límite de líneas antes de cualquier avance en el flujo de autorización
             const maxLineasAuth = getDbConfig().maxLineasPorPedido ?? 0;
-            if (maxLineasAuth > 0 && ['PENDIENTE POR AUTORIZACION', 'AUTORIZADO'].includes(estatusLimpio)) {
-                const cntRes = await pool.request()
+            if (maxLineasAuth > 0 && reservaStock) {
+                const cntRes = await req()
                     .input('ORDERID_CNT', mssql.VarChar(50), orderId)
                     .query(`SELECT COUNT(*) AS TOTAL FROM ${esquema}.LINEA_PED WITH (NOLOCK)
                             WHERE ORDERID = @ORDERID_CNT OR ORDERID LIKE @ORDERID_CNT + '-%'`);
                 const totalLineas = Number(cntRes.recordset[0].TOTAL);
                 if (totalLineas > maxLineasAuth) {
-                    return {
+                    return abortar({
                         success: false,
                         message: `Este pedido tiene ${totalLineas} líneas, superando el límite de ${maxLineasAuth}. Divídalo antes de autorizar.`
-                    };
+                    });
                 }
             }
 
-            // Al pasar a un estatus que reserva stock, verificar disponibilidad por línea.
-            // No bloqueante: registra las fallas y autoriza de todas formas.
-            let warningStock: string | undefined;
-            if (estatusLimpio === 'PENDIENTE POR AUTORIZACION' || estatusLimpio === 'AUTORIZADO') {
-                const lineasRes = await pool.request()
+            // PENDIENTE POR AUTORIZACION: bloqueante — es el punto de reserva; sin stock no avanza.
+            // AUTORIZADO: si falta stock se autorizan solo las unidades disponibles (las líneas se recortan).
+            let fallasStock: { codarticulo: number; descripcion: string; cantPedida: number; stockDisponible: number }[] = [];
+            const recortes: string[] = [];
+            let lineasPedido: any[] = [];
+            if (reservaStock) {
+                const lineasRes = await req()
                     .input('ORDERID_LINEAS', mssql.VarChar(50), orderId)
-                    .query(`SELECT LP.CODARTICULO, LP.PRODUCTCOUNT AS CANTIDAD
-                            FROM ${esquema}.LINEA_PED LP WITH (NOLOCK) WHERE LP.ORDERID = @ORDERID_LINEAS`);
+                    .query(`SELECT LINEAID, CODARTICULO, PRODUCTCOUNT, PRECIOUNITARIO, ISNULL(PORCENTAJEIVA, 0) AS PORCENTAJEIVA
+                            FROM ${esquema}.LINEA_PED WITH (NOLOCK) WHERE ORDERID = @ORDERID_LINEAS ORDER BY LINEAID`);
+                lineasPedido = lineasRes.recordset;
+                const { insuficiente } = await PedidosServices.checkStockLineas(
+                    lineasPedido.map((l: any) => ({ codarticulo: Number(l.CODARTICULO), cantidad: Number(l.PRODUCTCOUNT) })),
+                    orderId, src
+                );
+                fallasStock = insuficiente.map(i => ({
+                    codarticulo: i.codarticulo, descripcion: i.descripcion, cantPedida: i.cantidad_pedida, stockDisponible: i.disponible,
+                }));
+            }
 
-                const fallasStock: { codarticulo: number; descripcion: string; cantPedida: number; stockDisponible: number }[] = [];
-                for (const linea of lineasRes.recordset) {
-                    const stockRes = await pool.request()
-                        .input('COD', mssql.Int, linea.CODARTICULO)
-                        .input('ORDERID_EXCL', mssql.VarChar(50), orderId)
-                        .input('ALMACEN', mssql.VarChar(10), getDbConfig().codAlmacen)
-                        .query(`
-                            SELECT
-                                ISNULL((SELECT SUM(STOCK) FROM STOCKS WITH (NOLOCK) WHERE CODARTICULO = @COD AND CODALMACEN = @ALMACEN), 0)
-                                - ISNULL((
-                                    SELECT SUM(LP2.PRODUCTCOUNT) FROM ${esquema}.CABECERA_PED CP2 WITH (NOLOCK)
-                                    INNER JOIN ${esquema}.LINEA_PED LP2 WITH (NOLOCK) ON LP2.ORDERID = CP2.ORDERID
-                                    WHERE LP2.CODARTICULO = @COD
-                                      AND CP2.ORDERID <> @ORDERID_EXCL
-                                      AND CP2.ESTATUS IN ('PENDIENTE POR AUTORIZACION','APROBACION PSICOTROPICOS','SANIDAD','AUTORIZADO','EMPACADO','OK')
-                                ), 0) AS DISPONIBLE
-                        `);
-                    const disponible: number = stockRes.recordset[0]?.DISPONIBLE ?? 0;
-                    if (disponible < linea.CANTIDAD) {
-                        fallasStock.push({ codarticulo: linea.CODARTICULO, descripcion: String(linea.CODARTICULO), cantPedida: linea.CANTIDAD, stockDisponible: disponible });
+            if (fallasStock.length > 0 && estatusLimpio === 'PENDIENTE POR AUTORIZACION') {
+                await abortar(null);
+                await PedidosServices.registrarFallas(orderId, fallasStock);
+                return {
+                    success: false,
+                    message: `Stock insuficiente para: ${fallasStock.map(f => `${f.descripcion} (necesita ${f.cantPedida}, disponible ${Math.max(0, f.stockDisponible)})`).join('; ')}`,
+                    fallasStock,
+                };
+            }
+
+            const parcial = fallasStock.length > 0 && estatusLimpio === 'AUTORIZADO';
+            await PedidosServices.auditarPedido(orderId, parcial ? 'AUTORIZACION_PARCIAL' : 'CAMBIO_ESTATUS', codusuario, usuario, src, parcial);
+
+            if (parcial) {
+                // Repartir lo disponible entre las líneas de cada artículo en falta (en orden de línea)
+                const disponible = new Map<number, number>(fallasStock.map(f => [f.codarticulo, Math.max(0, Math.floor(f.stockDisponible))]));
+                let quedan = 0;
+                for (const l of lineasPedido) {
+                    const cod = Number(l.CODARTICULO);
+                    const pedida = Number(l.PRODUCTCOUNT);
+                    if (!disponible.has(cod)) { quedan++; continue; }
+                    const nueva = Math.min(pedida, disponible.get(cod)!);
+                    disponible.set(cod, disponible.get(cod)! - nueva);
+                    recortes.push(`art. ${cod}: ${pedida} → ${nueva}`);
+                    if (nueva === 0) {
+                        await req().input('LID', mssql.Int, l.LINEAID).query(`DELETE FROM ${esquema}.LINEA_PED WHERE LINEAID = @LID`);
+                    } else {
+                        quedan++;
+                        await req()
+                            .input('LID', mssql.Int, l.LINEAID)
+                            .input('CANT', mssql.Int, nueva)
+                            .input('MIVA', mssql.Float, Number(l.PRECIOUNITARIO) * nueva * Number(l.PORCENTAJEIVA) / 100)
+                            .query(`UPDATE ${esquema}.LINEA_PED SET PRODUCTCOUNT = @CANT, MONTOIVA = @MIVA WHERE LINEAID = @LID`);
                     }
                 }
-                if (fallasStock.length > 0) {
+                if (quedan === 0) {
+                    await abortar(null);
                     await PedidosServices.registrarFallas(orderId, fallasStock);
-                    warningStock = `Stock insuficiente para: ${fallasStock.map(f => `${f.codarticulo} (necesita ${f.cantPedida}, disponible ${f.stockDisponible})`).join('; ')}`;
+                    return { success: false, message: 'Ninguno de los artículos del pedido tiene stock disponible: no se puede autorizar.', fallasStock };
                 }
+                await req()
+                    .input('OID_TOT', mssql.VarChar(50), orderId)
+                    .query(`UPDATE ${esquema}.CABECERA_PED
+                            SET TOTALPRECIO = (SELECT ISNULL(SUM(PRODUCTCOUNT * PRECIOUNITARIO), 0) FROM ${esquema}.LINEA_PED WHERE ORDERID = @OID_TOT)
+                            WHERE ORDERID = @OID_TOT`);
             }
 
-            const result = await pool.request()
+            const result = await req()
                 .input('ORDERID', mssql.VarChar(50), orderId)
                 .input('ESTATUS', mssql.VarChar(50), estatusLimpio)
                 .query(`
@@ -1317,30 +1582,36 @@ export class PedidosServices {
                     WHERE ORDERID = @ORDERID
                 `);
 
-            // Validamos si realmente se encontró un pedido con ese ID
             if (Number(result.rowsAffected[0]) === 0) {
-                return {
+                return abortar({
                     success: false,
                     message: 'No se pudo actualizar el estatus. El pedido no existe en el sistema.'
-                };
+                });
             }
 
-            const detallesEstatus = anomaliasConfirmadas
-                ? `Anomalías confirmadas al autorizar: ${anomaliasConfirmadas}`
-                : undefined;
-            await PedidosServices.registrarLog(orderId, estadoActual, estatusLimpio, codusuario, usuario, detallesEstatus);
+            if (tx) { await tx.commit(); tx = null; }
+
+            if (fallasStock.length > 0) await PedidosServices.registrarFallas(orderId, fallasStock);
+
+            const partesDetalle: string[] = [];
+            if (anomaliasConfirmadas) partesDetalle.push(`Anomalías confirmadas al autorizar: ${anomaliasConfirmadas}`);
+            if (recortes.length) partesDetalle.push(`Autorizado parcialmente por stock: ${recortes.join('; ')}`);
+            await PedidosServices.registrarLog(orderId, estadoActual, estatusLimpio, codusuario, usuario, partesDetalle.join(' | ') || undefined);
 
             return {
                 success: true,
                 message: `El estatus del pedido se actualizó a ${estatusLimpio} de forma satisfactoria`,
-                ...(warningStock ? { warning: warningStock } : {}),
+                ...(recortes.length ? { warning: `Se autorizaron solo las unidades disponibles: ${recortes.join('; ')}` } : {}),
             };
 
         } catch (error) {
+            if (tx) { try { await tx.rollback(); } catch { /* ya revertida */ } }
             console.error(`Error al actualizar el estatus del pedido ${orderId}: `, error);
             return {
                 success: false,
-                message: 'Hubo un fallo al actualizar el estatus en la base de datos',
+                message: error instanceof Error && error.message.startsWith('Otra operación')
+                    ? error.message
+                    : 'Hubo un fallo al actualizar el estatus en la base de datos',
                 error: error instanceof Error ? error.message : String(error)
             };
         }
@@ -1453,6 +1724,8 @@ export class PedidosServices {
                 return { success: false, message: `Stock insuficiente para: ${detalle}` };
             }
 
+            await PedidosServices.auditarPedido(orderId, 'APROBACION_PSICOTROPICO', codusuario, usuario, pool, false);
+
             await pool.request()
                 .input('ORDERID', mssql.VarChar(50), orderId)
                 .input('OBSERVACIONES', mssql.NVarChar(255), codigoAprobacion.trim())
@@ -1475,127 +1748,61 @@ export class PedidosServices {
         }
     }
 
+    // Faltante de hoy si lo hay (stock menos lo reservado por otros pedidos); si no, las fallas históricas registradas
     static async getDiferenciasPedido(orderId: string): Promise<{
         codarticulo: number; descripcion: string; cantPedida: number;
         stockDisponible: number; cantFaltante: number; fecha: Date | null;
     }[]> {
         const pool = await connectDb();
-        const { codAlmacen } = getDbConfig();
+        const linRes = await pool.request()
+            .input('OID', mssql.VarChar(50), orderId)
+            .query(`SELECT CODARTICULO, PRODUCTCOUNT FROM ${esquema}.LINEA_PED WITH(NOLOCK) WHERE ORDERID = @OID`);
+        const { insuficiente } = await PedidosServices.checkStockLineas(
+            linRes.recordset.map((r: any) => ({ codarticulo: Number(r.CODARTICULO), cantidad: Number(r.PRODUCTCOUNT) })),
+            orderId
+        );
+        if (insuficiente.length) {
+            return insuficiente.map(i => {
+                const disponible = Math.max(0, i.disponible);
+                return {
+                    codarticulo: i.codarticulo, descripcion: i.descripcion, cantPedida: i.cantidad_pedida,
+                    stockDisponible: disponible, cantFaltante: i.cantidad_pedida - disponible, fecha: null,
+                };
+            });
+        }
 
-        // Return persisted historical fallas if they exist
         const fallasRes = await pool.request()
             .input('OID_F', mssql.VarChar(50), orderId)
             .query(`
-                SELECT CODARTICULO, DESCRIPCION, CANT_PEDIDA, STOCK_DISPONIBLE, FECHA
-                FROM ${esquema}.APP_PEDIDO_FALLAS WITH(NOLOCK)
-                WHERE ORDERID = @OID_F
-                ORDER BY CODARTICULO
+                SELECT F.CODARTICULO, ISNULL(NULLIF(F.DESCRIPCION, CAST(F.CODARTICULO AS NVARCHAR(20))), A.DESCRIPCION) AS DESCRIPCION,
+                       F.CANT_PEDIDA, F.STOCK_DISPONIBLE, F.FECHA
+                FROM ${esquema}.APP_PEDIDO_FALLAS F WITH(NOLOCK)
+                LEFT JOIN ARTICULOS A WITH(NOLOCK) ON A.CODARTICULO = F.CODARTICULO
+                WHERE F.ORDERID = @OID_F
+                ORDER BY F.CODARTICULO
             `);
-        if (fallasRes.recordset.length) {
-            return fallasRes.recordset.map((r: any) => ({
-                codarticulo: Number(r.CODARTICULO),
-                descripcion: r.DESCRIPCION ?? String(r.CODARTICULO),
-                cantPedida: Number(r.CANT_PEDIDA),
-                stockDisponible: Number(r.STOCK_DISPONIBLE),
-                cantFaltante: Math.max(0, Number(r.CANT_PEDIDA) - Number(r.STOCK_DISPONIBLE)),
-                fecha: r.FECHA,
-            }));
-        }
-
-        // Live check: get current order lines
-        const linRes = await pool.request()
-            .input('OID', mssql.VarChar(50), orderId)
-            .query(`
-                SELECT CODARTICULO, SUM(PRODUCTCOUNT) AS CANTIDAD
-                FROM ${esquema}.LINEA_PED WITH(NOLOCK)
-                WHERE ORDERID = @OID
-                GROUP BY CODARTICULO
-            `);
-        if (!linRes.recordset.length) return [];
-
-        const codigos = linRes.recordset
-            .map((r: any) => Math.trunc(Number(r.CODARTICULO)))
-            .filter((n: number) => n > 0);
-        if (!codigos.length) return [];
-
-        // Check available stock (excludes this order's own reservations)
-        const stockRes = await pool.request()
-            .input('ALMACEN', mssql.VarChar(10), codAlmacen)
-            .input('EXCL_OID', mssql.VarChar(50), orderId)
-            .query(`
-                SELECT A.CODARTICULO, A.DESCRIPCION,
-                    ISNULL((SELECT SUM(STOCK) FROM ${esquema}.STOCKS WITH(NOLOCK)
-                            WHERE CODARTICULO = A.CODARTICULO AND CODALMACEN = @ALMACEN), 0)
-                    - ISNULL((
-                        SELECT SUM(LP.PRODUCTCOUNT)
-                        FROM ${esquema}.CABECERA_PED CP WITH(NOLOCK)
-                        INNER JOIN ${esquema}.LINEA_PED LP WITH(NOLOCK) ON LP.ORDERID = CP.ORDERID
-                        WHERE LP.CODARTICULO = A.CODARTICULO
-                          AND CP.ORDERID <> @EXCL_OID
-                          AND CP.ESTATUS IN ('PENDIENTE POR AUTORIZACION','APROBACION PSICOTROPICOS',
-                                             'SANIDAD','AUTORIZADO','EMPACADO','OK')
-                    ), 0) AS DISPONIBLE
-                FROM ${esquema}.ARTICULOS A WITH(NOLOCK)
-                WHERE A.CODARTICULO IN (${codigos.join(',')})
-            `);
-
-        const stockMap = new Map<number, { disponible: number; descripcion: string }>(
-            stockRes.recordset.map((r: any) => [Number(r.CODARTICULO), { disponible: Number(r.DISPONIBLE), descripcion: r.DESCRIPCION ?? '' }])
-        );
-        const linMap = new Map<number, number>(
-            linRes.recordset.map((r: any) => [Number(r.CODARTICULO), Number(r.CANTIDAD)])
-        );
-
-        const fallas: { codarticulo: number; descripcion: string; cantPedida: number; stockDisponible: number; cantFaltante: number; fecha: Date | null }[] = [];
-        for (const [cod, cantPedida] of linMap.entries()) {
-            const stock = stockMap.get(cod);
-            const disponible = Math.max(0, stock?.disponible ?? 0);
-            if (disponible < cantPedida) {
-                fallas.push({
-                    codarticulo: cod,
-                    descripcion: stock?.descripcion ?? String(cod),
-                    cantPedida,
-                    stockDisponible: disponible,
-                    cantFaltante: cantPedida - disponible,
-                    fecha: null,
-                });
-            }
-        }
-        return fallas;
+        return fallasRes.recordset.map((r: any) => ({
+            codarticulo: Number(r.CODARTICULO),
+            descripcion: r.DESCRIPCION ?? String(r.CODARTICULO),
+            cantPedida: Number(r.CANT_PEDIDA),
+            stockDisponible: Math.max(0, Number(r.STOCK_DISPONIBLE)),
+            cantFaltante: Math.max(0, Number(r.CANT_PEDIDA) - Math.max(0, Number(r.STOCK_DISPONIBLE))),
+            fecha: r.FECHA,
+        }));
     }
 
     static async getStockFaltantes(orderId: string): Promise<{ codarticulo: number; descripcion: string; cantPedida: number; stockDisponible: number }[]> {
         const pool = await connectDb();
         const lineasRes = await pool.request()
             .input('ORDERID_LINEAS', mssql.VarChar(50), orderId)
-            .query(`SELECT LP.CODARTICULO, LP.PRODUCTCOUNT AS CANTIDAD,
-                           ISNULL(A.DESCRIPCION, CAST(LP.CODARTICULO AS NVARCHAR)) AS DESCRIPCION
-                    FROM ${esquema}.LINEA_PED LP WITH (NOLOCK)
-                    LEFT JOIN ARTICULOS A WITH (NOLOCK) ON A.CODARTICULO = LP.CODARTICULO
-                    WHERE LP.ORDERID = @ORDERID_LINEAS`);
-
-        const faltantes: { codarticulo: number; descripcion: string; cantPedida: number; stockDisponible: number }[] = [];
-        for (const linea of lineasRes.recordset) {
-            const stockRes = await pool.request()
-                .input('COD', mssql.Int, linea.CODARTICULO)
-                .input('ORDERID_EXCL', mssql.VarChar(50), orderId)
-                .input('ALMACEN', mssql.VarChar(10), getDbConfig().codAlmacen)
-                .query(`
-                    SELECT
-                        ISNULL((SELECT SUM(STOCK) FROM STOCKS WITH (NOLOCK) WHERE CODARTICULO = @COD AND CODALMACEN = @ALMACEN), 0)
-                        - ISNULL((
-                            SELECT SUM(LP2.PRODUCTCOUNT) FROM ${esquema}.CABECERA_PED CP2 WITH (NOLOCK)
-                            INNER JOIN ${esquema}.LINEA_PED LP2 WITH (NOLOCK) ON LP2.ORDERID = CP2.ORDERID
-                            WHERE LP2.CODARTICULO = @COD
-                              AND CP2.ORDERID <> @ORDERID_EXCL
-                              AND CP2.ESTATUS IN ('PENDIENTE POR AUTORIZACION','APROBACION PSICOTROPICOS','SANIDAD','AUTORIZADO','EMPACADO','OK')
-                        ), 0) AS DISPONIBLE
-                `);
-            const disponible: number = stockRes.recordset[0]?.DISPONIBLE ?? 0;
-            if (disponible < linea.CANTIDAD) {
-                faltantes.push({ codarticulo: linea.CODARTICULO, descripcion: linea.DESCRIPCION ?? String(linea.CODARTICULO), cantPedida: linea.CANTIDAD, stockDisponible: disponible });
-            }
-        }
+            .query(`SELECT CODARTICULO, PRODUCTCOUNT AS CANTIDAD FROM ${esquema}.LINEA_PED WITH (NOLOCK) WHERE ORDERID = @ORDERID_LINEAS`);
+        const { insuficiente } = await PedidosServices.checkStockLineas(
+            lineasRes.recordset.map((l: any) => ({ codarticulo: Number(l.CODARTICULO), cantidad: Number(l.CANTIDAD) })),
+            orderId
+        );
+        const faltantes = insuficiente.map(i => ({
+            codarticulo: i.codarticulo, descripcion: i.descripcion, cantPedida: i.cantidad_pedida, stockDisponible: Math.max(0, i.disponible),
+        }));
         // Si no hay faltantes actuales pero el pedido tiene fallas históricas, devolverlas
         // para que el modal de advertencia igualmente aparezca al autorizar
         if (faltantes.length === 0) {
@@ -1613,6 +1820,54 @@ export class PedidosServices {
             }
         }
         return faltantes;
+    }
+
+    private static async auditarPedido(
+        orderId: string,
+        accion: string,
+        codusuario: number | undefined,
+        usuario: string | undefined,
+        requestSource: mssql.ConnectionPool | mssql.Transaction,
+        incluirLineas: boolean
+    ): Promise<void> {
+        // ponytail: as any needed — mssql overloads don't accept ConnectionPool|Transaction union
+        const mkReq = () => new mssql.Request(requestSource as any);
+        const audRes = await mkReq()
+            .input('ORDERID',    mssql.VarChar(50),   orderId)
+            .input('ACCION',     mssql.VarChar(50),   accion)
+            .input('CODUSUARIO', mssql.Int,           codusuario ?? null)
+            .input('USUARIO',    mssql.VarChar(100),  usuario ?? null)
+            .query(`
+                INSERT INTO ${esquema}.APP_PEDIDO_AUDITORIA (ORDERID, ACCION, CODUSUARIO, USUARIO)
+                VALUES (@ORDERID, @ACCION, @CODUSUARIO, @USUARIO);
+                SELECT SCOPE_IDENTITY() AS AUD_ID
+            `);
+        const audId = Number(audRes.recordset[0].AUD_ID);
+
+        await mkReq()
+            .input('AUD_ID',  mssql.Int,         audId)
+            .input('ORDERID', mssql.VarChar(50), orderId)
+            .query(`
+                INSERT INTO ${esquema}.APP_PEDIDO_AUDITORIA_CAB
+                    (AUDITORIA_ID, ORDERID, CLIENTEID, FECHA, ESTATUS, CODVENDEDOR, TOTALPRECIO, OBSERVACIONES, PROMO_NOMBRE)
+                SELECT @AUD_ID, ORDERID, CLIENTEID, FECHA, ESTATUS, CODVENDEDOR, TOTALPRECIO,
+                       ISNULL(OBSERVACIONES, ''), ISNULL(PROMO_NOMBRE, '')
+                FROM ${esquema}.CABECERA_PED WITH (NOLOCK) WHERE ORDERID = @ORDERID
+            `);
+
+        if (incluirLineas) {
+            await mkReq()
+                .input('AUD_ID',  mssql.Int,         audId)
+                .input('ORDERID', mssql.VarChar(50), orderId)
+                .query(`
+                    INSERT INTO ${esquema}.APP_PEDIDO_AUDITORIA_LIN
+                        (AUDITORIA_ID, ORDERID, CODARTICULO, REFERENCIA, CODALMACEN, IDTARIFAV, PRODUCTCOUNT,
+                         PRECIOUNITARIO, DESCUENTO1, DESCUENTO2, DESCUENTO3, DESCUENTO4, PRECIOBRUTO, PORCENTAJEIVA, MONTOIVA)
+                    SELECT @AUD_ID, ORDERID, CODARTICULO, REFERENCIA, CODALMACEN, IDTARIFAV, PRODUCTCOUNT,
+                           PRECIOUNITARIO, DESCUENTO1, DESCUENTO2, DESCUENTO3, DESCUENTO4, PRECIOBRUTO, PORCENTAJEIVA, MONTOIVA
+                    FROM ${esquema}.LINEA_PED WITH (NOLOCK) WHERE ORDERID = @ORDERID
+                `);
+        }
     }
 
     static async registrarFallas(orderId: string, fallas: { codarticulo: number; descripcion: string; cantPedida: number; stockDisponible: number }[]): Promise<void> {

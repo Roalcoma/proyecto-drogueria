@@ -19,6 +19,7 @@ import ImsReporteView        from '../pages/ImsReporteView.vue';
 import RechequeoView         from '../pages/RechequeoView.vue';
 import DescuentoArticuloView from '../pages/DescuentoArticuloView.vue';
 import ReportesView          from '../pages/ReportesView.vue';
+import StockLibreView        from '../pages/StockLibreView.vue';
 
 
 const router = createRouter({
@@ -43,6 +44,7 @@ const router = createRouter({
     { path: '/rechequeo',           name: 'rechequeo',           component: RechequeoView,         meta: { ruta: '/rechequeo' } },
     { path: '/descuento-articulo',  name: 'descuento-articulo',  component: DescuentoArticuloView, meta: { ruta: '/descuento-articulo' } },
     { path: '/reporteria',           name: 'reporteria',           component: ReportesView,          meta: { ruta: '/reporteria' } },
+    { path: '/stock-libre',          name: 'stock-libre',          component: StockLibreView,        meta: { ruta: '/stock-libre' } },
   ]
 });
 

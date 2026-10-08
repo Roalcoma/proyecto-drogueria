@@ -23,6 +23,8 @@ import promoEspecialRouter      from "./routers/promoEspecial.router";
 import descuentoArticuloRouter  from "./routers/descuentoArticulo.router";
 import auditRouter          from "./routers/audit.router";
 import reportesRouter       from "./routers/reportes.router";
+import stockRouter          from "./routers/stock.router";
+import { StockMonitorService } from "./services/stockMonitor.service";
 import { ExchangeService }    from "./services/exchange.service";
 import { AuthService }        from "./services/auth.service";
 import { PromocionesService } from "./services/promociones.service";
@@ -128,6 +130,7 @@ app.use('/api/descuento-articulo',  descuentoArticuloRouter);
 app.use('/api/audit',         auditRouter);
 app.use('/seped',         sepedRouter);
 app.use('/api/reportes',  reportesRouter);
+app.use('/api/stock',     stockRouter);
 
 // ── Frontend estático (SPA) ───────────────────────────────────────────────
 const frontendDist = process.env.FRONTEND_DIST
@@ -177,6 +180,8 @@ app.listen(port, async () => {
     } catch (e: any) {
         console.error('[Farcompras] Error cargando config inicial:', e.message);
     }
+    await StockMonitorService.initTablas();
+    StockMonitorService.iniciar();
     await SepedService.initTablas();
     try {
         const sepedCfg = await SepedService.getConfig();

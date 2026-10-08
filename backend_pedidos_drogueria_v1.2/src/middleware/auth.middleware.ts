@@ -37,6 +37,25 @@ export function adminMiddleware(req: RequestConUsuario, res: Response, next: Nex
     next();
 }
 
+export function tieneBit(req: RequestConUsuario, ...bits: number[]): boolean {
+    if (req.usuario?.es_admin) return true;
+    const vis = Number(req.usuario?.visibilidad ?? 0);
+    return bits.some(b => (vis & b) !== 0);
+}
+
+// Pasa si el usuario es admin o tiene al menos uno de los bits de VISIBILIDAD indicados
+export function requiereBits(...bits: number[]) {
+    return (req: RequestConUsuario, res: Response, next: NextFunction): void => {
+        if (tieneBit(req, ...bits)) return next();
+        res.status(403).json({ success: false, message: 'No tienes permiso para esta acción' });
+    };
+}
+
+export const BITS = {
+    ESTATUS: 4, EDICION: 8, PROMOCIONES: 32, APROBACION_PSICO: 128,
+    DESCUENTO_LINEA: 512, AUTORIZADOR: 2048, METAS_VENDEDOR: 32768, STOCK_LIBRE: 8388608,
+} as const;
+
 // Bit 262144: reporte IMS
 export function imsMiddleware(req: RequestConUsuario, res: Response, next: NextFunction): void {
     if (req.usuario?.es_admin || ((Number(req.usuario?.visibilidad ?? 0) & 262144) !== 0)) {

@@ -39,6 +39,18 @@
         >
           {{ conteoAtrasados }} atrasado{{ conteoAtrasados !== 1 ? 's' : '' }}
         </v-chip>
+        <v-chip
+          v-if="alertasStock.length > 0"
+          color="deep-orange-darken-3"
+          variant="flat"
+          size="large"
+          prepend-icon="mdi-alert-octagon"
+          class="mr-3 font-weight-black text-h6 px-5 cursor-pointer"
+          :title="alertasStock.map(a => `${a.DESCRIPCION}: déficit ${a.DEFICIT}`).join('\n')"
+          @click="irAAlertasStock"
+        >
+          {{ alertasStock.length }} sobregiro{{ alertasStock.length !== 1 ? 's' : '' }}
+        </v-chip>
         <v-btn
           prepend-icon="mdi-sync"
           variant="flat"
@@ -412,12 +424,12 @@
                   @click="imprimirFormato(item)"
                 ></v-btn>
                 <v-btn
-                  v-if="esOrigenExterno(item.ORDERID)"
-                  icon="mdi-swap-horizontal"
+                  v-if="item.TIENE_FALLAS || esOrigenExterno(item.ORDERID)"
+                  :icon="item.TIENE_FALLAS ? 'mdi-package-variant-remove' : 'mdi-swap-horizontal'"
                   variant="text"
                   size="small"
                   color="orange-darken-2"
-                  title="Ver diferencias pedido/montaje"
+                  :title="item.TIENE_FALLAS ? 'Ver fallas de inventario' : 'Ver diferencias pedido/montaje'"
                   :loading="modalDiferencias.loadingId === item.ORDERID"
                   @click="verDiferencias(item)"
                 ></v-btn>
@@ -762,7 +774,8 @@
         <v-card-text class="pa-4">
           <p class="text-body-2 text-medium-emphasis mb-4">
             Los siguientes artículos del pedido <strong>#{{ modalFaltantes.orderid }}</strong> no tienen stock suficiente.
-            Podés autorizar de todas formas — quedará registrado como falla.
+            Si autorizás, <strong>solo se autorizan las unidades disponibles</strong>: esas líneas se recortan
+            (o se quitan si no hay ninguna) y el faltante queda registrado como falla.
           </p>
           <v-list density="compact" class="pa-0">
             <v-list-item v-for="(f, i) in modalFaltantes.faltantes" :key="i"
@@ -770,7 +783,7 @@
               rounded="lg" class="mb-1">
               <v-list-item-title class="text-body-2 font-weight-medium">{{ f.descripcion }}</v-list-item-title>
               <template v-slot:subtitle>
-                <span class="text-caption text-medium-emphasis">Pedido: {{ f.cantPedida }} · Disponible: {{ f.stockDisponible }}</span>
+                <span class="text-caption text-medium-emphasis">Pedido: {{ f.cantPedida }} · Se autorizan: {{ Math.max(0, f.stockDisponible) }}</span>
               </template>
             </v-list-item>
           </v-list>
@@ -783,7 +796,7 @@
           <v-spacer />
           <v-btn color="orange-darken-2" variant="elevated" :loading="modalFaltantes.confirmando" @click="confirmarConFaltantes">
             <v-icon start>mdi-check-circle</v-icon>
-            Autorizar de todas formas
+            Autorizar lo disponible
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -833,7 +846,7 @@
         <v-divider />
         <v-card-text v-if="modalDiferencias.advertencia" class="pa-4 pt-3 text-body-2 text-medium-emphasis">
           <v-icon color="warning" size="18" class="me-1">mdi-alert</v-icon>
-          Hay artículos con stock insuficiente. Podés autorizar igual — la falla quedará registrada.
+          Hay artículos con stock insuficiente. Si autorizás, solo se autorizan las unidades disponibles y el faltante queda registrado.
         </v-card-text>
         <v-card-actions class="pa-4 gap-2">
           <v-btn variant="text" @click="modalDiferencias.mostrar = false">
@@ -842,7 +855,7 @@
           <v-spacer />
           <v-btn v-if="modalDiferencias.advertencia" color="warning" variant="elevated" @click="confirmarConDiferencias">
             <v-icon start>mdi-check-circle</v-icon>
-            Autorizar de todas formas
+            Autorizar lo disponible
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -1054,7 +1067,7 @@ const verConteo = async (item: any) => {
 };
 
 const TRANSICIONES_BASE: Record<string, string[]> = {
-  'PENDIENTE':                  ['PENDIENTE POR AUTORIZACION', 'AUTORIZADO', 'CANCELADO'],
+  'PENDIENTE':                  ['PENDIENTE POR AUTORIZACION', 'CANCELADO'],
   'PENDIENTE POR AUTORIZACION': ['AUTORIZADO', 'CANCELADO'],
   'AUTORIZADO':                 ['CANCELADO'],
   'OK':                         ['CANCELADO'],
@@ -1112,7 +1125,24 @@ const aplicarFiltros = () => {
   filtroTimer = setTimeout(() => obtenerPedidos(1, itemsPerPage.value), 400);
 };
 
+// Sobregiros detectados por el monitor de stock (stock de ICG por debajo de lo reservado por la app)
+const alertasStock = ref<any[]>([]);
+const cargarAlertasStock = async () => {
+  try {
+    const r = await axios.get(`${import.meta.env.VITE_API_URL}/api/stock/alertas`, { params: { activas: '1', limit: 100 } });
+    alertasStock.value = r.data.data ?? [];
+  } catch { alertasStock.value = []; }
+};
+const irAAlertasStock = () => {
+  if (authStore.esAdmin || authStore.tienePermiso('/stock-libre')) {
+    router.push({ path: '/stock-libre', query: { tab: 'alertas' } });
+  } else {
+    lanzarNotificacion(`Sobregiro: ${alertasStock.value.map(a => `${a.DESCRIPCION} (falta ${a.DEFICIT})`).join('; ')}`, 'warning');
+  }
+};
+
 const obtenerPedidos = async (page = 1, limit = 10) => {
+  cargarAlertasStock();
   loading.value = true;
   try {
     const params: Record<string, any> = { page, limit };
@@ -1258,7 +1288,12 @@ const ejecutarCambioEstatus = async (item: any, nuevoStatus: string, anomaliasCo
     const res = await axios.put(`${import.meta.env.VITE_API_URL}/pedidos/status`, body);
     if (res.data.success) {
       item.ESTATUS = nuevoStatus;
-      lanzarNotificacion(`Estatus de #${item.ORDERID} actualizado a ${nuevoStatus}`, 'success');
+      if (res.data.warning) {
+        lanzarNotificacion(`#${item.ORDERID} → ${nuevoStatus}. ${res.data.warning}`, 'warning');
+        obtenerPedidos(1, itemsPerPage.value);
+      } else {
+        lanzarNotificacion(`Estatus de #${item.ORDERID} actualizado a ${nuevoStatus}`, 'success');
+      }
     }
   } catch (error: any) {
     lanzarNotificacion(error.response?.data?.message || 'Error al actualizar estatus', 'error');
@@ -1307,7 +1342,7 @@ const actualizarEstatusBD = async (item: any, nuevoStatus: string) => {
   if (nuevoStatus === 'AUTORIZADO' && esOrigenExterno(item.ORDERID)) {
     try {
       const resDif = await axios.get(`${import.meta.env.VITE_API_URL}/pedidos/${item.ORDERID}/diferencias`);
-      const difs: Diferencia[] = (resDif.data.diferencias ?? []).filter((d: Diferencia) => d.diferencia > 0);
+      const difs: Diferencia[] = (resDif.data.diferencias ?? []).filter((d: Diferencia) => d.cantFaltante > 0);
       if (difs.length > 0) {
         modalDiferencias.value = { mostrar: true, loadingId: null, orderid: item.ORDERID, diferencias: resDif.data.diferencias, advertencia: true, item, nuevoStatus };
         return;

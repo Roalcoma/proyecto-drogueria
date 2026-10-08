@@ -425,7 +425,24 @@ const procesarVenta = async () => {
     axios.get(`${import.meta.env.VITE_API_URL}/sistema/max-lineas`).then(r => r.data.maxLineasPorPedido ?? 50).catch(() => 50),
   ]);
 
-  const promesas: Promise<any>[] = [];
+  // Verificar el stock de todo el carrito antes de crear cualquier parte
+  try {
+    const check = await axios.post(`${import.meta.env.VITE_API_URL}/pedidos/check-stock-lineas`, {
+      lineas: carritoStore.articulos.map(a => ({ codarticulo: Number(a.CODARTICULO), cantidad: Number(a.cantidad) })),
+    });
+    const insuficiente: any[] = check.data?.insuficiente ?? [];
+    if (insuficiente.length > 0) {
+      lanzarAviso(`Stock insuficiente: ${insuficiente.map(i => `${i.descripcion} (pedido ${i.cantidad_pedida}, disponible ${Math.max(0, i.disponible)})`).join('; ')}`, 'error');
+      enviando.value = false;
+      return;
+    }
+  } catch (e: any) {
+    lanzarAviso(e.response?.data?.message || 'No se pudo verificar el stock. Intente nuevamente.', 'error');
+    enviando.value = false;
+    return;
+  }
+
+  const promesas: Promise<ResultadoParte>[] = [];
   const clienteId  = parseInt(String(carritoStore.clienteSeleccionado.CODCLIENTE));
   const codVendedor = authStore.usuario?.codVendedor ?? 1;
   const promocionesAplicadas = carritoStore.promocionesAplicadas;
@@ -436,12 +453,18 @@ const procesarVenta = async () => {
     return chunks;
   };
 
-  const crearPedido = (sufijo: string, items: any[], diasMontofactura?: number) => {
+  // Cada parte resuelve siempre (nunca rechaza) con sus artículos, para saber qué se creó y qué no
+  type ResultadoParte = { ok: boolean; items: any[]; res?: any; mensaje?: string };
+  const enviar = (orderId: string, items: any[], diasMontofactura?: number): Promise<ResultadoParte> => {
     const total = items.reduce((acc, art) => acc + (calcularPrecioConDescuento(art) * art.cantidad), 0);
     return axios.post(`${import.meta.env.VITE_API_URL}/pedidos`, {
-      pedidos: { orderId: `${num}${sufijo}`, clienteId, codVendedor, totalPed: total, lineas: mapearLineas(items), promocionesAplicadas, diasMontofactura, sourceOrderId: carritoStore.sourceOrderId ?? undefined }
-    });
+      pedidos: { orderId, clienteId, codVendedor, totalPed: total, lineas: mapearLineas(items), promocionesAplicadas, diasMontofactura, sourceOrderId: carritoStore.sourceOrderId ?? undefined }
+    }).then(
+      res => ({ ok: true, items, res }),
+      err => ({ ok: false, items, mensaje: err.response?.data?.message || 'Error de conexión' }),
+    );
   };
+  const crearPedido = (sufijo: string, items: any[], diasMontofactura?: number) => enviar(`${num}${sufijo}`, items, diasMontofactura);
 
   const crearPedidosGrupo = (sufijo: string, items: any[], diasMontofactura?: number) => {
     const chunks = chunkArray(items, maxLineas);
@@ -450,12 +473,7 @@ const procesarVenta = async () => {
   };
 
   // PE: orderId = PE-{num}{subSufijo} (ej. PE-10921NI)
-  const crearPedidoPE = (subSufijo: string, items: any[], diasMontofactura?: number) => {
-    const total = items.reduce((acc, art) => acc + (calcularPrecioConDescuento(art) * art.cantidad), 0);
-    return axios.post(`${import.meta.env.VITE_API_URL}/pedidos`, {
-      pedidos: { orderId: `PE-${num}${subSufijo}`, clienteId, codVendedor, totalPed: total, lineas: mapearLineas(items), promocionesAplicadas, diasMontofactura }
-    });
-  };
+  const crearPedidoPE = (subSufijo: string, items: any[], diasMontofactura?: number) => enviar(`PE-${num}${subSufijo}`, items, diasMontofactura);
   const crearPedidosPE = (subSufijo: string, items: any[], dmf?: number) => {
     const chunks = chunkArray(items, maxLineas);
     if (chunks.length === 1) return [crearPedidoPE(subSufijo, chunks[0], dmf)];
@@ -527,16 +545,32 @@ const procesarVenta = async () => {
 
   try {
     const resultados = await Promise.all(promesas);
-    const ids = resultados.map(r => r.data?.orderId || '').filter(Boolean).join(', ');
-    lanzarAviso(`Pedido(s) guardado(s) correctamente${ids ? `: ${ids}` : ''}`, 'success');
-    await exportarPDF(ids);
+    const creados = resultados.filter(r => r.ok);
+    const fallidos = resultados.filter(r => !r.ok);
+    const ids = creados.map(r => r.res?.data?.orderId || '').filter(Boolean).join(', ');
+    const avisos = creados.map(r => r.res?.data?.warning).filter(Boolean);
+
+    if (fallidos.length === 0) {
+      lanzarAviso(`Pedido(s) guardado(s) correctamente${ids ? `: ${ids}` : ''}${avisos.length ? `. ${avisos.join(' ')}` : ''}`, avisos.length ? 'orange-darken-3' : 'success');
+      await exportarPDF(ids);
+      numeroReservado.value = null;
+      setTimeout(() => {
+        carritoStore.limpiarCarrito();
+        router.push('/pedidos-estatus');
+      }, avisos.length ? 5000 : 1500);
+      return;
+    }
+
+    // Parte creada y parte no: sacar del carrito lo ya creado para que reintentar no lo duplique
+    const codigosCreados = new Set(creados.flatMap(r => r.items.map((a: any) => a.CODARTICULO)));
+    carritoStore.articulos = carritoStore.articulos.filter(a => !codigosCreados.has(a.CODARTICULO));
     numeroReservado.value = null;
-    setTimeout(() => {
-      carritoStore.limpiarCarrito();
-      router.push('/pedidos-estatus');
-    }, 1500);
-  } catch (error) {
-    lanzarAviso('Error al guardar el pedido. Intente nuevamente.', 'error');
+    const motivos = [...new Set(fallidos.map(r => r.mensaje))].join(' | ');
+    lanzarAviso(
+      `${ids ? `Se crearon: ${ids}. ` : ''}No se pudo crear ${fallidos.length} parte(s): ${motivos}. ` +
+      `${ids ? 'En el carrito quedaron solo los artículos pendientes.' : 'Corrija y vuelva a intentar.'}`,
+      'error'
+    );
   } finally {
     enviando.value = false;
   }
