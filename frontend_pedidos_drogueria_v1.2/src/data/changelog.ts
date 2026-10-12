@@ -11,9 +11,10 @@ export interface CommitEntry {
   texto: string;
 }
 
-export const APP_VERSION = '1.2.39';
+export const APP_VERSION = '1.2.40';
 
 export const VERSIONES: VersionEntry[] = [
+  { version: '1.2.40', fecha: '2026-10-12', desde: '2026-10-12' },
   { version: '1.2.39', fecha: '2026-10-08', desde: '2026-10-08' },
   { version: '1.2.38', fecha: '2026-10-08', desde: '2026-10-08' },
   { version: '1.2.37', fecha: '2026-10-08', desde: '2026-10-08' },
@@ -57,6 +58,7 @@ export const VERSIONES: VersionEntry[] = [
 ];
 
 export const COMMITS: CommitEntry[] = [
+  { hash: 'pending', date: '2026-10-12', tipo: 'fix',  texto: 'reporte IMS: TOTAL_LINEA de la hoja Ventas se convierte a USD con RIP.F_GET_COTIZACION_RIP (antes sumaba líneas en Bs como si fueran USD)' },
   { hash: 'pending', date: '2026-10-08', tipo: 'feat', texto: 'stock libre y alertas: nueva pantalla (módulo STOCK_LIBRE) con stock ZAV − reservado por la app por artículo y pedidos que lo reservan; monitor cada 5 min registra en APP_ALERTAS_STOCK los sobregiros causados desde ICG con pedidos afectados y traspasos/albaranes directos/consumos de las 24 h previas; aviso de sobregiros en Control de Estatus' },
   { hash: 'pending', date: '2026-10-08', tipo: 'fix',  texto: 'control de estatus: botón de fallas visible en todo pedido marcado (antes solo en e-commerce/FTP/Farcompras); el modal muestra el faltante de hoy y si no hay, el histórico con el nombre del artículo; el aviso de diferencias al autorizar externos ya filtra por el campo correcto' },
   { hash: 'pending', date: '2026-10-08', tipo: 'fix',  texto: 'control de estatus: la fila se marca con falla también cuando el pedido activo hoy no tiene stock suficiente (cálculo en vivo), no solo si ya tenía fallas registradas' },
