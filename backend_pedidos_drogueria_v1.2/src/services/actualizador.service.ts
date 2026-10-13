@@ -3,7 +3,7 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import AdmZip from 'adm-zip';
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import { getDbConfig } from './dbconfig.service';
 
 const ROOT        = path.resolve(process.cwd(), '..'); // raíz del repo
@@ -90,6 +90,30 @@ function run(cmd: string, cwd: string, timeoutMs = 15_000): Promise<string> {
     return new Promise((resolve) => {
         exec(cmd, { cwd, env, timeout: timeoutMs }, (_err, stdout, stderr) => resolve((stdout + stderr).trim()));
     });
+}
+
+// El reinicio NO puede correr como hijo de este proceso: al detener el servicio, NSSM mata el árbol del backend
+// (incluido el propio "nssm restart"), el servicio quedaba detenido y el frontend nunca se reiniciaba.
+// Se escribe un .cmd y se lanza con "start" desde un cmd intermedio que termina enseguida: el script queda
+// sin padre vivo, fuera del árbol que NSSM mata, y reinicia los servicios en orden.
+function reiniciarServiciosNssm(servicios: string[], etiqueta: string): void {
+    const script = path.join(ROOT, '_reiniciar_servicios.cmd');
+    const lineas = [
+        '@echo off',
+        'timeout /t 3 /nobreak >nul',
+        ...servicios.map(s => `nssm restart "${s.replace(/"/g, '')}"`),
+        'del "%~f0"',
+    ];
+    fs.writeFileSync(script, lineas.join('\r\n'), 'utf-8');
+    spawn('cmd.exe', ['/d', '/c', `start "" /b "${script}"`], {
+        cwd: ROOT,
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+        windowsVerbatimArguments: true,
+        env: { ...process.env, PATH: [process.env.PATH, 'C:\\Program Files\\Git\\cmd'].filter(Boolean).join(';') },
+    }).unref();
+    console.log(`[${etiqueta}] Reinicio NSSM programado (${servicios.join(', ')}) vía ${script}`);
 }
 
 export interface ResultadoActualizacion {
@@ -242,17 +266,8 @@ export async function ejecutarRollback(filename: string): Promise<ResultadoRollb
     const servicioFrontend = (cfg.nssmServicioFrontend || '').trim();
 
     if (servicioBackend || servicioFrontend) {
-        paso('Programando reinicio NSSM en 2.5s...');
-        setTimeout(async () => {
-            if (servicioBackend) {
-                const out = await run(`nssm restart "${servicioBackend}"`, ROOT).catch((e: any) => e.message);
-                console.log('[Rollback][NSSM backend]', out);
-            }
-            if (servicioFrontend) {
-                const out = await run(`nssm restart "${servicioFrontend}"`, ROOT).catch((e: any) => e.message);
-                console.log('[Rollback][NSSM frontend]', out);
-            }
-        }, 2500);
+        paso('Programando reinicio NSSM en ~3s...');
+        reiniciarServiciosNssm([servicioFrontend, servicioBackend].filter(Boolean), 'Rollback');
         return { success: true, mensaje: `Rollback completado: ${archivosCopiados} archivos restaurados. Reiniciando servicios.`, log };
     }
 
@@ -349,17 +364,8 @@ export async function ejecutarActualizacion(): Promise<ResultadoActualizacion> {
         return { success: true, descarga: ZIP_URL, archivosCopiados, reiniciando: false, mensaje: `${archivosCopiados} archivos actualizados. Reinicia el backend manualmente.`, log };
     }
 
-    paso(`Programando reinicio NSSM en 2.5s — backend: "${servicioBackend}", frontend: "${servicioFrontend}".`);
-    setTimeout(async () => {
-        if (servicioBackend) {
-            const out = await run(`nssm restart "${servicioBackend}"`, ROOT).catch((e: any) => e.message);
-            console.log('[Actualizador][NSSM backend]', out);
-        }
-        if (servicioFrontend) {
-            const out = await run(`nssm restart "${servicioFrontend}"`, ROOT).catch((e: any) => e.message);
-            console.log('[Actualizador][NSSM frontend]', out);
-        }
-    }, 2500);
+    paso(`Programando reinicio NSSM en ~3s — backend: "${servicioBackend}", frontend: "${servicioFrontend}".`);
+    reiniciarServiciosNssm([servicioFrontend, servicioBackend].filter(Boolean), 'Actualizador');
 
     return { success: true, descarga: ZIP_URL, archivosCopiados, reiniciando: true, mensaje: `${archivosCopiados} archivos actualizados. Reiniciando servicios NSSM en ~3 segundos.`, log };
 }

@@ -359,7 +359,24 @@ export class SepedService {
     }
 
     // ── ciclo ─────────────────────────────────────────────────────────────────
+    // Un ciclo lento (páginas que tardan, muchos pedidos) no debe solaparse con el siguiente:
+    // cada solapamiento abría otro Chromium y se acumulaban en memoria.
+    private static cicloEnCurso = false;
+
     private static async _ciclo(cfg: SepedConfig) {
+        if (SepedService.cicloEnCurso) {
+            emit('WARN', 'Ciclo anterior todavía en curso; se omite este');
+            return;
+        }
+        SepedService.cicloEnCurso = true;
+        try {
+            await SepedService._cicloInterno(cfg);
+        } finally {
+            SepedService.cicloEnCurso = false;
+        }
+    }
+
+    private static async _cicloInterno(cfg: SepedConfig) {
         if (isInNoOp(parseNoOpWindows(cfg.noOpWindows))) {
             emit('INFO', 'En ventana no-op; saltando ciclo');
             return;

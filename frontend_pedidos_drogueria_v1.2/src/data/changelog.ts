@@ -11,9 +11,11 @@ export interface CommitEntry {
   texto: string;
 }
 
-export const APP_VERSION = '1.2.40';
+export const APP_VERSION = '1.2.42';
 
 export const VERSIONES: VersionEntry[] = [
+  { version: '1.2.42', fecha: '2026-10-13', desde: '2026-10-13' },
+  { version: '1.2.41', fecha: '2026-10-12', desde: '2026-10-12' },
   { version: '1.2.40', fecha: '2026-10-12', desde: '2026-10-12' },
   { version: '1.2.39', fecha: '2026-10-08', desde: '2026-10-08' },
   { version: '1.2.38', fecha: '2026-10-08', desde: '2026-10-08' },
@@ -58,6 +60,8 @@ export const VERSIONES: VersionEntry[] = [
 ];
 
 export const COMMITS: CommitEntry[] = [
+  { hash: 'pending', date: '2026-10-13', tipo: 'fix',  texto: 'servidor: una instancia que no consigue el puerto ya no arranca los schedulers ni queda viva (Express 5 llamaba al callback de listen con el error y quedaban node.exe fantasma llenando la memoria); cierre ordenado ante SIGINT/SIGTERM; reinicio NSSM del actualizador desacoplado del propio proceso; Seped no solapa ciclos (no acumula Chromium); impresión de facturas corta el generador a los 60 s' },
+  { hash: 'pending', date: '2026-10-12', tipo: 'fix',  texto: 'FTP inventario.txt por cliente: NOLOCK en las tablas de promociones (PROMO1/PROMO2) y el precio usa la tarifa configurada en vez de la 1 fija' },
   { hash: 'pending', date: '2026-10-12', tipo: 'fix',  texto: 'reporte IMS: TOTAL_LINEA de la hoja Ventas se convierte a USD con RIP.F_GET_COTIZACION_RIP (antes sumaba líneas en Bs como si fueran USD)' },
   { hash: 'pending', date: '2026-10-08', tipo: 'feat', texto: 'stock libre y alertas: nueva pantalla (módulo STOCK_LIBRE) con stock ZAV − reservado por la app por artículo y pedidos que lo reservan; monitor cada 5 min registra en APP_ALERTAS_STOCK los sobregiros causados desde ICG con pedidos afectados y traspasos/albaranes directos/consumos de las 24 h previas; aviso de sobregiros en Control de Estatus' },
   { hash: 'pending', date: '2026-10-08', tipo: 'fix',  texto: 'control de estatus: botón de fallas visible en todo pedido marcado (antes solo en e-commerce/FTP/Farcompras); el modal muestra el faltante de hoy y si no hay, el histórico con el nombre del artículo; el aviso de diferencias al autorizar externos ya filtra por el campo correcto' },

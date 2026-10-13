@@ -45,6 +45,7 @@ import { RuteroService }      from "./services/rutero.service";
 import { BrandingService }    from "./services/branding.service";
 import { getDbConfig }        from "./services/dbconfig.service";
 import { dbModeMiddleware }   from "./db/dbMode.middleware";
+import { closeDb }            from "./db/db.conection";
 import { authMiddleware, adminMiddleware } from "./middleware/auth.middleware";
 
 // Evitar que errores no capturados tumben el proceso
@@ -145,8 +146,13 @@ if (fs.existsSync(frontendDist)) {
     console.log(`[Static] Sin frontend (${frontendDist} no existe)`);
 }
 
-app.listen(port, async () => {
-    console.log(`Servidor en http://localhost:${port}`);
+// Express 5 llama a este callback también cuando listen FALLA (con el error como argumento). Sin este
+// chequeo, una instancia que no conseguía el puerto arrancaba igual todos los schedulers (e-commerce, FTP,
+// Seped/Chromium, iCompras, IMS…) y quedaba viva para siempre sin atender HTTP: un node.exe fantasma
+// por cada reinicio, hasta llenar la memoria del servidor.
+const server = app.listen(port, async (err?: Error) => {
+    if (err) return;   // el handler 'error' de abajo cierra el proceso
+    console.log(`Servidor en http://localhost:${port} (PID ${process.pid})`);
     // Solo verifica/agrega columna VISIBILIDAD si falta en la tabla usuarios existente
     await AuthService.initTablas();
     await PromocionesService.initTablas();
@@ -196,3 +202,20 @@ app.listen(port, async () => {
     setInterval(() => EcommerceService.escanearCarpeta().catch(console.error), 30_000);
     setInterval(() => FtpService.escanearCarpeta().catch(console.error), 600_000);
 });
+
+// Sin este handler, un puerto ocupado terminaba en uncaughtException (que solo loguea) y el proceso
+// quedaba vivo sin servir: cada reinicio fallido sumaba un node.exe más. Ahora sale y NSSM reintenta.
+server.on('error', (err: any) => {
+    console.error(`[Servidor] No se pudo abrir el puerto ${port} (${err.code ?? err.message}). ¿Otra instancia sigue corriendo? Cerrando PID ${process.pid}.`);
+    process.exit(1);
+});
+
+let apagando = false;
+const apagar = (senal: string) => {
+    if (apagando) return;
+    apagando = true;
+    console.log(`[Servidor] ${senal} recibido, cerrando PID ${process.pid}...`);
+    setTimeout(() => process.exit(0), 5000).unref();   // conexiones keep-alive no deben frenar el cierre
+    server.close(() => { closeDb().catch(() => {}).finally(() => process.exit(0)); });
+};
+(['SIGINT', 'SIGTERM', 'SIGBREAK'] as NodeJS.Signals[]).forEach(s => process.on(s, () => apagar(s)));

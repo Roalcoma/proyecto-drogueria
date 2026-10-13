@@ -112,9 +112,28 @@ export class FacturasControllers {
             });
             let stdout = '';
             let stderr = '';
+            // Un generador colgado (p. ej. esperando la BD) quedaba vivo para siempre. El .exe de PyInstaller
+            // lanza un proceso hijo, así que se mata el árbol completo con taskkill /T.
+            let vencido = false;
+            const limite = setTimeout(() => {
+                vencido = true;
+                console.error(`[imprimir-formato] ${serie}-${numero}: sin respuesta en 60 s, cerrando PID ${py.pid}`);
+                if (py.pid) spawn('taskkill', ['/pid', String(py.pid), '/T', '/F'], { stdio: 'ignore' });
+            }, 60_000);
             py.stdout.on('data', (d: Buffer) => stdout += d.toString());
             py.stderr.on('data', (d: Buffer) => stderr += d.toString());
+            py.on('error', (err) => {
+                clearTimeout(limite);
+                if (!res.headersSent) res.status(500).json({ success: false, message: `No se pudo ejecutar el generador: ${err.message}` });
+                resolve();
+            });
             py.on('close', (code) => {
+                clearTimeout(limite);
+                if (res.headersSent) return resolve();
+                if (vencido) {
+                    if (!res.headersSent) res.status(504).json({ success: false, message: 'El generador de factura no respondió a tiempo' });
+                    return resolve();
+                }
                 if (stderr) console.error(`[imprimir-formato] stderr:\n${stderr}`);
                 try {
                     const lastLine = stdout.trim().split('\n').pop() || '';
