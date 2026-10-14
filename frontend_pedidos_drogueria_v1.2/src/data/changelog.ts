@@ -11,9 +11,10 @@ export interface CommitEntry {
   texto: string;
 }
 
-export const APP_VERSION = '1.2.42';
+export const APP_VERSION = '1.2.43';
 
 export const VERSIONES: VersionEntry[] = [
+  { version: '1.2.43', fecha: '2026-10-14', desde: '2026-10-14' },
   { version: '1.2.42', fecha: '2026-10-13', desde: '2026-10-13' },
   { version: '1.2.41', fecha: '2026-10-12', desde: '2026-10-12' },
   { version: '1.2.40', fecha: '2026-10-12', desde: '2026-10-12' },
@@ -60,6 +61,7 @@ export const VERSIONES: VersionEntry[] = [
 ];
 
 export const COMMITS: CommitEntry[] = [
+  { hash: 'pending', date: '2026-10-14', tipo: 'fix',  texto: 'promociones: los selectores de grupos de clientes y de artículos cargan todos los grupos (antes solo los primeros 200 por nombre; los demás no aparecían para incluir/excluir) y permiten buscar escribiendo' },
   { hash: 'pending', date: '2026-10-13', tipo: 'fix',  texto: 'servidor: una instancia que no consigue el puerto ya no arranca los schedulers ni queda viva (Express 5 llamaba al callback de listen con el error y quedaban node.exe fantasma llenando la memoria); cierre ordenado ante SIGINT/SIGTERM; reinicio NSSM del actualizador desacoplado del propio proceso; Seped no solapa ciclos (no acumula Chromium); impresión de facturas corta el generador a los 60 s' },
   { hash: 'pending', date: '2026-10-12', tipo: 'fix',  texto: 'FTP inventario.txt por cliente: NOLOCK en las tablas de promociones (PROMO1/PROMO2) y el precio usa la tarifa configurada en vez de la 1 fija' },
   { hash: 'pending', date: '2026-10-12', tipo: 'fix',  texto: 'reporte IMS: TOTAL_LINEA de la hoja Ventas se convierte a USD con RIP.F_GET_COTIZACION_RIP (antes sumaba líneas en Bs como si fueran USD)' },

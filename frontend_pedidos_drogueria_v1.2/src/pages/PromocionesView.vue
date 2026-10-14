@@ -246,10 +246,10 @@
 
           <!-- grupos de artículos — solo para ARTICULOS -->
           <template v-if="modalPromo.criterioTipo === 'ARTICULOS'">
-            <v-select v-model="modalPromo.idsGruposArticulosIncluir" :items="todosLosGrupos" item-title="NOMBRE" item-value="ID"
+            <v-autocomplete v-model="modalPromo.idsGruposArticulosIncluir" :items="todosLosGrupos" item-title="NOMBRE" item-value="ID"
               label="Grupos de artículos a incluir" variant="outlined" density="comfortable" class="mb-2"
               multiple chips closable-chips hint="Artículos de estos grupos participan en la promoción" persistent-hint />
-            <v-select v-model="modalPromo.idsGruposArticulosExcluir" :items="todosLosGrupos" item-title="NOMBRE" item-value="ID"
+            <v-autocomplete v-model="modalPromo.idsGruposArticulosExcluir" :items="todosLosGrupos" item-title="NOMBRE" item-value="ID"
               label="Grupos de artículos a excluir (opcional)" variant="outlined" density="comfortable" class="mb-3"
               multiple chips closable-chips clearable hint="Artículos de estos grupos quedan fuera aunque estén en los incluidos" persistent-hint />
           </template>
@@ -280,11 +280,11 @@
                 label="Alcance de cliente" variant="outlined" density="comfortable" />
             </v-col>
           </v-row>
-          <v-select v-if="modalPromo.alcanceCliente !== 'TODOS'" v-model="modalPromo.idsGruposClientesIncluir"
+          <v-autocomplete v-if="modalPromo.alcanceCliente !== 'TODOS'" v-model="modalPromo.idsGruposClientesIncluir"
             :items="todosLosGruposClientes" item-title="NOMBRE" item-value="ID" label="Grupos de clientes a incluir"
             variant="outlined" density="comfortable" class="mb-2"
             multiple chips closable-chips hint="Solo estos grupos de clientes recibirán la promoción" persistent-hint />
-          <v-select v-model="modalPromo.idsGruposClientesExcluir" :items="todosLosGruposClientes" item-title="NOMBRE" item-value="ID"
+          <v-autocomplete v-model="modalPromo.idsGruposClientesExcluir" :items="todosLosGruposClientes" item-title="NOMBRE" item-value="ID"
             label="Grupos de clientes a excluir (opcional)" variant="outlined" density="comfortable" class="mb-3"
             multiple chips closable-chips clearable hint="Estos clientes no recibirán la promoción aunque califiquen" persistent-hint />
           <v-row dense class="mb-3">
@@ -417,8 +417,9 @@ const todosLasMarcas = ref<any[]>([]);
 
 const cargarSelectsGrupos = async () => {
   const [resArt, resCli, resProv, resMarca] = await Promise.all([
-    axios.get(`${API}/promociones/grupos-articulos`, { params: { limit: 200 } }),
-    axios.get(`${API}/promociones/grupos-clientes`, { params: { limit: 200 } }),
+    // limit -1 = todos: con 200 fijo, los grupos que pasaban ese número (por orden alfabético) no aparecían
+    axios.get(`${API}/promociones/grupos-articulos`, { params: { limit: -1 } }),
+    axios.get(`${API}/promociones/grupos-clientes`, { params: { limit: -1 } }),
     axios.get(`${API}/promociones/proveedores`),
     axios.get(`${API}/promociones/marcas`),
   ]);
