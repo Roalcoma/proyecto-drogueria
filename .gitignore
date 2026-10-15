@@ -37,9 +37,10 @@ _update_tmp.zip
 __pycache__/
 *.pyc
 *.pyo
-impresion_facturas/settings.cfg
-impresion_facturas/build/
-impresion_facturas/dist/
+# "**/" porque la carpeta está dentro de backend_pedidos_drogueria_v1.2 (sin él no se ignoraba)
+**/impresion_facturas/settings.cfg
+**/impresion_facturas/build/
+**/impresion_facturas/dist/
 
 # Knowledge graph (local only)
 graphify-out/
